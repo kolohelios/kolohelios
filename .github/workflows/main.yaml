@@ -19,3 +19,4 @@ jobs:
         with:
           directory: tools/shaka
           name: kolohelios/shaka
+          visibility: private
