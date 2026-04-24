@@ -1,0 +1,21 @@
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-pkg:
+    name: Build Nix package
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: DeterminateSystems/determinate-nix-action@main
+      - run: nix build ./tools/shaka
+      - uses: DeterminateSystems/flakehub-push@main
+        if: github.event_name == 'push'
+        with:
+          directory: tools/shaka
+          name: kolohelios/shaka
