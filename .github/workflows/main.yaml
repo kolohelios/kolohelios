@@ -20,3 +20,4 @@ jobs:
           directory: tools/shaka
           name: kolohelios/shaka
           visibility: private
+          rolling: true
