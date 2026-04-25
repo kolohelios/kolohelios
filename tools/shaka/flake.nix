@@ -1,5 +1,5 @@
 {
-  description = "A minimal flake template that you can adapt to your own project";
+  description = "shaka — build tooling for kolohelios";
 
   inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
 
@@ -29,14 +29,24 @@
     in
     {
       packages = forEachSupportedSystem ({ pkgs, ... }: {
-        default = pkgs.nixfmt;
+        default = pkgs.rustPlatform.buildRustPackage {
+          pname = "shaka";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+        };
       });
 
       devShells = forEachSupportedSystem (
         { pkgs, system }:
         {
-          default = pkgs.mkShellNoCC {
+          default = pkgs.mkShell {
             packages = with pkgs; [
+              cargo
+              rustc
+              rust-analyzer
+              clippy
+              rustfmt
               self.formatter.${system}
             ];
           };
