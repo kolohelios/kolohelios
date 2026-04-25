@@ -37,6 +37,13 @@
         };
       });
 
+      apps = forEachSupportedSystem ({ system, ... }: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/shaka";
+        };
+      });
+
       devShells = forEachSupportedSystem (
         { pkgs, system }:
         {
