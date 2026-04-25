@@ -1,0 +1,24 @@
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "shaka", about = "Build tooling for kolohelios")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Build the project
+    Build,
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Build => {
+            println!("build");
+        }
+    }
+}
