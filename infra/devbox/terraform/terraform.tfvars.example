@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in values.
+# Do NOT commit terraform.tfvars — it contains secrets.
+
+linode_token = ""
+image_id     = "private/XXXXXXXX" # from: linode-cli images list --is_public false
+region       = "us-ord"
+instance_type = "g6-standard-2"
+volume_size  = 20
+root_pass    = "" # required by Linode API; SSH key auth is actually used
+
+authorized_keys = [
+  "ssh-ed25519 AAAA..."
+]

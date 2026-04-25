@@ -1,17 +1,30 @@
+name: CI
+
 on:
   pull_request:
   push:
     branches: [main]
 
 jobs:
-  build-pkg:
-    name: Build Nix package
+  check:
+    name: Flake check
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/determinate-nix-action@main
+      - run: nix flake check
+
+  build-shaka:
+    name: Build shaka
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
       - uses: DeterminateSystems/determinate-nix-action@main
       - run: nix build ./tools/shaka
       - uses: DeterminateSystems/flakehub-push@main
@@ -21,3 +34,21 @@ jobs:
           name: kolohelios/shaka
           visibility: private
           rolling: true
+
+  build-image:
+    name: Build Linode image
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/determinate-nix-action@main
+      - run: nix build .#linodeImage
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: linode-image
+          path: result/nixos.img
+          retention-days: 7
+          compression-level: 6
