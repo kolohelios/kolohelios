@@ -1,0 +1,50 @@
+terraform {
+  required_version = ">= 1.0"
+
+  required_providers {
+    linode = {
+      source  = "linode/linode"
+      version = "~> 2.0"
+    }
+  }
+
+  # Remote state — uncomment and configure for your backend
+  # backend "s3" {
+  #   bucket = "kolohelios-tfstate"
+  #   key    = "devbox/terraform.tfstate"
+  #   region = "us-east-1"
+  # }
+}
+
+provider "linode" {
+  token = var.linode_token
+}
+
+# ── Devbox instance ────────────────────────────────────────────
+resource "linode_instance" "devbox" {
+  label  = "devbox"
+  region = var.region
+  type   = var.instance_type
+  image  = var.image_id
+
+  root_pass       = var.root_pass
+  authorized_keys = var.authorized_keys
+
+  booted = true
+
+  tags = ["devbox", "nixos"]
+}
+
+# ── Persistent block storage volume ────────────────────────────
+# Attached to the instance via linode_id. Linode provider does not
+# have a separate attachment resource — the volume itself tracks it.
+resource "linode_volume" "persist" {
+  label    = "devbox-persist"
+  region   = var.region
+  size     = var.volume_size
+  linode_id = linode_instance.devbox.id
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

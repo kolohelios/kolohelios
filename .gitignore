@@ -1,3 +1,18 @@
+# Nix
 .direnv
 result
 result-*
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.tfplan
+tfplan
+
+# Secrets
+*.pem
+*.key
+.env
