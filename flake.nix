@@ -69,8 +69,6 @@
               # Nix tooling
               nixfmt-rfc-style
               nil # Nix LSP
-              direnv
-              nix-direnv
 
               # Infra
               opentofu
