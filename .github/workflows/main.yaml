@@ -6,19 +6,46 @@ on:
     branches: [main]
 
 jobs:
-  check:
-    name: Flake check
+  # ── Single gate for branch protection ─────────────────────────
+  # All validation checks go here. This is the only required status
+  # check on main. Shaka will extend this with `shaka repo audit` etc.
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+    env:
+      TF_VAR_linode_token: ${{ secrets.LINODE_TOKEN }}
+      TF_VAR_root_pass: ${{ secrets.DEVBOX_ROOT_PASS }}
+      TF_VAR_image_id: ${{ vars.DEVBOX_IMAGE_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/determinate-nix-action@main
-      - run: nix flake check
 
+      # Nix
+      - name: Nix flake check
+        run: nix flake check --all-systems
+
+      # Terraform
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.9"
+
+      - name: Terraform validate
+        working-directory: infra/devbox/terraform
+        run: |
+          terraform init
+          terraform validate
+
+      - name: Terraform plan
+        working-directory: infra/devbox/terraform
+        run: terraform plan
+
+  # ── Build jobs (run after validation) ─────────────────────────
   build-shaka:
     name: Build shaka
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -37,6 +64,7 @@ jobs:
 
   build-image:
     name: Build Linode image
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       id-token: write
