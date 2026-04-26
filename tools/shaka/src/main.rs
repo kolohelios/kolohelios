@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
 
+mod gh;
+mod repo;
+
 #[derive(Parser)]
 #[command(name = "shaka", about = "Build tooling for kolohelios")]
 struct Cli {
@@ -11,6 +14,11 @@ struct Cli {
 enum Commands {
     /// Build the project
     Build,
+    /// Repository management
+    Repo {
+        #[command(subcommand)]
+        command: repo::RepoCommand,
+    },
 }
 
 fn main() {
@@ -20,5 +28,6 @@ fn main() {
         Commands::Build => {
             println!("build");
         }
+        Commands::Repo { command } => repo::run(command),
     }
 }

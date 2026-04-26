@@ -3,6 +3,9 @@
 result
 result-*
 
+# Rust
+target/
+
 # Terraform
 *.tfstate
 *.tfstate.*
