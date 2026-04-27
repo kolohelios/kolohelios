@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+mod generate;
 mod gh;
 mod preflight;
 mod repo;
@@ -16,6 +17,12 @@ struct Cli {
 enum Commands {
     /// Build the project
     Build,
+    /// Generate justfiles from each project.cue (root + per-project)
+    Generate {
+        /// Compare generated content to disk and fail on any drift instead of writing
+        #[arg(long)]
+        check: bool,
+    },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
         /// Continue running checks after a failure and report all at the end
@@ -38,6 +45,7 @@ fn main() {
         Commands::Build => {
             println!("build");
         }
+        Commands::Generate { check } => generate::run(check),
         Commands::Preflight { keep_going } => preflight::run(keep_going),
         Commands::Repo { command } => repo::run(command),
         Commands::Validate => validate::run(),
