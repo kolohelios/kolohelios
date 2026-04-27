@@ -63,7 +63,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: DeterminateSystems/determinate-nix-action@main
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
       - name: shaka preflight
         run: |
           nix develop --command nix run ./tools/shaka -- preflight \
@@ -80,7 +83,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/determinate-nix-action@main
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
       - run: nix build ./tools/shaka
       - uses: DeterminateSystems/flakehub-push@main
         if: github.event_name == 'push'
@@ -100,7 +106,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/determinate-nix-action@main
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
       - run: nix build .#linodeImage
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
