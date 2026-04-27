@@ -71,6 +71,12 @@ jobs:
         run: |
           nix develop --command nix run ./tools/shaka -- preflight \
             --since "${{ needs.changes.outputs.base_ref }}"
+      - name: shaka commit lint
+        if: github.event_name == 'pull_request'
+        run: |
+          nix develop --command jj git init --colocate
+          nix develop --command nix run ./tools/shaka -- commit lint \
+            -r '${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}'
 
   # ── Build jobs (run after validation, only when inputs change) ─
   build-shaka:
