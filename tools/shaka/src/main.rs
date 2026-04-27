@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+mod commit;
 mod generate;
 mod gh;
 mod preflight;
@@ -17,6 +18,11 @@ struct Cli {
 enum Commands {
     /// Build the project
     Build,
+    /// Commit message tooling (lint, etc.)
+    Commit {
+        #[command(subcommand)]
+        command: commit::CommitCommand,
+    },
     /// Generate justfiles from each project.cue (root + per-project)
     Generate {
         /// Compare generated content to disk and fail on any drift instead of writing
@@ -48,6 +54,7 @@ fn main() {
         Commands::Build => {
             println!("build");
         }
+        Commands::Commit { command } => commit::run(command),
         Commands::Generate { check } => generate::run(check),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Repo { command } => repo::run(command),
