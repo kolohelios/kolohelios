@@ -129,6 +129,39 @@ fn api_write(method: &str, endpoint: &str, body: &Value) -> Result<Value, GhErro
     })
 }
 
+/// Find the URL of an open PR whose head branch matches `head`. Returns `None`
+/// if no PR exists. `repo` is in `owner/repo` form.
+pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<String>, GhError> {
+    let owner = repo.split('/').next().unwrap_or("");
+    let endpoint = format!("/repos/{repo}/pulls?head={owner}:{head}&state=open");
+    let result = api_get(&endpoint)?;
+    if let Some(arr) = result.as_array() {
+        if let Some(first) = arr.first() {
+            if let Some(url) = first["html_url"].as_str() {
+                return Ok(Some(url.to_string()));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Run `gh pr create` and return the PR URL.
+pub fn pr_create(title: &str, body: &str, head: &str) -> Result<String, GhError> {
+    let output = Command::new("gh")
+        .args([
+            "pr", "create", "--title", title, "--body", body, "--head", head,
+        ])
+        .output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GhError {
+            message: format!("gh pr create: {}", stderr.trim()),
+        });
+    }
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(url)
+}
+
 /// Detect owner/repo from the git remote origin URL.
 pub fn detect_repo() -> Result<String, GhError> {
     let output = Command::new("git")

@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 mod commit;
 mod generate;
 mod gh;
+mod jj;
 mod preflight;
 mod repo;
 mod validate;
