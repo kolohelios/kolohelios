@@ -6,11 +6,51 @@ on:
     branches: [main]
 
 jobs:
+  # ── Detect changed paths ──────────────────────────────────────
+  # Build jobs use these outputs to skip when their inputs haven't
+  # changed. The validate job always runs but passes the base ref
+  # to `shaka preflight --since` so individual checks self-skip.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      base_ref: ${{ steps.base.outputs.ref }}
+      shaka: ${{ steps.filter.outputs.shaka }}
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: base
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            BASE=$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)
+          fi
+          echo "ref=$BASE" >> "$GITHUB_OUTPUT"
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: ${{ steps.base.outputs.ref }}
+          filters: |
+            shaka:
+              - 'tools/shaka/**'
+              - 'flake.nix'
+              - 'flake.lock'
+            image:
+              - 'infra/devbox/nixos/**'
+              - 'flake.nix'
+              - 'flake.lock'
+
   # ── Single gate for branch protection ─────────────────────────
   # `shaka preflight` runs every validation check in one place. CI and
   # local dev invoke the same command so they cannot drift apart.
   validate:
     name: Validate
+    needs: changes
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -21,14 +61,19 @@ jobs:
       TF_VAR_image_id: ${{ vars.DEVBOX_IMAGE_ID }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: DeterminateSystems/determinate-nix-action@main
       - name: shaka preflight
-        run: nix develop --command nix run ./tools/shaka -- preflight
+        run: |
+          nix develop --command nix run ./tools/shaka -- preflight \
+            --since "${{ needs.changes.outputs.base_ref }}"
 
-  # ── Build jobs (run after validation) ─────────────────────────
+  # ── Build jobs (run after validation, only when inputs change) ─
   build-shaka:
     name: Build shaka
-    needs: validate
+    needs: [validate, changes]
+    if: needs.changes.outputs.shaka == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -47,7 +92,8 @@ jobs:
 
   build-image:
     name: Build Linode image
-    needs: validate
+    needs: [validate, changes]
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write

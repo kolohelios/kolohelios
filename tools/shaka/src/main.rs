@@ -28,6 +28,9 @@ enum Commands {
         /// Continue running checks after a failure and report all at the end
         #[arg(long)]
         keep_going: bool,
+        /// Skip checks whose path scope does not intersect changes since this git ref
+        #[arg(long, value_name = "REF")]
+        since: Option<String>,
     },
     /// Repository management
     Repo {
@@ -46,7 +49,7 @@ fn main() {
             println!("build");
         }
         Commands::Generate { check } => generate::run(check),
-        Commands::Preflight { keep_going } => preflight::run(keep_going),
+        Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Repo { command } => repo::run(command),
         Commands::Validate => validate::run(),
     }
