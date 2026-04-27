@@ -70,6 +70,9 @@
               nixfmt-rfc-style
               nil # Nix LSP
 
+              # Schema / config
+              cue
+
               # Infra
               opentofu
               linode-cli

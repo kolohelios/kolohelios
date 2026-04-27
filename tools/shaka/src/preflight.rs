@@ -19,6 +19,7 @@ struct Check {
 
 const CHECKS: &[Check] = &[
     Check { name: "nix flake check", run: nix_flake_check },
+    Check { name: "shaka validate", run: shaka_validate },
     Check { name: "tofu validate (infra/devbox/terraform)", run: tofu_validate },
     Check { name: "tofu plan (infra/devbox/terraform)", run: tofu_plan },
 ];
@@ -78,6 +79,19 @@ pub fn run(keep_going: bool) {
 
 fn nix_flake_check() -> CheckResult {
     run_command(Command::new("nix").args(["flake", "check", "--all-systems"]))
+}
+
+fn shaka_validate() -> CheckResult {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            return CheckResult::Fail {
+                detail: format!("could not locate shaka binary: {e}"),
+                output: None,
+            };
+        }
+    };
+    run_command(Command::new(exe).arg("validate"))
 }
 
 fn tofu_validate() -> CheckResult {

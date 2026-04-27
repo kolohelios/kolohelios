@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 mod gh;
 mod preflight;
 mod repo;
+mod validate;
 
 #[derive(Parser)]
 #[command(name = "shaka", about = "Build tooling for kolohelios")]
@@ -26,6 +27,8 @@ enum Commands {
         #[command(subcommand)]
         command: repo::RepoCommand,
     },
+    /// Validate every project's project.cue against the shared schema
+    Validate,
 }
 
 fn main() {
@@ -37,5 +40,6 @@ fn main() {
         }
         Commands::Preflight { keep_going } => preflight::run(keep_going),
         Commands::Repo { command } => repo::run(command),
+        Commands::Validate => validate::run(),
     }
 }
