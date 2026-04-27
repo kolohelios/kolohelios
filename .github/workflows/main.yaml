@@ -7,8 +7,8 @@ on:
 
 jobs:
   # ── Single gate for branch protection ─────────────────────────
-  # All validation checks go here. This is the only required status
-  # check on main. Shaka will extend this with `shaka repo audit` etc.
+  # `shaka preflight` runs every validation check in one place. CI and
+  # local dev invoke the same command so they cannot drift apart.
   validate:
     name: Validate
     runs-on: ubuntu-latest
@@ -22,25 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/determinate-nix-action@main
-
-      # Nix
-      - name: Nix flake check
-        run: nix flake check --all-systems
-
-      # Terraform
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.9"
-
-      - name: Terraform validate
-        working-directory: infra/devbox/terraform
-        run: |
-          terraform init
-          terraform validate
-
-      - name: Terraform plan
-        working-directory: infra/devbox/terraform
-        run: terraform plan
+      - name: shaka preflight
+        run: nix develop --command nix run ./tools/shaka -- preflight
 
   # ── Build jobs (run after validation) ─────────────────────────
   build-shaka:
