@@ -81,6 +81,7 @@
               git
               jujutsu
               jq
+              just
             ];
           };
         }

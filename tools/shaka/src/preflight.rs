@@ -20,6 +20,7 @@ struct Check {
 const CHECKS: &[Check] = &[
     Check { name: "nix flake check", run: nix_flake_check },
     Check { name: "shaka validate", run: shaka_validate },
+    Check { name: "shaka generate --check", run: shaka_generate_check },
     Check { name: "tofu validate (infra/devbox/terraform)", run: tofu_validate },
     Check { name: "tofu plan (infra/devbox/terraform)", run: tofu_plan },
 ];
@@ -82,6 +83,14 @@ fn nix_flake_check() -> CheckResult {
 }
 
 fn shaka_validate() -> CheckResult {
+    spawn_self(&["validate"])
+}
+
+fn shaka_generate_check() -> CheckResult {
+    spawn_self(&["generate", "--check"])
+}
+
+fn spawn_self(args: &[&str]) -> CheckResult {
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -91,7 +100,9 @@ fn shaka_validate() -> CheckResult {
             };
         }
     };
-    run_command(Command::new(exe).arg("validate"))
+    let mut cmd = Command::new(exe);
+    cmd.args(args);
+    run_command(&mut cmd)
 }
 
 fn tofu_validate() -> CheckResult {
