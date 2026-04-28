@@ -78,6 +78,37 @@ run` or `nix run ./tools/shaka` — the wrapper subsumes both.
 - **Workflow**: rebase on `main@origin`, self-review, then push and open a PR.
   `shaka repo send` automates push + PR creation.
 
+### Working with jj
+
+A few jj behaviors trip up agents whose mental model comes from git. Read
+this before scripting against `jj`:
+
+- **Change IDs come in two lengths.** Templates emit the 32-char form by
+  default (`utxssoyuknns...`); the 12-char prefix shown in `jj log`
+  (`utxssoyuknns`) only resolves while the change exists. Use
+  `change_id.short()` in templates to get the prefix explicitly.
+- **Empty `@` auto-abandons.** `jj new <ref>` from an empty `@` switches
+  `@` and abandons the empty change. To move `@` without creating a new
+  change, use `jj edit <rev>`.
+- **Bookmarks track change_id, not commit_id.** `jj describe @` rewrites
+  the commit but the bookmark moves with the change — you rarely need to
+  re-set a bookmark after editing.
+- **`jj restore <path>` resolves paths relative to the repo root**, not
+  the cwd. Pass absolute paths from automation.
+- **Useful revsets**: `main@origin..@` (commits ahead of remote main),
+  `main@origin..@ ~ empty()` (same, excluding empty), `@-` (parent),
+  `roots(...)`, `heads(...)`.
+- **`jj op log` is the source of truth for past operations** — fetches,
+  rebases, snapshots. Filter by first-line `description` content in
+  templates when scripting.
+- **`jj diff --summary -r @`** prefixes each path with a single letter
+  (`A`/`M`/`D`/`R`/`C`); stable enough to parse.
+- **`jj git push --allow-new`** (or `-N`) is required the first time a
+  bookmark goes to origin; without it, push fails for unknown bookmarks.
+- **Colocated repos** keep git refs in `.git/`;
+  `.jj/repo/store/git_target` points at the git dir. Useful when poking
+  at `FETCH_HEAD` or pack files directly.
+
 ## Issue tracking
 
 Work is tracked in **GitHub Issues**. References like `#21` are GitHub issue
