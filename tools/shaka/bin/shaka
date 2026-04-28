@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Invoke the shaka CLI, rebuilding incrementally if any source has changed.
+#
+# Exists because shaka isn't on $PATH globally and the root `nix develop`
+# doesn't ship the rust toolchain — cargo lives only in tools/shaka/flake.nix.
+# Cargo's incremental check is fast enough that running this on every call is
+# effectively free when nothing has changed.
+
+set -euo pipefail
+
+shaka_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$shaka_dir"
+
+if command -v cargo >/dev/null 2>&1; then
+    cargo build --quiet
+else
+    nix develop --command cargo build --quiet
+fi
+
+exec "$shaka_dir/target/debug/shaka" "$@"
