@@ -232,6 +232,12 @@ fn check_branch_protection(repo: &str) -> Vec<Check> {
             "not configured",
         ),
         bool_check(
+            "Strict status checks",
+            data["required_status_checks"]["strict"].as_bool() != Some(true),
+            "off (stale-but-mergeable allowed)",
+            "on (forces rebase before merge)",
+        ),
+        bool_check(
             "Force push",
             data["allow_force_pushes"]["enabled"].as_bool() == Some(false),
             "blocked",
@@ -256,7 +262,10 @@ fn fix_branch_protection(repo: &str, checks: &[Check]) {
             c.status == Status::Fail
                 && matches!(
                     c.name,
-                    "Required status checks" | "Force push" | "Branch deletion"
+                    "Required status checks"
+                        | "Strict status checks"
+                        | "Force push"
+                        | "Branch deletion"
                 )
         });
 
@@ -267,7 +276,7 @@ fn fix_branch_protection(repo: &str, checks: &[Check]) {
     println!("  {YELLOW}Fixing branch protection...{RESET}");
     let body = json!({
         "required_status_checks": {
-            "strict": true,
+            "strict": false,
             "contexts": ["Validate"]
         },
         "enforce_admins": true,
