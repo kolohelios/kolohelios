@@ -1,11 +1,11 @@
 package project
 
 #Project & {
-	name: "shaka"
+	name: "out-of-range"
 	kind: "rust"
 	coverage: {
 		line: {
-			fail: 30
+			fail: 150
 		}
 		branch: {
 			fail: 50

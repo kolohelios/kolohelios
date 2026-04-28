@@ -51,6 +51,11 @@
           version = "0.1.0";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
+          # Integration tests in tests/schema.rs shell out to `cue vet`
+          # against the shipped schema fixtures. Make cue available during
+          # the check phase so `nix flake check` (and CI's `shaka preflight`)
+          # can run them in the build sandbox.
+          nativeCheckInputs = [ pkgs.cue ];
         };
       });
 

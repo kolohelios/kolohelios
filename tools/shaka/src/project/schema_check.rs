@@ -97,6 +97,7 @@ fn validate_project(schema_path: &Path, project_dir: &Path) -> ProjectResult {
 
     match Command::new("cue")
         .arg("vet")
+        .arg("-c")
         .arg(schema_path)
         .arg(&project_file)
         .output()
