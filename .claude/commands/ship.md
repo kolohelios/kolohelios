@@ -9,6 +9,15 @@ silently push past errors.
 
 ## Workflow
 
+### 0. Snapshot state
+
+Run `shaka repo status --json` to get a structured view of the working copy
+(`bookmarks`, `change_id`, `parent.is_main_origin`, `dirty`, `ahead`, `pr`,
+`last_fetch`). Use this — not `jj st` parsing — to drive decisions throughout
+the workflow. Re-run after `repo sync` and `repo send` to confirm state
+transitions (e.g. parent advanced to a new `main@origin` commit, `pr` populated
+after push).
+
 ### 1. Rebase on main@origin
 
 Run `shaka repo sync` (it does `jj git fetch` + rebase onto `main@origin`). If
