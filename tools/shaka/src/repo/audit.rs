@@ -350,40 +350,6 @@ fn check_security(repo: &str) -> Vec<Check> {
         Err(e) => checks.push(Check::error("Dependabot alerts", format!("{e}"))),
     }
 
-    // Secret scanning + push protection from repo settings
-    match gh::api_get(&format!("/repos/{repo}")) {
-        Ok(data) => {
-            let sa = &data["security_and_analysis"];
-
-            let secret_scanning = sa["secret_scanning"]["status"].as_str();
-            if sa["secret_scanning"].is_null() {
-                checks.push(Check::warn("Secret scanning", "not available (requires GitHub Advanced Security)"));
-            } else {
-                checks.push(bool_check(
-                    "Secret scanning",
-                    secret_scanning == Some("enabled"),
-                    "enabled",
-                    secret_scanning.unwrap_or("disabled"),
-                ));
-            }
-
-            let push_protection = sa["secret_scanning_push_protection"]["status"].as_str();
-            if sa["secret_scanning_push_protection"].is_null() {
-                checks.push(Check::warn("Push protection", "not available (requires GitHub Advanced Security)"));
-            } else {
-                checks.push(bool_check(
-                    "Push protection",
-                    push_protection == Some("enabled"),
-                    "enabled",
-                    push_protection.unwrap_or("disabled"),
-                ));
-            }
-        }
-        Err(e) => {
-            checks.push(Check::error("Security settings", format!("API error: {e}")));
-        }
-    }
-
     checks
 }
 
@@ -395,25 +361,6 @@ fn fix_security(repo: &str, checks: &[Check]) {
             &format!("/repos/{repo}/vulnerability-alerts"),
             &json!({}),
         ) {
-            Ok(_) => println!("  {GREEN}Fixed{RESET}"),
-            Err(e) => eprintln!("  {RED}Fix failed: {e}{RESET}"),
-        }
-    }
-
-    // Enable secret scanning + push protection
-    let needs_scanning_fix = checks
-        .iter()
-        .any(|c| (c.name == "Secret scanning" || c.name == "Push protection") && c.status == Status::Fail);
-
-    if needs_scanning_fix {
-        println!("  {YELLOW}Enabling secret scanning and push protection...{RESET}");
-        let body = json!({
-            "security_and_analysis": {
-                "secret_scanning": { "status": "enabled" },
-                "secret_scanning_push_protection": { "status": "enabled" }
-            }
-        });
-        match gh::api_patch(&format!("/repos/{repo}"), &body) {
             Ok(_) => println!("  {GREEN}Fixed{RESET}"),
             Err(e) => eprintln!("  {RED}Fix failed: {e}{RESET}"),
         }
