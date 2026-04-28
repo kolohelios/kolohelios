@@ -5,16 +5,20 @@
 # doesn't ship the rust toolchain — cargo lives only in tools/shaka/flake.nix.
 # Cargo's incremental check is fast enough that running this on every call is
 # effectively free when nothing has changed.
+#
+# Preserves the caller's cwd (commands like `shaka validate` and `shaka
+# coverage` discover projects relative to cwd, expecting the repo root).
+# When invoked outside the dev shell, re-enters via `nix develop` so cargo is
+# on PATH for both the build step and shaka's runtime tool spawning
+# (e.g. `shaka coverage` invokes `cargo llvm-cov`).
 
 set -euo pipefail
 
 shaka_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$shaka_dir"
 
-if command -v cargo >/dev/null 2>&1; then
-    cargo build --quiet
-else
-    nix develop --command cargo build --quiet
+if ! command -v cargo >/dev/null 2>&1; then
+    exec nix develop "$shaka_dir" --command bash "${BASH_SOURCE[0]}" "$@"
 fi
 
+cargo build --quiet --manifest-path "$shaka_dir/Cargo.toml"
 exec "$shaka_dir/target/debug/shaka" "$@"
