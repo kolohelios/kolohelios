@@ -24,14 +24,15 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
         std::process::exit(1);
     }
 
-    let bookmark = match bookmark_arg.or_else(|| jj::derive_bookmark(trimmed)) {
+    let bookmark = match bookmark_arg {
         Some(b) => b,
-        None => {
-            eprintln!(
-                "{RED}{BOLD}error:{RESET} could not derive bookmark from description; pass --bookmark"
-            );
-            std::process::exit(1);
-        }
+        None => match resolve_bookmark(trimmed) {
+            Ok(b) => b,
+            Err(msg) => {
+                eprintln!("{RED}{BOLD}error:{RESET} {msg}");
+                std::process::exit(1);
+            }
+        },
     };
 
     let (title, body) = split_message(trimmed);
@@ -83,6 +84,31 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
         Err(e) => {
             eprintln!("{YELLOW}{BOLD}warn:{RESET} could not check existing PRs: {e}");
             std::process::exit(1);
+        }
+    }
+}
+
+/// Pick the bookmark for the current change.
+///
+/// Prefers a bookmark already on `@` (set by `/start` or the user). If `@`
+/// has no bookmark, derives one from the description. If `@` has multiple
+/// bookmarks, warns and falls back to deriving — pass `--bookmark` to pick
+/// one explicitly.
+pub fn resolve_bookmark(description: &str) -> Result<String, String> {
+    let bookmarks = jj::current_bookmarks().map_err(|e| e.to_string())?;
+    match bookmarks.len() {
+        1 => Ok(bookmarks.into_iter().next().unwrap()),
+        0 => jj::derive_bookmark(description).ok_or_else(|| {
+            "could not derive bookmark from description; pass --bookmark".to_string()
+        }),
+        _ => {
+            eprintln!(
+                "{YELLOW}{BOLD}warn:{RESET} multiple bookmarks on @ ({}); deriving from description — pass --bookmark to override",
+                bookmarks.join(", ")
+            );
+            jj::derive_bookmark(description).ok_or_else(|| {
+                "could not derive bookmark from description; pass --bookmark".to_string()
+            })
         }
     }
 }
