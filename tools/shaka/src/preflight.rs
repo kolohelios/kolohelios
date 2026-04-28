@@ -33,18 +33,18 @@ const CHECKS: &[Check] = &[
         run: nix_flake_check,
     },
     Check {
-        name: "shaka validate",
+        name: "shaka project schema-check",
         paths: &["tools/shaka/**", "*/*/project.cue"],
-        run: shaka_validate,
+        run: shaka_project_schema_check,
     },
     Check {
-        name: "shaka generate --check",
+        name: "shaka project generate-justfiles --check",
         paths: &[
             "tools/shaka/**",
             "*/*/project.cue",
             "*/*/justfile",
         ],
-        run: shaka_generate_check,
+        run: shaka_project_generate_justfiles_check,
     },
     Check {
         name: "tofu validate (infra/devbox/terraform)",
@@ -209,12 +209,12 @@ fn nix_flake_check() -> CheckResult {
     run_command(Command::new("nix").args(["flake", "check", "--all-systems"]))
 }
 
-fn shaka_validate() -> CheckResult {
-    spawn_self(&["validate"])
+fn shaka_project_schema_check() -> CheckResult {
+    spawn_self(&["project", "schema-check"])
 }
 
-fn shaka_generate_check() -> CheckResult {
-    spawn_self(&["generate", "--check"])
+fn shaka_project_generate_justfiles_check() -> CheckResult {
+    spawn_self(&["project", "generate-justfiles", "--check"])
 }
 
 fn spawn_self(args: &[&str]) -> CheckResult {

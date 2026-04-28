@@ -9,7 +9,7 @@ const DIM: &str = "\x1b[2m";
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
-pub const SCHEMA: &str = include_str!("../schema/project.cue");
+pub const SCHEMA: &str = include_str!("../../schema/project.cue");
 const SLOTS: &[&str] = &["apps", "infra", "packages", "services", "tools"];
 
 enum ProjectResult {
@@ -34,7 +34,7 @@ pub fn run() {
         return;
     }
 
-    println!("{BOLD}validate:{RESET} {} projects", projects.len());
+    println!("{BOLD}schema-check:{RESET} {} projects", projects.len());
 
     let mut failures = 0;
     for project in &projects {
@@ -62,12 +62,12 @@ pub fn run() {
     println!();
     if failures > 0 {
         eprintln!(
-            "{RED}{BOLD}validate failed{RESET} ({failures} of {} projects)",
+            "{RED}{BOLD}schema-check failed{RESET} ({failures} of {} projects)",
             projects.len()
         );
         std::process::exit(1);
     }
-    println!("{GREEN}{BOLD}validate passed{RESET}");
+    println!("{GREEN}{BOLD}schema-check passed{RESET}");
 }
 
 pub fn discover(root: &Path) -> Vec<PathBuf> {
