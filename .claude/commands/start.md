@@ -1,6 +1,6 @@
 ---
 description: Start working on a GitHub issue — sync, read, bookmark, and plan
-allowed-tools: Bash(shaka repo sync), Bash(jj *), Bash(gh issue view:*), Bash(gh issue list:*), Read, Glob, Grep
+allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(jj *), Bash(gh issue view:*), Bash(gh issue list:*), Read, Glob, Grep
 argument-hint: <issue-number>
 ---
 
@@ -21,11 +21,11 @@ fine to continue.
 
 ### 1. Check for in-progress work
 
-Run `jj status` and `jj log -r '@'`. If `@` is non-empty (has working-copy
-changes or a description) and is not already on a bookmark pointing at
-`main@origin`, surface the current change to the user before doing anything
-else. The change will be preserved either way, but the user should decide
-whether to:
+Run `shaka repo status --json` for a structured snapshot (`bookmarks`,
+`change_id`, `parent.is_main_origin`, `dirty`, `ahead`, `pr`). If `dirty.total
+> 0` or `ahead > 0` and `bookmarks` is empty, there's WIP without a bookmark —
+surface the current change to the user before doing anything else. The change
+will be preserved either way, but the user should decide whether to:
 
 - Set a bookmark on it first (`jj bookmark create <name> -r @`)
 - Continue and let it sit as an orphan change reachable via `jj log`
@@ -38,7 +38,8 @@ Don't proceed silently if there's WIP without a bookmark.
 Run `shaka repo sync` to fetch and rebase the working copy onto
 `main@origin`. If it errors (conflicts, network), stop and report.
 
-After sync, confirm `@` is empty and parented on the latest `main@origin`.
+Re-run `shaka repo status --json` to confirm `parent.is_main_origin` is `true`
+and `dirty.total` is `0`.
 
 ### 3. Read the issue
 
