@@ -44,6 +44,21 @@ The single CI gate is `shaka preflight`. If you add a check that should run in
 CI, add it to `CHECKS` in `tools/shaka/src/preflight.rs` with appropriate path
 scopes — do **not** add a new GitHub Actions job.
 
+### Running `shaka`
+
+`shaka` is **not** on `$PATH` globally, and the root `nix develop` does
+**not** ship the rust toolchain (cargo lives only in `tools/shaka/flake.nix`).
+Always invoke shaka via the wrapper script:
+
+```
+tools/shaka/bin/shaka <subcommand>
+```
+
+It runs an incremental `cargo build` (free when no source has changed) and
+exec's the resulting debug binary, so it works from any cwd, in or out of the
+dev shell, and never leaves you on a stale binary. Don't reach for `cargo
+run` or `nix run ./tools/shaka` — the wrapper subsumes both.
+
 ## Version control
 
 - **Jujutsu (`jj`)** for all VCS operations — never `git` for working-copy
