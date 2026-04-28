@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+mod ci;
 mod commit;
 mod generate;
 mod gh;
@@ -19,6 +20,11 @@ struct Cli {
 enum Commands {
     /// Build the project
     Build,
+    /// CI orchestration helpers (gate, etc.)
+    Ci {
+        #[command(subcommand)]
+        command: ci::CiCommand,
+    },
     /// Commit message tooling (lint, etc.)
     Commit {
         #[command(subcommand)]
@@ -55,6 +61,7 @@ fn main() {
         Commands::Build => {
             println!("build");
         }
+        Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
         Commands::Generate { check } => generate::run(check),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
