@@ -42,7 +42,6 @@ const CHECKS: &[Check] = &[
         paths: &[
             "tools/shaka/**",
             "*/*/project.cue",
-            "justfile",
             "*/*/justfile",
         ],
         run: shaka_generate_check,
