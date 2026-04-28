@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 mod ci;
 mod commit;
+mod coverage;
 mod generate;
 mod gh;
 mod jj;
@@ -29,6 +30,12 @@ enum Commands {
     Commit {
         #[command(subcommand)]
         command: commit::CommitCommand,
+    },
+    /// Run cargo llvm-cov on each rust project and report coverage
+    Coverage {
+        /// Limit to a single project by name
+        #[arg(long)]
+        project: Option<String>,
     },
     /// Generate justfiles from each project.cue (root + per-project)
     Generate {
@@ -63,6 +70,7 @@ fn main() {
         }
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
+        Commands::Coverage { project } => coverage::run(project),
         Commands::Generate { check } => generate::run(check),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Repo { command } => repo::run(command),

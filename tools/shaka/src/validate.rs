@@ -9,7 +9,7 @@ const DIM: &str = "\x1b[2m";
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
-const SCHEMA: &str = include_str!("../schema/project.cue");
+pub const SCHEMA: &str = include_str!("../schema/project.cue");
 const SLOTS: &[&str] = &["apps", "infra", "packages", "services", "tools"];
 
 enum ProjectResult {
@@ -70,7 +70,7 @@ pub fn run() {
     println!("{GREEN}{BOLD}validate passed{RESET}");
 }
 
-fn discover(root: &Path) -> Vec<PathBuf> {
+pub fn discover(root: &Path) -> Vec<PathBuf> {
     let mut projects = Vec::new();
     for slot in SLOTS {
         let slot_dir = root.join(slot);
@@ -112,7 +112,7 @@ fn validate_project(schema_path: &Path, project_dir: &Path) -> ProjectResult {
     }
 }
 
-fn write_schema() -> std::io::Result<PathBuf> {
+pub fn write_schema() -> std::io::Result<PathBuf> {
     let path = std::env::temp_dir().join("shaka-project-schema.cue");
     let mut f = std::fs::File::create(&path)?;
     f.write_all(SCHEMA.as_bytes())?;
