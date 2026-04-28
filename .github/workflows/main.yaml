@@ -21,7 +21,7 @@ jobs:
       shaka: ${{ steps.filter.outputs.shaka }}
       image: ${{ steps.filter.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - id: base
@@ -31,7 +31,7 @@ jobs:
             BASE=$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)
           fi
           echo "ref=$BASE" >> "$GITHUB_OUTPUT"
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           base: ${{ steps.base.outputs.ref }}
@@ -60,7 +60,7 @@ jobs:
       TF_VAR_root_pass: ${{ secrets.DEVBOX_ROOT_PASS }}
       TF_VAR_image_id: ${{ vars.DEVBOX_IMAGE_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: DeterminateSystems/nix-installer-action@main
@@ -88,7 +88,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
@@ -111,13 +111,13 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
           flakehub: true
       - run: nix build .#linodeImage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: github.event_name == 'push'
         with:
           name: linode-image
