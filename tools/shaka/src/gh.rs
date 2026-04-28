@@ -129,20 +129,31 @@ fn api_write(method: &str, endpoint: &str, body: &Value) -> Result<Value, GhErro
     })
 }
 
-/// Find the URL of an open PR whose head branch matches `head`. Returns `None`
-/// if no PR exists. `repo` is in `owner/repo` form.
-pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<String>, GhError> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrInfo {
+    pub number: u64,
+    pub url: String,
+}
+
+/// Find the open PR whose head branch matches `head`. Returns `None` if no PR
+/// exists. `repo` is in `owner/repo` form.
+pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
     let owner = repo.split('/').next().unwrap_or("");
     let endpoint = format!("/repos/{repo}/pulls?head={owner}:{head}&state=open");
     let result = api_get(&endpoint)?;
-    if let Some(arr) = result.as_array() {
-        if let Some(first) = arr.first() {
-            if let Some(url) = first["html_url"].as_str() {
-                return Ok(Some(url.to_string()));
-            }
-        }
-    }
-    Ok(None)
+    let Some(first) = result.as_array().and_then(|arr| arr.first()) else {
+        return Ok(None);
+    };
+    let number = first["number"].as_u64().ok_or_else(|| GhError {
+        message: format!("PR for head {head} missing 'number' field"),
+    })?;
+    let url = first["html_url"]
+        .as_str()
+        .ok_or_else(|| GhError {
+            message: format!("PR for head {head} missing 'html_url' field"),
+        })?
+        .to_string();
+    Ok(Some(PrInfo { number, url }))
 }
 
 /// Run `gh pr create` and return the PR URL.
