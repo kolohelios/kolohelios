@@ -1,6 +1,7 @@
 mod audit;
 mod pr;
 pub mod send;
+mod status;
 mod sync;
 
 use clap::Subcommand;
@@ -47,6 +48,12 @@ pub enum RepoCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Print a one-shot summary of the current working-copy state
+    Status {
+        /// Emit JSON instead of human-readable output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub fn run(cmd: RepoCommand) {
@@ -59,5 +66,6 @@ pub fn run(cmd: RepoCommand) {
             dry_run,
         } => send::run(bookmark, no_pr, dry_run),
         RepoCommand::Pr { bookmark, dry_run } => pr::run(bookmark, dry_run),
+        RepoCommand::Status { json } => status::run(json),
     }
 }
