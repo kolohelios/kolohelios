@@ -20,7 +20,8 @@ project. Project-local docs and configuration live alongside the project.
 
 Every project has a `project.cue` declaring its `name` and `kind` (validated
 against `tools/shaka/schema/project.cue`). Per-project `justfile`s are
-**generated** by `shaka generate` — never edit them by hand. CI fails on drift.
+**generated** by `shaka project generate-justfiles` — never edit them by
+hand. CI fails on drift.
 
 ## Build system
 
@@ -33,9 +34,11 @@ against `tools/shaka/schema/project.cue`). Per-project `justfile`s are
   - `shaka preflight` — runs every CI check locally; CI runs the same command,
     so local and CI cannot drift. `--since <ref>` scopes checks to changed
     paths.
-  - `shaka generate` — regenerates root and per-project `justfile`s from each
-    `project.cue`. `--check` fails on drift (used in CI).
-  - `shaka validate` — validates every `project.cue` against the schema.
+  - `shaka project generate-justfiles` — regenerates root and per-project
+    `justfile`s from each `project.cue`. `--check` fails on drift (used in
+    CI).
+  - `shaka project schema-check` — validates every `project.cue` against
+    the schema.
   - `shaka commit lint -r <revset>` — enforces conventional commit format,
     title length, body wrap, and atomicity (warns on cross-project commits).
   - `shaka repo sync|send|pr|audit` — jj/PR workflow helpers.
@@ -135,8 +138,8 @@ Until `shaka project new` lands (see issue #23), add a project manually:
        kind: "rust" | "infra"  // pick one
    }
    ```
-2. Run `shaka validate` to confirm the schema accepts it.
-3. Run `shaka generate` to produce the per-project `justfile`.
+2. Run `shaka project schema-check` to confirm the schema accepts it.
+3. Run `shaka project generate-justfiles` to produce the per-project `justfile`.
 4. Add the project's source files and any flake inputs.
 5. If the project introduces new preflight checks, add them to
    `tools/shaka/src/preflight.rs` rather than to CI YAML.

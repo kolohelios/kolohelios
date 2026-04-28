@@ -1,4 +1,4 @@
-use crate::validate::{discover, write_schema};
+use crate::project::schema_check::{discover, write_schema};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;

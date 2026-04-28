@@ -3,12 +3,11 @@ use clap::{Parser, Subcommand};
 mod ci;
 mod commit;
 mod coverage;
-mod generate;
 mod gh;
 mod jj;
 mod preflight;
+mod project;
 mod repo;
-mod validate;
 
 #[derive(Parser)]
 #[command(name = "shaka", about = "Build tooling for kolohelios")]
@@ -37,12 +36,6 @@ enum Commands {
         #[arg(long)]
         project: Option<String>,
     },
-    /// Generate justfiles from each project.cue (root + per-project)
-    Generate {
-        /// Compare generated content to disk and fail on any drift instead of writing
-        #[arg(long)]
-        check: bool,
-    },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
         /// Continue running checks after a failure and report all at the end
@@ -52,13 +45,16 @@ enum Commands {
         #[arg(long, value_name = "REF")]
         since: Option<String>,
     },
+    /// Project tooling (schema validation, justfile generation, etc.)
+    Project {
+        #[command(subcommand)]
+        command: project::ProjectCommand,
+    },
     /// Repository management
     Repo {
         #[command(subcommand)]
         command: repo::RepoCommand,
     },
-    /// Validate every project's project.cue against the shared schema
-    Validate,
 }
 
 fn main() {
@@ -71,9 +67,8 @@ fn main() {
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
         Commands::Coverage { project } => coverage::run(project),
-        Commands::Generate { check } => generate::run(check),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
+        Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
-        Commands::Validate => validate::run(),
     }
 }
