@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build *)",
+      "Bash(jj log *)",
+      "Bash(cue vet *)",
+      "Bash(jj diff *)",
+      "Bash(cue export *)",
+      "Bash(nix build *)",
+      "Bash(jj st *)",
+      "Bash(jj op log *)",
+      "Bash(shaka *)",
+      "Bash(tools/shaka/bin/shaka *)"
+    ]
+  }
+}
