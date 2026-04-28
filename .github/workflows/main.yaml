@@ -124,3 +124,21 @@ jobs:
           path: result/nixos.img
           retention-days: 7
           compression-level: 6
+
+  # ── Required status check ─────────────────────────────────────
+  # Branch protection requires only this job. It runs unconditionally
+  # and asserts every upstream job finished as success or skipped, so
+  # path-filtered jobs can still skip without blocking merge. Every
+  # new CI job must add itself to `gate.needs`.
+  gate:
+    name: Gate
+    needs: [changes, validate, build-shaka, build-image]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - run: nix run ./tools/shaka -- ci gate --needs '${{ toJson(needs) }}'

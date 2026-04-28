@@ -277,7 +277,7 @@ fn fix_branch_protection(repo: &str, checks: &[Check]) {
     let body = json!({
         "required_status_checks": {
             "strict": false,
-            "contexts": ["Validate"]
+            "contexts": ["Gate"]
         },
         "enforce_admins": true,
         "required_pull_request_reviews": null,
