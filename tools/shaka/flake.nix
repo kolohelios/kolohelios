@@ -1,7 +1,13 @@
 {
   description = "shaka — build tooling for kolohelios";
 
-  inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
+  inputs = {
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
   outputs =
     { self, ... }@inputs:
@@ -23,9 +29,20 @@
             pkgs = import inputs.nixpkgs {
               inherit system;
               config.allowUnfree = true;
+              overlays = [ inputs.rust-overlay.overlays.default ];
             };
           }
         );
+
+      rustToolchain =
+        pkgs:
+        pkgs.rust-bin.nightly.latest.default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "llvm-tools-preview"
+          ];
+        };
     in
     {
       packages = forEachSupportedSystem ({ pkgs, ... }: {
@@ -48,12 +65,8 @@
         { pkgs, system }:
         {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              cargo
-              rustc
-              rust-analyzer
-              clippy
-              rustfmt
+            packages = [
+              (rustToolchain pkgs)
               self.formatter.${system}
             ];
           };
