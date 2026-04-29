@@ -95,16 +95,16 @@ jobs:
             ~/.cargo/git/
           key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
-      - name: shaka preflight
-        run: |
-          nix develop ./tools/shaka --command tools/shaka/bin/shaka preflight \
-            --since "${{ needs.changes.outputs.base_ref }}"
       - name: shaka commit lint
         if: github.event_name == 'pull_request'
         run: |
           nix develop ./tools/shaka --command jj git init --colocate
           nix develop ./tools/shaka --command tools/shaka/bin/shaka commit lint \
             -r '${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}'
+      - name: shaka preflight
+        run: |
+          nix develop ./tools/shaka --command tools/shaka/bin/shaka preflight \
+            --since "${{ needs.changes.outputs.base_ref }}"
 
   # ── Build jobs (run after validation, only when inputs change) ─
   build-shaka:
