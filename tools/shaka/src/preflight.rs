@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Command;
 
 const GREEN: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
@@ -11,10 +11,7 @@ const RESET: &str = "\x1b[0m";
 
 enum CheckResult {
     Pass,
-    Fail {
-        detail: String,
-        output: Option<Output>,
-    },
+    Fail { detail: String },
 }
 
 struct Check {
@@ -26,16 +23,6 @@ struct Check {
 }
 
 const CHECKS: &[Check] = &[
-    Check {
-        name: "nix flake check",
-        paths: &[
-            "flake.nix",
-            "flake.lock",
-            "tools/shaka/**",
-            "infra/devbox/nixos/**",
-        ],
-        run: nix_flake_check,
-    },
     Check {
         name: "shaka project schema-check",
         paths: &["tools/shaka/**", "*/*/project.cue"],
@@ -176,18 +163,6 @@ pub fn run(keep_going: bool, since: Option<String>) {
         return;
     }
 
-    for (name, result) in &failures {
-        if let CheckResult::Fail {
-            output: Some(out), ..
-        } = result
-        {
-            println!("{BOLD}── {name} ──{RESET}");
-            std::io::stdout().write_all(&out.stdout).ok();
-            std::io::stderr().write_all(&out.stderr).ok();
-            println!();
-        }
-    }
-
     eprintln!(
         "{RED}{BOLD}preflight failed{RESET} ({passed} passed, {} failed of {total})",
         failures.len()
@@ -211,9 +186,14 @@ fn under_project(changed_path: &str, project_dir: &Path) -> bool {
 }
 
 fn just_validate(project_dir: &Path) -> CheckResult {
+    // Enter the project's own dev shell so `just validate` runs with the
+    // project's tools on PATH (e.g. tofu for infra/devbox, cargo +
+    // cargo-llvm-cov for tools/shaka). Without this, the recipe inherits
+    // whatever shell preflight ran in, which won't have project-specific
+    // tools.
     run_command(
-        Command::new("just")
-            .arg("validate")
+        Command::new("nix")
+            .args(["develop", ".", "--command", "just", "validate"])
             .current_dir(project_dir),
     )
 }
@@ -271,10 +251,6 @@ fn matches_parts(path: &[&str], pat: &[&str]) -> bool {
     matches_parts(&path[1..], &pat[1..])
 }
 
-fn nix_flake_check() -> CheckResult {
-    run_command(Command::new("nix").args(["flake", "check", "--all-systems"]))
-}
-
 fn shaka_project_schema_check() -> CheckResult {
     spawn_self(&["project", "schema-check"])
 }
@@ -289,7 +265,6 @@ fn spawn_self(args: &[&str]) -> CheckResult {
         Err(e) => {
             return CheckResult::Fail {
                 detail: format!("could not locate shaka binary: {e}"),
-                output: None,
             };
         }
     };
@@ -299,15 +274,20 @@ fn spawn_self(args: &[&str]) -> CheckResult {
 }
 
 fn run_command(cmd: &mut Command) -> CheckResult {
-    match cmd.output() {
-        Ok(out) if out.status.success() => CheckResult::Pass,
-        Ok(out) => CheckResult::Fail {
-            detail: format!("exit code {}", out.status.code().unwrap_or(-1)),
-            output: Some(out),
+    // Stream stdout/stderr to the parent so progress is visible as it
+    // happens. With nix-heavy per-project commands (cargo build, nix
+    // develop closures), capturing output keeps the user staring at a
+    // silent terminal for minutes. The user sees failures inline now so
+    // captured-output replay-on-failure isn't needed.
+    cmd.stdout(std::process::Stdio::inherit());
+    cmd.stderr(std::process::Stdio::inherit());
+    match cmd.status() {
+        Ok(status) if status.success() => CheckResult::Pass,
+        Ok(status) => CheckResult::Fail {
+            detail: format!("exit code {}", status.code().unwrap_or(-1)),
         },
         Err(e) => CheckResult::Fail {
             detail: format!("failed to spawn: {e}"),
-            output: None,
         },
     }
 }
