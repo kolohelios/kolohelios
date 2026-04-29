@@ -30,7 +30,10 @@ coverage:
     awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
         'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
 
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
 flake-check:
     nix flake check
 
-validate: fmt-check lint test coverage flake-check
+validate: fmt-check lint test coverage nix-fmt-check flake-check
