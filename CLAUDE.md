@@ -26,8 +26,15 @@ hand. CI fails on drift.
 
 ## Build system
 
-- **Nix flakes** for reproducible toolchains. `nix develop` enters the dev
-  shell; `direnv` is supported via `.envrc`.
+- **Nix flakes are per-project.** Each project owns its toolchain via its
+  own `flake.nix`. There is **no root flake**. `direnv` enters the
+  appropriate flake when you `cd` into a project (each has a `.envrc` with
+  `use flake`).
+- **`kolohelios-nix`** (`nix/kolohelios-nix/`) is the shared lib every
+  consumer flake imports as a `path:` input, with
+  `nixpkgs.follows = "kolohelios-nix/nixpkgs"`. It exports
+  `lib.forEachSupportedSystem`, `lib.workflowPackages`, and `formatter` so
+  consumers stay thin. Published to FlakeHub by the `build-nix-lib` CI job.
 - **`just`** as the command runner for **per-project** recipes (`build`,
   `test`, `fmt-check`, `lint`, `validate`). There is no cross-project root
   justfile — for repo-wide validation, run `shaka preflight` directly.
@@ -47,12 +54,14 @@ hand. CI fails on drift.
 The single CI gate is `shaka preflight`. It runs in two phases:
 
 1. **Repo-level checks** (`CHECKS` in `tools/shaka/src/preflight.rs`) — work
-   that spans projects (`nix flake check`, `shaka project schema-check`,
-   `shaka project generate-justfiles --check`).
+   that spans projects: `shaka project schema-check`, `shaka project
+   generate-justfiles --check`. (No `nix flake check` here — flake checks
+   are per-project, covered below.)
 2. **Per-project checks** — for each project whose files changed
-   (or all, with no `--since`), runs `just validate` in the project's
-   directory. Per-project quality gates (fmt, lint, test, coverage,
-   etc.) live in the generated `justfile`'s `validate` recipe.
+   (or all, with no `--since`), enters the project's flake (`nix develop
+   . --command`) and runs `just validate`. Per-project quality gates (fmt,
+   lint, test, coverage, `nix flake check`, etc.) live in the generated
+   `justfile`'s `validate` recipe.
 
 If you need a new per-project check, extend the appropriate template in
 `tools/shaka/src/project/generate_justfiles.rs` so the generated
@@ -61,18 +70,19 @@ Either way, do **not** add a new GitHub Actions job.
 
 ### Running `shaka`
 
-`shaka` is **not** on `$PATH` globally, and the root `nix develop` does
-**not** ship the rust toolchain (cargo lives only in `tools/shaka/flake.nix`).
-Always invoke shaka via the wrapper script:
+`shaka` is **not** on `$PATH` globally. Always invoke it via the wrapper:
 
 ```
 tools/shaka/bin/shaka <subcommand>
 ```
 
-It runs an incremental `cargo build` (free when no source has changed) and
-exec's the resulting debug binary, so it works from any cwd, in or out of the
-dev shell, and never leaves you on a stale binary. Don't reach for `cargo
-run` or `nix run ./tools/shaka` — the wrapper subsumes both.
+The wrapper always re-enters `nix develop ./tools/shaka` (unless already
+inside, detected via the `IN_SHAKA_DEVSHELL` marker) so shaka inherits all
+its runtime dependencies (cue, jj, git, just, jq, cargo-llvm-cov on Linux,
+etc.) regardless of how it was invoked. It then runs an incremental `cargo
+build` (free when no source has changed) and exec's the resulting debug
+binary. Don't reach for `cargo run` or `nix run ./tools/shaka` — the
+wrapper subsumes both.
 
 ## Version control
 
@@ -160,7 +170,8 @@ Until `shaka project new` lands (see issue #23), add a project manually:
 ## Things to avoid
 
 - **Don't edit generated `justfile`s.** They carry a "Do not edit by hand"
-  header and CI fails on drift. Change `tools/shaka/src/generate.rs` instead.
+  header and CI fails on drift. Change
+  `tools/shaka/src/project/generate_justfiles.rs` instead.
 - **Don't add CI jobs to `.github/workflows/main.yaml`** for new validation
   steps — extend `shaka preflight` so CI and local stay in lockstep.
 - **Don't add Claude Code attribution** to commits, code, or docs.

@@ -5,11 +5,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "path": "./nix/kolohelios-nix",
+        "path": "../../nix/kolohelios-nix",
         "type": "path"
       },
       "original": {
-        "path": "./nix/kolohelios-nix",
+        "path": "../../nix/kolohelios-nix",
         "type": "path"
       },
       "parent": []

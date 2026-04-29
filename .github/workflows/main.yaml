@@ -45,12 +45,8 @@ jobs:
           filters: |
             shaka:
               - 'tools/shaka/**'
-              - 'flake.nix'
-              - 'flake.lock'
             image:
-              - 'infra/devbox/nixos/**'
-              - 'flake.nix'
-              - 'flake.lock'
+              - 'infra/devbox/**'
             nix-lib:
               - 'nix/kolohelios-nix/**'
 
@@ -72,19 +68,31 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      # GitHub-hosted runners ship with ~14 GB free, which fills up under
+      # multi-flake nix workloads (kolohelios-nix + shaka + devbox closures
+      # + per-project nix-develop entries from preflight). Aggressive
+      # cleanup of unused preinstalled tooling frees ~30 GB.
+      - uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
           flakehub: true
       - name: shaka preflight
         run: |
-          nix develop --command nix run ./tools/shaka -- preflight \
+          nix develop ./tools/shaka --command tools/shaka/bin/shaka preflight \
             --since "${{ needs.changes.outputs.base_ref }}"
       - name: shaka commit lint
         if: github.event_name == 'pull_request'
         run: |
-          nix develop --command jj git init --colocate
-          nix develop --command nix run ./tools/shaka -- commit lint \
+          nix develop ./tools/shaka --command jj git init --colocate
+          nix develop ./tools/shaka --command tools/shaka/bin/shaka commit lint \
             -r '${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}'
 
   # ── Build jobs (run after validation, only when inputs change) ─
@@ -151,7 +159,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
-      - run: nix build .#linodeImage
+      - run: nix build ./infra/devbox#linodeImage
       - uses: actions/upload-artifact@v5
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
