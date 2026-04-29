@@ -45,25 +45,34 @@ coverage:
     awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
         'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
 
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
 flake-check:
     nix flake check
 
-validate: fmt-check lint test coverage flake-check
+validate: fmt-check lint test coverage nix-fmt-check flake-check
 "#;
 
-const NIX_LIB_TEMPLATE: &str = r#"flake-check:
+const NIX_LIB_TEMPLATE: &str = r#"nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
     nix flake check
 
-validate: flake-check
+validate: nix-fmt-check flake-check
 "#;
 
 const INFRA_TEMPLATE: &str = r#"tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
 
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
 flake-check:
     nix flake check
 
-validate: tofu-validate flake-check
+validate: tofu-validate nix-fmt-check flake-check
 
 plan:
     cd terraform && tofu init -input=false && tofu plan
@@ -262,7 +271,16 @@ mod tests {
     fn nix_lib_template_runs_flake_check() {
         assert!(NIX_LIB_TEMPLATE.contains("flake-check:"));
         assert!(NIX_LIB_TEMPLATE.contains("nix flake check"));
-        assert!(NIX_LIB_TEMPLATE.contains("validate: flake-check"));
+        assert!(NIX_LIB_TEMPLATE.contains("validate: nix-fmt-check flake-check"));
+    }
+
+    #[test]
+    fn all_templates_run_nix_fmt_check() {
+        for tpl in [RUST_TEMPLATE, NIX_LIB_TEMPLATE, INFRA_TEMPLATE] {
+            assert!(tpl.contains("nix-fmt-check:"));
+            assert!(tpl.contains("nix fmt -- --check"));
+            assert!(tpl.contains("nix-fmt-check"));
+        }
     }
 
     #[test]
@@ -276,7 +294,8 @@ mod tests {
     fn rust_template_includes_quality_recipes() {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
-        assert!(RUST_TEMPLATE.contains("validate: fmt-check lint test coverage flake-check"));
+        assert!(RUST_TEMPLATE
+            .contains("validate: fmt-check lint test coverage nix-fmt-check flake-check"));
     }
 
     #[test]
@@ -306,6 +325,6 @@ mod tests {
     #[test]
     fn infra_template_validate_includes_flake_check() {
         assert!(INFRA_TEMPLATE.contains("flake-check:"));
-        assert!(INFRA_TEMPLATE.contains("validate: tofu-validate flake-check"));
+        assert!(INFRA_TEMPLATE.contains("validate: tofu-validate nix-fmt-check flake-check"));
     }
 }

@@ -4,10 +4,13 @@
 tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
 
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
 flake-check:
     nix flake check
 
-validate: tofu-validate flake-check
+validate: tofu-validate nix-fmt-check flake-check
 
 plan:
     cd terraform && tofu init -input=false && tofu plan
