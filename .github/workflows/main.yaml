@@ -84,6 +84,17 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      # Skip cargo dependency rebuilds when Cargo.lock is unchanged. Only
+      # covers the host-side `cargo` invocations from `just validate`; the
+      # `nix flake check` path runs in a sandbox actions/cache can't reach.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            tools/shaka/target/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+          key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
       - name: shaka preflight
         run: |
           nix develop ./tools/shaka --command tools/shaka/bin/shaka preflight \
