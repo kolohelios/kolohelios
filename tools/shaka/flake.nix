@@ -71,12 +71,20 @@
         {
           default = pkgs.mkShell {
             packages =
-              [
-                (rustToolchain pkgs)
-                pkgs.jq
-              ]
-              # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks it
-              # broken on darwin (rust profiler runtime not in nixpkgs's
+              [ (rustToolchain pkgs) ]
+              ++ (with pkgs; [
+                # Tools shaka spawns at runtime
+                cue
+                jujutsu
+                git
+                just
+                jq
+                # Workflow tooling for editing nix files repo-wide
+                nixfmt-rfc-style
+                nil
+              ])
+              # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks
+              # it broken on darwin (rust profiler runtime not in nixpkgs's
               # darwin rustc); developers on darwin install it via
               # `cargo install cargo-llvm-cov`.
               ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov
@@ -85,6 +93,6 @@
         }
       );
 
-      formatter = forEachSupportedSystem ({ pkgs, ... }: pkgs.nixfmt);
+      formatter = forEachSupportedSystem ({ pkgs, ... }: pkgs.nixfmt-rfc-style);
     };
 }

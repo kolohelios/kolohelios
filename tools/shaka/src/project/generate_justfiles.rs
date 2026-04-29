@@ -45,11 +45,19 @@ coverage:
     awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
         'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
 
-validate: fmt-check lint test coverage
+flake-check:
+    nix flake check
+
+validate: fmt-check lint test coverage flake-check
 "#;
 
-const INFRA_TEMPLATE: &str = r#"validate:
+const INFRA_TEMPLATE: &str = r#"tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
+
+flake-check:
+    nix flake check
+
+validate: tofu-validate flake-check
 
 plan:
     cd terraform && tofu init -input=false && tofu plan
@@ -249,7 +257,13 @@ mod tests {
     fn rust_template_includes_quality_recipes() {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
-        assert!(RUST_TEMPLATE.contains("validate: fmt-check lint test coverage"));
+        assert!(RUST_TEMPLATE.contains("validate: fmt-check lint test coverage flake-check"));
+    }
+
+    #[test]
+    fn rust_template_includes_flake_check() {
+        assert!(RUST_TEMPLATE.contains("flake-check:"));
+        assert!(RUST_TEMPLATE.contains("nix flake check"));
     }
 
     #[test]
@@ -268,5 +282,12 @@ mod tests {
         assert!(INFRA_TEMPLATE.contains("tofu apply"));
         assert!(!INFRA_TEMPLATE.contains("terraform validate"));
         assert!(!INFRA_TEMPLATE.contains("terraform plan"));
+    }
+
+    #[test]
+    fn infra_template_validate_includes_flake_check() {
+        assert!(INFRA_TEMPLATE.contains("flake-check:"));
+        assert!(INFRA_TEMPLATE.contains("nix flake check"));
+        assert!(INFRA_TEMPLATE.contains("validate: tofu-validate flake-check"));
     }
 }
