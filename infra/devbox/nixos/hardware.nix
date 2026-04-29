@@ -1,5 +1,11 @@
 # Linode hardware profile
-{ config, lib, pkgs, modulesPath, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 
 {
   imports = [
@@ -49,6 +55,9 @@
   fileSystems."/persist" = {
     device = "/dev/disk/by-id/scsi-0Linode_Volume_devbox-persist";
     fsType = "ext4";
-    options = [ "nofail" "defaults" ];
+    options = [
+      "nofail"
+      "defaults"
+    ];
   };
 }

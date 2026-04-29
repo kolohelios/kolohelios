@@ -5,7 +5,13 @@
 #
 # Build with:
 #   nix build .#linodeImage
-{ config, lib, pkgs, modulesPath, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 
 {
   imports = [
