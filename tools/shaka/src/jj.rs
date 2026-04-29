@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug)]
@@ -214,6 +215,93 @@ pub fn slugify(s: &str, max_len: usize) -> String {
     out.trim_end_matches('-').to_string()
 }
 
+/// Absolute path of the repo root (the working copy of the default
+/// workspace).
+pub fn repo_root() -> Result<PathBuf, JjError> {
+    let out = run(&["workspace", "root"])?;
+    Ok(PathBuf::from(out.trim()))
+}
+
+/// Information about a single jj workspace, surfaced from `jj workspace
+/// list`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct WorkspaceInfo {
+    pub name: String,
+    pub change_id: String,
+    pub description_first_line: String,
+}
+
+/// All workspaces registered in the repo, in the order `jj` reports.
+pub fn workspaces() -> Result<Vec<WorkspaceInfo>, JjError> {
+    let out = run(&[
+        "workspace",
+        "list",
+        "-T",
+        r#"name ++ "\t" ++ target.change_id().short() ++ "\t" ++ target.description().first_line() ++ "\n""#,
+    ])?;
+    Ok(parse_workspace_list(&out))
+}
+
+fn parse_workspace_list(out: &str) -> Vec<WorkspaceInfo> {
+    let mut result = Vec::new();
+    for line in out.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(3, '\t');
+        let (Some(name), Some(change_id), Some(desc)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        result.push(WorkspaceInfo {
+            name: name.to_string(),
+            change_id: change_id.to_string(),
+            description_first_line: desc.to_string(),
+        });
+    }
+    result
+}
+
+/// Register a new workspace at `path` with the given name.
+pub fn workspace_add(name: &str, path: &Path) -> Result<(), JjError> {
+    run_streaming(&[
+        "workspace",
+        "add",
+        "--name",
+        name,
+        path.to_str().ok_or_else(|| JjError {
+            message: format!("workspace path is not valid UTF-8: {}", path.display()),
+        })?,
+    ])
+}
+
+/// De-register a workspace from the repo. Does not remove the workspace
+/// directory on disk.
+pub fn workspace_forget(name: &str) -> Result<(), JjError> {
+    run_streaming(&["workspace", "forget", name])
+}
+
+/// Count files changed by the named workspace's `@` versus its parent.
+pub fn dirty_counts_for(workspace: &str) -> Result<DirtyCounts, JjError> {
+    let revset = format!("{workspace}@");
+    let out = run(&["diff", "--summary", "-r", &revset])?;
+    Ok(parse_diff_summary(&out))
+}
+
+/// Count non-empty commits in `base..<workspace>@`.
+pub fn ahead_count_for(workspace: &str, base: &str) -> Result<usize, JjError> {
+    let revset = format!("{base}..{workspace}@ ~ empty()");
+    let out = run(&[
+        "log",
+        "-r",
+        &revset,
+        "-T",
+        r#"commit_id ++ "\n""#,
+        "--no-graph",
+    ])?;
+    Ok(out.lines().filter(|l| !l.trim().is_empty()).count())
+}
+
 /// Derive a bookmark name from a Conventional-Commits-style description.
 ///
 /// `feat(shaka): add commit lint` → `feat/shaka-add-commit-lint`
@@ -323,6 +411,27 @@ mod tests {
         assert_eq!(counts.modified, 3); // M + M + R
         assert_eq!(counts.deleted, 1);
         assert_eq!(counts.total(), 6);
+    }
+
+    #[test]
+    fn parse_workspace_list_basic() {
+        let out = "default\tqmxvvpuksqwk\tfeat: do the thing\nfoo\tabcdef012345\t\n";
+        let ws = parse_workspace_list(out);
+        assert_eq!(ws.len(), 2);
+        assert_eq!(ws[0].name, "default");
+        assert_eq!(ws[0].change_id, "qmxvvpuksqwk");
+        assert_eq!(ws[0].description_first_line, "feat: do the thing");
+        assert_eq!(ws[1].name, "foo");
+        assert_eq!(ws[1].change_id, "abcdef012345");
+        assert_eq!(ws[1].description_first_line, "");
+    }
+
+    #[test]
+    fn parse_workspace_list_skips_blank_and_malformed() {
+        let out = "\ndefault\tabc123\tdesc\nmalformed-line\n\n";
+        let ws = parse_workspace_list(out);
+        assert_eq!(ws.len(), 1);
+        assert_eq!(ws[0].name, "default");
     }
 
     #[test]
