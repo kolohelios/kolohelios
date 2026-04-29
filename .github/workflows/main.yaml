@@ -68,18 +68,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # GitHub-hosted runners ship with ~14 GB free, which fills up under
-      # multi-flake nix workloads (kolohelios-nix + shaka + devbox closures
-      # + per-project nix-develop entries from preflight). Aggressive
-      # cleanup of unused preinstalled tooling frees ~30 GB.
-      - uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
