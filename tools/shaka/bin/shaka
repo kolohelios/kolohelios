@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 # Invoke the shaka CLI, rebuilding incrementally if any source has changed.
 #
-# Exists because shaka isn't on $PATH globally and the root `nix develop`
-# doesn't ship the rust toolchain — cargo lives only in tools/shaka/flake.nix.
-# Cargo's incremental check is fast enough that running this on every call is
-# effectively free when nothing has changed.
+# Always re-enters the shaka dev shell unless we're already in it. Without
+# this, shaka inherits the caller's PATH — which on systems with cargo
+# installed via nix-darwin (or similar) might lack cue, jj, git, etc., and
+# shaka would crash at runtime when it tries to spawn them. The marker env
+# var IN_SHAKA_DEVSHELL is set on re-exec so we don't infinitely recurse.
 #
-# Preserves the caller's cwd (commands like `shaka validate` and `shaka
-# coverage` discover projects relative to cwd, expecting the repo root).
-# When invoked outside the dev shell, re-enters via `nix develop` so cargo is
-# on PATH for both the build step and shaka's runtime tool spawning
-# (e.g. `shaka coverage` invokes `cargo llvm-cov`).
+# Cwd is preserved so commands that discover projects relative to cwd
+# (`shaka project schema-check`, `shaka preflight`) work from the repo root.
 
 set -euo pipefail
 
 shaka_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if ! command -v cargo >/dev/null 2>&1; then
-    exec nix develop "$shaka_dir" --command bash "${BASH_SOURCE[0]}" "$@"
+if [[ "${IN_SHAKA_DEVSHELL:-}" != "1" ]]; then
+    exec env IN_SHAKA_DEVSHELL=1 nix develop "$shaka_dir" \
+        --command bash "${BASH_SOURCE[0]}" "$@"
 fi
 
 cargo build --quiet --manifest-path "$shaka_dir/Cargo.toml"
