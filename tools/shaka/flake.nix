@@ -2,7 +2,8 @@
   description = "shaka — build tooling for kolohelios";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
+    kolohelios-nix.url = "path:../../nix/kolohelios-nix";
+    nixpkgs.follows = "kolohelios-nix/nixpkgs";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -10,26 +11,20 @@
   };
 
   outputs =
-    { self, ... }@inputs:
+    { self, kolohelios-nix, nixpkgs, rust-overlay, ... }:
     let
-      inherit (inputs.nixpkgs) lib;
-
-      supportedSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "aarch64-darwin"
-      ];
+      inherit (kolohelios-nix.lib) supportedSystems workflowPackages;
 
       forEachSupportedSystem =
         f:
-        lib.genAttrs supportedSystems (
+        nixpkgs.lib.genAttrs supportedSystems (
           system:
           f {
             inherit system;
-            pkgs = import inputs.nixpkgs {
+            pkgs = import nixpkgs {
               inherit system;
               config.allowUnfree = true;
-              overlays = [ inputs.rust-overlay.overlays.default ];
+              overlays = [ rust-overlay.overlays.default ];
             };
           }
         );
@@ -67,18 +62,21 @@
       });
 
       devShells = forEachSupportedSystem (
-        { pkgs, system }:
+        { pkgs, ... }:
         {
           default = pkgs.mkShell {
-            packages = [
-              (rustToolchain pkgs)
-              pkgs.jq
-              self.formatter.${system}
-            ];
+            packages =
+              [ (rustToolchain pkgs) ]
+              ++ (workflowPackages pkgs)
+              # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks
+              # it broken on darwin (rust profiler runtime not in nixpkgs's
+              # darwin rustc); developers on darwin install it via
+              # `cargo install cargo-llvm-cov`.
+              ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
           };
         }
       );
 
-      formatter = forEachSupportedSystem ({ pkgs, ... }: pkgs.nixfmt);
+      formatter = kolohelios-nix.formatter;
     };
 }
