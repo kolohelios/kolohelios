@@ -2,35 +2,18 @@
   description = "kolohelios — monorepo";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
+    kolohelios-nix.url = "path:./nix/kolohelios-nix";
+    nixpkgs.follows = "kolohelios-nix/nixpkgs";
   };
 
   outputs =
-    { self, nixpkgs, ... }:
+    { self, kolohelios-nix, nixpkgs, ... }:
     let
+      inherit (kolohelios-nix.lib) forEachSupportedSystem workflowPackages;
+
       lib = nixpkgs.lib;
 
-      # Systems we build devShells for (image is x86_64-linux only)
-      shellSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "aarch64-darwin"
-      ];
-
-      forEachSystem =
-        f:
-        lib.genAttrs shellSystems (
-          system:
-          f {
-            inherit system;
-            pkgs = import nixpkgs {
-              inherit system;
-              config.allowUnfree = true;
-            };
-          }
-        );
-
-      # NixOS pkgs — always x86_64-linux for the devbox
+      # NixOS pkgs — always x86_64-linux for the devbox.
       nixosPkgs = import nixpkgs {
         system = "x86_64-linux";
         config.allowUnfree = true;
@@ -60,29 +43,20 @@
         imageCfg.config.system.build.linodeImage;
 
       # ── Dev shells ──────────────────────────────────────────────
-      devShells = forEachSystem (
-        { pkgs, system }:
+      # Cross-cutting workflow tools come from kolohelios-nix; this shell
+      # adds infra-specific tools (opentofu, linode-cli) for working at the
+      # repo root.
+      devShells = forEachSupportedSystem (
+        { pkgs, ... }:
         {
           default = pkgs.mkShell {
             name = "kolohelios";
-            packages = with pkgs; [
-              # Nix tooling
-              nixfmt-rfc-style
-              nil # Nix LSP
-
-              # Schema / config
-              cue
-
-              # Infra
-              opentofu
-              linode-cli
-
-              # General
-              git
-              jujutsu
-              jq
-              just
-            ];
+            packages =
+              (workflowPackages pkgs)
+              ++ (with pkgs; [
+                opentofu
+                linode-cli
+              ]);
           };
         }
       );
@@ -90,14 +64,13 @@
       # ── Checks ──────────────────────────────────────────────────
       checks.x86_64-linux = {
         # Verify the NixOS configuration evaluates cleanly
-        devbox-eval =
-          nixosPkgs.runCommand "devbox-eval-check" { } ''
-            # If we got here, the NixOS config evaluated successfully
-            echo "nixosConfigurations.devbox evaluates" > $out
-          '';
+        devbox-eval = nixosPkgs.runCommand "devbox-eval-check" { } ''
+          # If we got here, the NixOS config evaluated successfully
+          echo "nixosConfigurations.devbox evaluates" > $out
+        '';
       };
 
       # ── Formatter ───────────────────────────────────────────────
-      formatter = forEachSystem ({ pkgs, ... }: pkgs.nixfmt-rfc-style);
+      formatter = kolohelios-nix.formatter;
     };
 }
