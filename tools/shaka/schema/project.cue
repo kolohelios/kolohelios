@@ -14,4 +14,6 @@ package project
 	}
 } | {
 	kind: "infra"
+} | {
+	kind: "nix-lib"
 })

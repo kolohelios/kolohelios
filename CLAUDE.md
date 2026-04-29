@@ -17,6 +17,7 @@ project. Project-local docs and configuration live alongside the project.
 | `services/`  | Long-running services (reserved; not yet populated)  |
 | `tools/`     | Developer tooling (e.g. `tools/shaka`)               |
 | `infra/`     | Infrastructure as code (e.g. `infra/devbox`)         |
+| `nix/`       | Shared nix infrastructure (e.g. `nix/kolohelios-nix`) |
 
 Every project has a `project.cue` declaring its `name` and `kind` (validated
 against `tools/shaka/schema/project.cue`). Per-project `justfile`s are
@@ -135,7 +136,8 @@ Until `shaka project new` lands (see issue #23), add a project manually:
 
    #Project & {
        name: "<name>"
-       kind: "rust" | "infra"  // pick one
+       kind: "rust" | "infra" | "nix-lib"  // pick one
+       // rust: also requires a `coverage:` block (see schema)
    }
    ```
 2. Run `shaka project schema-check` to confirm the schema accepts it.

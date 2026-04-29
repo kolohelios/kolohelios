@@ -10,7 +10,7 @@ const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
 pub const SCHEMA: &str = include_str!("../../schema/project.cue");
-const SLOTS: &[&str] = &["apps", "infra", "packages", "services", "tools"];
+const SLOTS: &[&str] = &["apps", "infra", "nix", "packages", "services", "tools"];
 
 enum ProjectResult {
     Pass,
