@@ -44,9 +44,20 @@ hand. CI fails on drift.
     title length, body wrap, and atomicity (warns on cross-project commits).
   - `shaka repo sync|send|pr|audit` — jj/PR workflow helpers.
 
-The single CI gate is `shaka preflight`. If you add a check that should run in
-CI, add it to `CHECKS` in `tools/shaka/src/preflight.rs` with appropriate path
-scopes — do **not** add a new GitHub Actions job.
+The single CI gate is `shaka preflight`. It runs in two phases:
+
+1. **Repo-level checks** (`CHECKS` in `tools/shaka/src/preflight.rs`) — work
+   that spans projects (`nix flake check`, `shaka project schema-check`,
+   `shaka project generate-justfiles --check`).
+2. **Per-project checks** — for each project whose files changed
+   (or all, with no `--since`), runs `just validate` in the project's
+   directory. Per-project quality gates (fmt, lint, test, coverage,
+   etc.) live in the generated `justfile`'s `validate` recipe.
+
+If you need a new per-project check, extend the appropriate template in
+`tools/shaka/src/project/generate_justfiles.rs` so the generated
+`validate` recipe picks it up. If it spans projects, add it to `CHECKS`.
+Either way, do **not** add a new GitHub Actions job.
 
 ### Running `shaka`
 
