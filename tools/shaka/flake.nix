@@ -72,6 +72,7 @@
           default = pkgs.mkShell {
             packages = [
               (rustToolchain pkgs)
+              pkgs.jq
               self.formatter.${system}
             ];
           };

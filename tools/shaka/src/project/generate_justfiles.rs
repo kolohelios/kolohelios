@@ -31,7 +31,21 @@ fmt-check:
 lint:
     cargo clippy --all-targets -- -D warnings
 
-validate: fmt-check lint test
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    thresholds=$(cue export ../../tools/shaka/schema/project.cue project.cue)
+    fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
+    fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
+    measured=$(cargo llvm-cov --json --summary-only --branch)
+    line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
+    branch=$(jq <<<"$measured" '.data[0].totals.branches.percent')
+    printf 'coverage: line=%.1f%% branch=%.1f%% (gates: line>=%s%% branch>=%s%%)\n' \
+        "$line" "$branch" "$fail_line" "$fail_branch"
+    awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
+        'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
+
+validate: fmt-check lint test coverage
 "#;
 
 const INFRA_TEMPLATE: &str = r#"validate:
@@ -113,7 +127,10 @@ fn write_all(items: &[(PathBuf, String)]) {
         }
         println!("  {GREEN}{BOLD}wrote{RESET}    {}", path.display());
     }
-    println!("\n{GREEN}{BOLD}generate-justfiles:{RESET} wrote {} files", items.len());
+    println!(
+        "\n{GREEN}{BOLD}generate-justfiles:{RESET} wrote {} files",
+        items.len()
+    );
 }
 
 fn check_drift(items: &[(PathBuf, String)]) {
@@ -142,7 +159,11 @@ fn check_drift(items: &[(PathBuf, String)]) {
         eprintln!("{YELLOW}Run `shaka project generate-justfiles` and commit the result.{RESET}");
         eprintln!(
             "{DIM}drifted: {}{RESET}",
-            drift.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+            drift
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         std::process::exit(1);
     }
@@ -228,7 +249,16 @@ mod tests {
     fn rust_template_includes_quality_recipes() {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
-        assert!(RUST_TEMPLATE.contains("validate: fmt-check lint test"));
+        assert!(RUST_TEMPLATE.contains("validate: fmt-check lint test coverage"));
+    }
+
+    #[test]
+    fn rust_template_includes_coverage_recipe() {
+        assert!(RUST_TEMPLATE.contains("coverage:"));
+        assert!(RUST_TEMPLATE.contains("cargo llvm-cov"));
+        assert!(RUST_TEMPLATE.contains("cue export ../../tools/shaka/schema/project.cue"));
+        assert!(RUST_TEMPLATE.contains(".coverage.line.fail"));
+        assert!(RUST_TEMPLATE.contains(".coverage.branch.fail"));
     }
 
     #[test]
