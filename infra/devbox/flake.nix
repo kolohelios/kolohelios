@@ -7,7 +7,12 @@
   };
 
   outputs =
-    { self, kolohelios-nix, nixpkgs, ... }:
+    {
+      self,
+      kolohelios-nix,
+      nixpkgs,
+      ...
+    }:
     let
       inherit (kolohelios-nix.lib) forEachSupportedSystem workflowPackages;
       lib = nixpkgs.lib;

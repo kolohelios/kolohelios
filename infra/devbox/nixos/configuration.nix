@@ -1,6 +1,11 @@
 # Base devbox NixOS configuration
 # Minimal, reusable system — no project-specific services.
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   imports = [
@@ -12,8 +17,14 @@
   # ── Nix settings ──────────────────────────────────────────────
   nix = {
     settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      trusted-users = [ "root" "@wheel" ];
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      trusted-users = [
+        "root"
+        "@wheel"
+      ];
       # FlakeHub Cache substituter — added at image build time via the
       # netrc-file or via `determinate-nixd` if using Determinate Nix.
     };
@@ -39,7 +50,10 @@
   users.users.jon = {
     isNormalUser = true;
     home = "/home/jon";
-    extraGroups = [ "wheel" "docker" ];
+    extraGroups = [
+      "wheel"
+      "docker"
+    ];
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIk3loJYlcgTtZAVjiXYxxNXrq8Nplf1d3okMxWnwttz jkedwards@me.com"
     ];
