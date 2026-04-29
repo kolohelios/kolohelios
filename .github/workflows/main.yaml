@@ -20,6 +20,7 @@ jobs:
       base_ref: ${{ steps.base.outputs.ref }}
       shaka: ${{ steps.filter.outputs.shaka }}
       image: ${{ steps.filter.outputs.image }}
+      nix-lib: ${{ steps.filter.outputs.nix-lib }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -44,6 +45,8 @@ jobs:
               - 'infra/devbox/nixos/**'
               - 'flake.nix'
               - 'flake.lock'
+            nix-lib:
+              - 'nix/kolohelios-nix/**'
 
   # ── Single gate for branch protection ─────────────────────────
   # `shaka preflight` runs every validation check in one place. CI and
@@ -102,6 +105,32 @@ jobs:
           visibility: private
           rolling: true
 
+  build-nix-lib:
+    name: Build kolohelios-nix
+    needs: [validate, changes]
+    if: needs.changes.outputs.nix-lib == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      # `nix flake check` forces evaluation of the lib's outputs (lib,
+      # formatter, devShells), which seeds the closure that flakehub-push
+      # then uploads.
+      - run: nix flake check ./nix/kolohelios-nix
+      - uses: DeterminateSystems/flakehub-push@main
+        if: github.event_name == 'push'
+        with:
+          directory: nix/kolohelios-nix
+          name: kolohelios/kolohelios-nix
+          visibility: private
+          rolling: true
+
   build-image:
     name: Build Linode image
     needs: [validate, changes]
@@ -132,7 +161,7 @@ jobs:
   # new CI job must add itself to `gate.needs`.
   gate:
     name: Gate
-    needs: [changes, validate, build-shaka, build-image]
+    needs: [changes, validate, build-shaka, build-nix-lib, build-image]
     if: always()
     runs-on: ubuntu-latest
     steps:
