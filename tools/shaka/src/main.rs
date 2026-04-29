@@ -7,6 +7,7 @@ mod jj;
 mod preflight;
 mod project;
 mod repo;
+mod workspace;
 
 #[derive(Parser)]
 #[command(name = "shaka", about = "Build tooling for kolohelios")]
@@ -48,6 +49,11 @@ enum Commands {
         #[command(subcommand)]
         command: repo::RepoCommand,
     },
+    /// jj workspace management (sibling working copies)
+    Workspace {
+        #[command(subcommand)]
+        command: workspace::WorkspaceCommand,
+    },
 }
 
 fn main() {
@@ -62,5 +68,6 @@ fn main() {
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
+        Commands::Workspace { command } => workspace::run(command),
     }
 }
