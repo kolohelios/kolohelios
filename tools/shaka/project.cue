@@ -8,7 +8,7 @@ package project
 			fail: 30
 		}
 		branch: {
-			fail: 50
+			fail: 20
 		}
 	}
 }

@@ -16,4 +16,18 @@ fmt-check:
 lint:
     cargo clippy --all-targets -- -D warnings
 
-validate: fmt-check lint test
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    thresholds=$(cue export ../../tools/shaka/schema/project.cue project.cue)
+    fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
+    fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
+    measured=$(cargo llvm-cov --json --summary-only --branch)
+    line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
+    branch=$(jq <<<"$measured" '.data[0].totals.branches.percent')
+    printf 'coverage: line=%.1f%% branch=%.1f%% (gates: line>=%s%% branch>=%s%%)\n' \
+        "$line" "$branch" "$fail_line" "$fail_branch"
+    awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
+        'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
+
+validate: fmt-check lint test coverage
