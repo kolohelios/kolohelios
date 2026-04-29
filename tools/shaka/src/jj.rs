@@ -59,7 +59,14 @@ pub fn current_description() -> Result<String, JjError> {
 /// Resolve a single revset to its commit id. Errors if the revset matches
 /// zero or more than one revision.
 pub fn commit_id_of(revset: &str) -> Result<String, JjError> {
-    let out = run(&["log", "-r", revset, "-T", r#"commit_id ++ "\n""#, "--no-graph"])?;
+    let out = run(&[
+        "log",
+        "-r",
+        revset,
+        "-T",
+        r#"commit_id ++ "\n""#,
+        "--no-graph",
+    ])?;
     let mut ids = out.lines().map(str::trim).filter(|l| !l.is_empty());
     let first = ids.next().ok_or_else(|| JjError {
         message: format!("revset {revset:?} matched no revisions"),
@@ -75,7 +82,14 @@ pub fn commit_id_of(revset: &str) -> Result<String, JjError> {
 /// Count non-empty commits in `base..@`.
 pub fn ahead_count(base: &str) -> Result<usize, JjError> {
     let revset = format!("{base}..@ ~ empty()");
-    let out = run(&["log", "-r", &revset, "-T", r#"commit_id ++ "\n""#, "--no-graph"])?;
+    let out = run(&[
+        "log",
+        "-r",
+        &revset,
+        "-T",
+        r#"commit_id ++ "\n""#,
+        "--no-graph",
+    ])?;
     Ok(out.lines().filter(|l| !l.trim().is_empty()).count())
 }
 

@@ -53,8 +53,14 @@ fn lint(revset: &str) {
 
     for commit in &commits {
         let findings = lint_commit(commit);
-        let errors = findings.iter().filter(|f| matches!(f.severity, Severity::Error)).count();
-        let warnings = findings.iter().filter(|f| matches!(f.severity, Severity::Warn)).count();
+        let errors = findings
+            .iter()
+            .filter(|f| matches!(f.severity, Severity::Error))
+            .count();
+        let warnings = findings
+            .iter()
+            .filter(|f| matches!(f.severity, Severity::Warn))
+            .count();
 
         if findings.is_empty() {
             clean += 1;
@@ -141,7 +147,9 @@ fn collect_commits(revset: &str) -> Result<Vec<Commit>, String> {
         .map_err(|e| format!("failed to run jj: {e}"))?;
 
     if !ids_output.status.success() {
-        return Err(String::from_utf8_lossy(&ids_output.stderr).trim().to_string());
+        return Err(String::from_utf8_lossy(&ids_output.stderr)
+            .trim()
+            .to_string());
     }
 
     let mut commits = Vec::new();
@@ -215,10 +223,7 @@ fn lint_commit(commit: &Commit) -> Vec<Finding> {
     if title.chars().count() > TITLE_MAX {
         findings.push(Finding {
             severity: Severity::Error,
-            message: format!(
-                "title is {} chars (max {TITLE_MAX})",
-                title.chars().count()
-            ),
+            message: format!("title is {} chars (max {TITLE_MAX})", title.chars().count()),
         });
     }
 
@@ -235,10 +240,7 @@ fn lint_commit(commit: &Commit) -> Vec<Finding> {
             if len > BODY_LINE_MAX {
                 findings.push(Finding {
                     severity: Severity::Warn,
-                    message: format!(
-                        "body line {} is {len} chars (max {BODY_LINE_MAX})",
-                        i + 2
-                    ),
+                    message: format!("body line {} is {len} chars (max {BODY_LINE_MAX})", i + 2),
                 });
             }
         }

@@ -10,7 +10,10 @@ const RESET: &str = "\x1b[0m";
 
 enum CheckResult {
     Pass,
-    Fail { detail: String, output: Option<Output> },
+    Fail {
+        detail: String,
+        output: Option<Output>,
+    },
 }
 
 struct Check {
@@ -39,11 +42,7 @@ const CHECKS: &[Check] = &[
     },
     Check {
         name: "shaka project generate-justfiles --check",
-        paths: &[
-            "tools/shaka/**",
-            "*/*/project.cue",
-            "*/*/justfile",
-        ],
+        paths: &["tools/shaka/**", "*/*/project.cue", "*/*/justfile"],
         run: shaka_project_generate_justfiles_check,
     },
     Check {
@@ -75,15 +74,18 @@ pub fn run(keep_going: bool, since: Option<String>) {
         None => None,
     };
 
-    let (to_run, skipped): (Vec<&Check>, Vec<&Check>) = CHECKS.iter().partition(|c| match &changed {
-        None => true,
-        Some(paths) => c.paths.is_empty() || paths.iter().any(|p| matches_any(p, c.paths)),
-    });
+    let (to_run, skipped): (Vec<&Check>, Vec<&Check>) =
+        CHECKS.iter().partition(|c| match &changed {
+            None => true,
+            Some(paths) => c.paths.is_empty() || paths.iter().any(|p| matches_any(p, c.paths)),
+        });
 
     let total_to_run = to_run.len();
-    if let Some(_) = changed {
+    if changed.is_some() {
         if skipped.is_empty() {
-            println!("{BOLD}preflight:{RESET} running {total_to_run} checks (no path filter applied)");
+            println!(
+                "{BOLD}preflight:{RESET} running {total_to_run} checks (no path filter applied)"
+            );
         } else {
             let names: Vec<&str> = skipped.iter().map(|c| c.name).collect();
             println!(
@@ -137,7 +139,10 @@ pub fn run(keep_going: bool, since: Option<String>) {
     }
 
     for (name, result) in &failures {
-        if let CheckResult::Fail { output: Some(out), .. } = result {
+        if let CheckResult::Fail {
+            output: Some(out), ..
+        } = result
+        {
             println!("{BOLD}── {name} ──{RESET}");
             std::io::stdout().write_all(&out.stdout).ok();
             std::io::stderr().write_all(&out.stderr).ok();
@@ -334,15 +339,24 @@ mod tests {
 
     #[test]
     fn double_star_does_not_cross_unrelated_prefixes() {
-        assert!(!matches_pattern("tools/other/src/main.rs", "tools/shaka/**"));
+        assert!(!matches_pattern(
+            "tools/other/src/main.rs",
+            "tools/shaka/**"
+        ));
         assert!(!matches_pattern("apps/foo/src/main.rs", "tools/shaka/**"));
     }
 
     #[test]
     fn single_star_matches_one_component() {
-        assert!(matches_pattern("tools/shaka/project.cue", "*/*/project.cue"));
+        assert!(matches_pattern(
+            "tools/shaka/project.cue",
+            "*/*/project.cue"
+        ));
         assert!(matches_pattern("apps/foo/project.cue", "*/*/project.cue"));
-        assert!(!matches_pattern("tools/shaka/src/project.cue", "*/*/project.cue"));
+        assert!(!matches_pattern(
+            "tools/shaka/src/project.cue",
+            "*/*/project.cue"
+        ));
         assert!(!matches_pattern("project.cue", "*/*/project.cue"));
     }
 

@@ -83,15 +83,14 @@ fn collect() -> Result<Status, String> {
 
     // PR lookup is best-effort: a missing `gh`, no remote, or a transient API
     // error shouldn't fail the whole command.
-    let pr = bookmarks
-        .first()
-        .and_then(|b| match gh::detect_repo() {
-            Ok(repo) => gh::pr_for_head(&repo, b)
-                .ok()
-                .flatten()
-                .map(|info| Pr { number: info.number, url: info.url, bookmark: b.clone() }),
-            Err(_) => None,
-        });
+    let pr = bookmarks.first().and_then(|b| match gh::detect_repo() {
+        Ok(repo) => gh::pr_for_head(&repo, b).ok().flatten().map(|info| Pr {
+            number: info.number,
+            url: info.url,
+            bookmark: b.clone(),
+        }),
+        Err(_) => None,
+    });
 
     let last_fetch = jj::last_fetch_time().map_err(|e| e.to_string())?;
 
@@ -112,7 +111,10 @@ fn render_human(s: &Status) {
     } else {
         s.bookmarks.join(", ")
     };
-    println!("{BOLD}bookmark:{RESET}     {bookmark_label} {DIM}({}){RESET}", s.change_id);
+    println!(
+        "{BOLD}bookmark:{RESET}     {bookmark_label} {DIM}({}){RESET}",
+        s.change_id
+    );
 
     let parent_short = short_id(&s.parent.commit_id);
     let parent_label = if s.parent.is_main_origin {
@@ -140,7 +142,10 @@ fn render_human(s: &Status) {
     println!("{BOLD}ahead:{RESET}        {ahead_label}");
 
     match &s.pr {
-        Some(p) => println!("{BOLD}pr:{RESET}           #{} {DIM}{}{RESET}", p.number, p.url),
+        Some(p) => println!(
+            "{BOLD}pr:{RESET}           #{} {DIM}{}{RESET}",
+            p.number, p.url
+        ),
         None => println!("{BOLD}pr:{RESET}           {DIM}none{RESET}"),
     }
 

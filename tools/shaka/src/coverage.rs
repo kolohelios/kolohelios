@@ -111,10 +111,7 @@ pub fn run(project_filter: Option<String>) {
                 summaries.push((meta.name.clone(), metrics));
             }
             Err(e) => {
-                eprintln!(
-                    "  {RED}{BOLD}ERROR{RESET} {} ({DIM}{e}{RESET})",
-                    meta.name
-                );
+                eprintln!("  {RED}{BOLD}ERROR{RESET} {} ({DIM}{e}{RESET})", meta.name);
                 errors += 1;
             }
         }
@@ -122,10 +119,12 @@ pub fn run(project_filter: Option<String>) {
 
     if !summaries.is_empty() {
         println!();
-        let line_avg = summaries.iter().map(|(_, m)| m.line_percent).sum::<f64>()
-            / summaries.len() as f64;
-        let branch_avg: Vec<f64> =
-            summaries.iter().filter_map(|(_, m)| m.branch_percent).collect();
+        let line_avg =
+            summaries.iter().map(|(_, m)| m.line_percent).sum::<f64>() / summaries.len() as f64;
+        let branch_avg: Vec<f64> = summaries
+            .iter()
+            .filter_map(|(_, m)| m.branch_percent)
+            .collect();
         let branch_str = if branch_avg.is_empty() {
             String::new()
         } else {
@@ -143,10 +142,7 @@ pub fn run(project_filter: Option<String>) {
     }
 }
 
-fn read_project_meta(
-    schema_path: &Path,
-    project_dir: &Path,
-) -> Result<ProjectMeta, String> {
+fn read_project_meta(schema_path: &Path, project_dir: &Path) -> Result<ProjectMeta, String> {
     let project_file = project_dir.join("project.cue");
     if !project_file.exists() {
         return Err("no project.cue".to_string());
@@ -162,8 +158,7 @@ fn read_project_meta(
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
-    serde_json::from_slice(&out.stdout)
-        .map_err(|e| format!("could not parse cue output: {e}"))
+    serde_json::from_slice(&out.stdout).map_err(|e| format!("could not parse cue output: {e}"))
 }
 
 fn run_coverage(project_dir: &Path) -> Result<CoverageMetrics, String> {
