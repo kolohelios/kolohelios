@@ -216,8 +216,7 @@ mod tests {
 
         let projects = discover(tmp.path());
 
-        let names: Vec<String> =
-            projects.iter().map(|p| p.display().to_string()).collect();
+        let names: Vec<String> = projects.iter().map(|p| p.display().to_string()).collect();
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
@@ -227,7 +226,10 @@ mod tests {
     fn validate_project_reports_missing_project_file() {
         let tmp = TempDir::new().unwrap();
         mkdir(tmp.path(), "apps/foo");
-        let result = validate_project(Path::new("/nonexistent-schema.cue"), &tmp.path().join("apps/foo"));
+        let result = validate_project(
+            Path::new("/nonexistent-schema.cue"),
+            &tmp.path().join("apps/foo"),
+        );
         assert!(matches!(result, ProjectResult::MissingFile));
     }
 }

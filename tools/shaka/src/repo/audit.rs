@@ -25,19 +25,35 @@ struct Check {
 
 impl Check {
     fn pass(name: &'static str, detail: impl Into<String>) -> Self {
-        Self { name, status: Status::Pass, detail: detail.into() }
+        Self {
+            name,
+            status: Status::Pass,
+            detail: detail.into(),
+        }
     }
 
     fn fail(name: &'static str, detail: impl Into<String>) -> Self {
-        Self { name, status: Status::Fail, detail: detail.into() }
+        Self {
+            name,
+            status: Status::Fail,
+            detail: detail.into(),
+        }
     }
 
     fn warn(name: &'static str, detail: impl Into<String>) -> Self {
-        Self { name, status: Status::Warn, detail: detail.into() }
+        Self {
+            name,
+            status: Status::Warn,
+            detail: detail.into(),
+        }
     }
 
     fn error(name: &'static str, detail: impl Into<String>) -> Self {
-        Self { name, status: Status::Error, detail: detail.into() }
+        Self {
+            name,
+            status: Status::Error,
+            detail: detail.into(),
+        }
     }
 
     fn print(&self) {
@@ -47,7 +63,10 @@ impl Check {
             Status::Warn => ("WARN", YELLOW),
             Status::Error => (" ERR", RED),
         };
-        println!("  {color}{BOLD}[{label}]{RESET} {}: {}", self.name, self.detail);
+        println!(
+            "  {color}{BOLD}[{label}]{RESET} {}: {}",
+            self.name, self.detail
+        );
     }
 }
 
@@ -214,10 +233,7 @@ fn check_branch_protection(repo: &str) -> Vec<Check> {
         Err(e) => {
             let msg = e.message.to_string();
             if msg.contains("404") || msg.contains("not protected") || msg.contains("Not Found") {
-                return vec![Check::fail(
-                    "Branch protection",
-                    "not enabled on main",
-                )];
+                return vec![Check::fail("Branch protection", "not enabled on main")];
             }
             return vec![Check::error("Branch protection", format!("API error: {e}"))];
         }
@@ -286,10 +302,7 @@ fn fix_branch_protection(repo: &str, checks: &[Check]) {
         "allow_deletions": false,
     });
 
-    match gh::api_put(
-        &format!("/repos/{repo}/branches/main/protection"),
-        &body,
-    ) {
+    match gh::api_put(&format!("/repos/{repo}/branches/main/protection"), &body) {
         Ok(_) => println!("  {GREEN}Fixed{RESET}"),
         Err(e) => eprintln!("  {RED}Fix failed: {e}{RESET}"),
     }
@@ -305,11 +318,17 @@ fn check_rulesets(repo: &str) -> Vec<Check> {
     };
 
     if rulesets.is_empty() {
-        return vec![Check::warn("Rulesets", "none configured (relying on branch protection only)")];
+        return vec![Check::warn(
+            "Rulesets",
+            "none configured (relying on branch protection only)",
+        )];
     }
 
     let mut checks = Vec::new();
-    let active: Vec<&Value> = rulesets.iter().filter(|r| r["enforcement"] == "active").collect();
+    let active: Vec<&Value> = rulesets
+        .iter()
+        .filter(|r| r["enforcement"] == "active")
+        .collect();
 
     checks.push(bool_check(
         "Active rulesets",
@@ -339,9 +358,24 @@ fn check_rulesets(repo: &str) -> Vec<Check> {
         }
     }
 
-    checks.push(bool_check("Deletion rule", has_deletion, "present", "missing"));
-    checks.push(bool_check("Non-fast-forward rule", has_non_ff, "present", "missing"));
-    checks.push(bool_check("Required status checks rule", has_status_checks, "present", "missing"));
+    checks.push(bool_check(
+        "Deletion rule",
+        has_deletion,
+        "present",
+        "missing",
+    ));
+    checks.push(bool_check(
+        "Non-fast-forward rule",
+        has_non_ff,
+        "present",
+        "missing",
+    ));
+    checks.push(bool_check(
+        "Required status checks rule",
+        has_status_checks,
+        "present",
+        "missing",
+    ));
 
     checks
 }
@@ -355,7 +389,10 @@ fn check_security(repo: &str) -> Vec<Check> {
     match gh::api_get_status(&format!("/repos/{repo}/vulnerability-alerts")) {
         Ok(204) => checks.push(Check::pass("Dependabot alerts", "enabled")),
         Ok(404) => checks.push(Check::fail("Dependabot alerts", "disabled")),
-        Ok(code) => checks.push(Check::warn("Dependabot alerts", format!("unexpected status {code}"))),
+        Ok(code) => checks.push(Check::warn(
+            "Dependabot alerts",
+            format!("unexpected status {code}"),
+        )),
         Err(e) => checks.push(Check::error("Dependabot alerts", format!("{e}"))),
     }
 
@@ -364,12 +401,12 @@ fn check_security(repo: &str) -> Vec<Check> {
 
 fn fix_security(repo: &str, checks: &[Check]) {
     // Enable Dependabot alerts
-    if checks.iter().any(|c| c.name == "Dependabot alerts" && c.status == Status::Fail) {
+    if checks
+        .iter()
+        .any(|c| c.name == "Dependabot alerts" && c.status == Status::Fail)
+    {
         println!("  {YELLOW}Enabling Dependabot alerts...{RESET}");
-        match gh::api_put(
-            &format!("/repos/{repo}/vulnerability-alerts"),
-            &json!({}),
-        ) {
+        match gh::api_put(&format!("/repos/{repo}/vulnerability-alerts"), &json!({})) {
             Ok(_) => println!("  {GREEN}Fixed{RESET}"),
             Err(e) => eprintln!("  {RED}Fix failed: {e}{RESET}"),
         }

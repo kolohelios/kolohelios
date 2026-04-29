@@ -45,8 +45,8 @@ fn classify(result: &str) -> JobOutcome {
 }
 
 fn gate(needs_json: &str) -> Result<(), String> {
-    let parsed: Value =
-        serde_json::from_str(needs_json).map_err(|e| format!("could not parse --needs as JSON: {e}"))?;
+    let parsed: Value = serde_json::from_str(needs_json)
+        .map_err(|e| format!("could not parse --needs as JSON: {e}"))?;
 
     let jobs = parsed
         .as_object()
