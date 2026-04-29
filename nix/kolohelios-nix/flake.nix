@@ -46,6 +46,7 @@
           cue
           nixfmt-rfc-style
           nil
+          typos
         ];
     in
     {
