@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const GREEN: &str = "\x1b[32m";
@@ -45,21 +46,6 @@ const CHECKS: &[Check] = &[
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/justfile"],
         run: shaka_project_generate_justfiles_check,
     },
-    Check {
-        name: "tofu validate (infra/devbox/terraform)",
-        paths: &["infra/devbox/terraform/**"],
-        run: tofu_validate,
-    },
-    Check {
-        name: "tofu plan (infra/devbox/terraform)",
-        paths: &[
-            "infra/devbox/terraform/**",
-            "infra/devbox/nixos/**",
-            "flake.nix",
-            "flake.lock",
-        ],
-        run: tofu_plan,
-    },
 ];
 
 pub fn run(keep_going: bool, since: Option<String>) {
@@ -74,35 +60,54 @@ pub fn run(keep_going: bool, since: Option<String>) {
         None => None,
     };
 
-    let (to_run, skipped): (Vec<&Check>, Vec<&Check>) =
+    let (repo_to_run, repo_skipped): (Vec<&Check>, Vec<&Check>) =
         CHECKS.iter().partition(|c| match &changed {
             None => true,
             Some(paths) => c.paths.is_empty() || paths.iter().any(|p| matches_any(p, c.paths)),
         });
 
-    let total_to_run = to_run.len();
+    let projects: Vec<PathBuf> = crate::project::schema_check::discover(Path::new("."));
+    let (project_to_run, project_skipped): (Vec<PathBuf>, Vec<PathBuf>) =
+        projects.into_iter().partition(|p| match &changed {
+            None => true,
+            Some(paths) => paths.iter().any(|cp| under_project(cp, p)),
+        });
+
+    let total = repo_to_run.len() + project_to_run.len();
+    let total_skipped = repo_skipped.len() + project_skipped.len();
+
+    let mut passed = 0usize;
+    let mut failures: Vec<(String, CheckResult)> = Vec::new();
+    let mut bail = false;
+
     if changed.is_some() {
-        if skipped.is_empty() {
+        if total_skipped == 0 {
             println!(
-                "{BOLD}preflight:{RESET} running {total_to_run} checks (no path filter applied)"
+                "{BOLD}preflight:{RESET} running {} repo + {} project checks",
+                repo_to_run.len(),
+                project_to_run.len()
             );
         } else {
-            let names: Vec<&str> = skipped.iter().map(|c| c.name).collect();
             println!(
-                "{BOLD}preflight:{RESET} running {total_to_run} of {} checks ({YELLOW}skipped:{RESET} {})",
-                CHECKS.len(),
-                names.join(", ")
+                "{BOLD}preflight:{RESET} running {} repo + {} project checks ({YELLOW}skipped:{RESET} {} repo, {} projects)",
+                repo_to_run.len(),
+                project_to_run.len(),
+                repo_skipped.len(),
+                project_skipped.len()
             );
         }
     } else {
-        println!("{BOLD}preflight:{RESET} running {total_to_run} checks");
+        println!(
+            "{BOLD}preflight:{RESET} running {} repo + {} project checks",
+            repo_to_run.len(),
+            project_to_run.len()
+        );
     }
 
-    let mut passed = 0usize;
-    let mut failures: Vec<(&'static str, CheckResult)> = Vec::new();
-
-    for (i, check) in to_run.iter().enumerate() {
-        let label = format!("[{}/{}] {}", i + 1, total_to_run, check.name);
+    let mut idx = 0usize;
+    for check in &repo_to_run {
+        idx += 1;
+        let label = format!("[repo {}/{}] {}", idx, repo_to_run.len(), check.name);
         print!("  {label} ... ");
         std::io::stdout().flush().ok();
 
@@ -117,9 +122,42 @@ pub fn run(keep_going: bool, since: Option<String>) {
                 if !detail.is_empty() {
                     println!("    {DIM}{detail}{RESET}");
                 }
-                failures.push((check.name, result));
+                failures.push((check.name.to_string(), result));
                 if !keep_going {
+                    bail = true;
                     break;
+                }
+            }
+        }
+    }
+
+    if !bail {
+        for (i, project) in project_to_run.iter().enumerate() {
+            let display = project_label(project);
+            let label = format!(
+                "[proj {}/{}] {} (just validate)",
+                i + 1,
+                project_to_run.len(),
+                display
+            );
+            print!("  {label} ... ");
+            std::io::stdout().flush().ok();
+
+            let result = just_validate(project);
+            match &result {
+                CheckResult::Pass => {
+                    println!("{GREEN}{BOLD}ok{RESET}");
+                    passed += 1;
+                }
+                CheckResult::Fail { detail, .. } => {
+                    println!("{RED}{BOLD}FAIL{RESET}");
+                    if !detail.is_empty() {
+                        println!("    {DIM}{detail}{RESET}");
+                    }
+                    failures.push((display, result));
+                    if !keep_going {
+                        break;
+                    }
                 }
             }
         }
@@ -128,9 +166,9 @@ pub fn run(keep_going: bool, since: Option<String>) {
     println!();
     if failures.is_empty() {
         println!(
-            "{GREEN}{BOLD}preflight passed{RESET} ({passed}/{total_to_run}{})",
-            if !skipped.is_empty() {
-                format!(", {} skipped", skipped.len())
+            "{GREEN}{BOLD}preflight passed{RESET} ({passed}/{total}{})",
+            if total_skipped > 0 {
+                format!(", {total_skipped} skipped")
             } else {
                 String::new()
             }
@@ -151,10 +189,33 @@ pub fn run(keep_going: bool, since: Option<String>) {
     }
 
     eprintln!(
-        "{RED}{BOLD}preflight failed{RESET} ({passed} passed, {} failed of {total_to_run})",
+        "{RED}{BOLD}preflight failed{RESET} ({passed} passed, {} failed of {total})",
         failures.len()
     );
     std::process::exit(1);
+}
+
+/// Render a project path like "tools/shaka" — drops a leading `./` when present.
+fn project_label(p: &Path) -> String {
+    p.strip_prefix(".")
+        .unwrap_or(p)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Return true when `changed_path` lies under `project_dir/`.
+fn under_project(changed_path: &str, project_dir: &Path) -> bool {
+    let prefix = project_label(project_dir);
+    let needle = format!("{prefix}/");
+    changed_path.starts_with(&needle)
+}
+
+fn just_validate(project_dir: &Path) -> CheckResult {
+    run_command(
+        Command::new("just")
+            .arg("validate")
+            .current_dir(project_dir),
+    )
 }
 
 fn changed_paths(since: &str) -> Result<Vec<String>, String> {
@@ -237,75 +298,6 @@ fn spawn_self(args: &[&str]) -> CheckResult {
     run_command(&mut cmd)
 }
 
-fn tofu_validate() -> CheckResult {
-    let init = Command::new("tofu")
-        .args(["init", "-backend=false", "-input=false"])
-        .current_dir("infra/devbox/terraform")
-        .output();
-    match init {
-        Ok(out) if out.status.success() => {}
-        Ok(out) => {
-            return CheckResult::Fail {
-                detail: "tofu init failed".into(),
-                output: Some(out),
-            };
-        }
-        Err(e) => {
-            return CheckResult::Fail {
-                detail: format!("failed to spawn tofu: {e}"),
-                output: None,
-            };
-        }
-    }
-
-    run_command(
-        Command::new("tofu")
-            .arg("validate")
-            .current_dir("infra/devbox/terraform"),
-    )
-}
-
-fn tofu_plan() -> CheckResult {
-    let required = ["TF_VAR_linode_token", "TF_VAR_root_pass", "TF_VAR_image_id"];
-    let missing: Vec<&str> = required
-        .iter()
-        .copied()
-        .filter(|var| std::env::var(var).is_err())
-        .collect();
-    if !missing.is_empty() {
-        return CheckResult::Fail {
-            detail: format!("missing required env vars: {}", missing.join(", ")),
-            output: None,
-        };
-    }
-
-    let init = Command::new("tofu")
-        .args(["init", "-input=false"])
-        .current_dir("infra/devbox/terraform")
-        .output();
-    match init {
-        Ok(out) if out.status.success() => {}
-        Ok(out) => {
-            return CheckResult::Fail {
-                detail: "tofu init failed".into(),
-                output: Some(out),
-            };
-        }
-        Err(e) => {
-            return CheckResult::Fail {
-                detail: format!("failed to spawn tofu: {e}"),
-                output: None,
-            };
-        }
-    }
-
-    run_command(
-        Command::new("tofu")
-            .arg("plan")
-            .current_dir("infra/devbox/terraform"),
-    )
-}
-
 fn run_command(cmd: &mut Command) -> CheckResult {
     match cmd.output() {
         Ok(out) if out.status.success() => CheckResult::Pass,
@@ -381,5 +373,32 @@ mod tests {
     #[test]
     fn empty_path_does_not_match_pattern_with_components() {
         assert!(!matches_pattern("", "tools/shaka/**"));
+    }
+
+    #[test]
+    fn under_project_matches_files_inside() {
+        let project = Path::new("./tools/shaka");
+        assert!(under_project("tools/shaka/Cargo.toml", project));
+        assert!(under_project("tools/shaka/src/main.rs", project));
+    }
+
+    #[test]
+    fn under_project_rejects_unrelated_paths() {
+        let project = Path::new("./tools/shaka");
+        assert!(!under_project("tools/other/Cargo.toml", project));
+        assert!(!under_project("flake.nix", project));
+        assert!(!under_project("infra/devbox/project.cue", project));
+    }
+
+    #[test]
+    fn under_project_rejects_sibling_with_shared_prefix() {
+        let project = Path::new("./tools/shaka");
+        assert!(!under_project("tools/shaka-other/Cargo.toml", project));
+    }
+
+    #[test]
+    fn project_label_strips_leading_dot() {
+        assert_eq!(project_label(Path::new("./tools/shaka")), "tools/shaka");
+        assert_eq!(project_label(Path::new("tools/shaka")), "tools/shaka");
     }
 }
