@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 
 mod ci;
 mod commit;
-mod coverage;
 mod gh;
 mod jj;
 mod preflight;
@@ -29,12 +28,6 @@ enum Commands {
     Commit {
         #[command(subcommand)]
         command: commit::CommitCommand,
-    },
-    /// Run cargo llvm-cov on each rust project and report coverage
-    Coverage {
-        /// Limit to a single project by name
-        #[arg(long)]
-        project: Option<String>,
     },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
@@ -66,7 +59,6 @@ fn main() {
         }
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
-        Commands::Coverage { project } => coverage::run(project),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
