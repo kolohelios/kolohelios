@@ -33,6 +33,15 @@ const CHECKS: &[Check] = &[
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/justfile"],
         run: shaka_project_generate_justfiles_check,
     },
+    Check {
+        // Whole-repo scan: typos is fast enough that scoping by
+        // changed paths isn't worth the complexity, and a fresh
+        // entry in typos.toml that suppresses an old false positive
+        // should still fire on every PR until cleaned up.
+        name: "typos",
+        paths: &[],
+        run: typos_check,
+    },
 ];
 
 pub fn run(keep_going: bool, since: Option<String>) {
@@ -257,6 +266,10 @@ fn shaka_project_schema_check() -> CheckResult {
 
 fn shaka_project_generate_justfiles_check() -> CheckResult {
     spawn_self(&["project", "generate-justfiles", "--check"])
+}
+
+fn typos_check() -> CheckResult {
+    run_command(&mut Command::new("typos"))
 }
 
 fn spawn_self(args: &[&str]) -> CheckResult {

@@ -1,0 +1,12 @@
+[files]
+extend-exclude = [
+  "**/target/",
+  "**/result/",
+  "*.lock",
+  "**/*.lock",
+]
+
+[default.extend-words]
+# Add false-positive overrides as they're discovered. Keep entries
+# justified with a brief comment so future readers know why each one is
+# pinned.
