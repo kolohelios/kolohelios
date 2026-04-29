@@ -70,11 +70,17 @@
         { pkgs, system }:
         {
           default = pkgs.mkShell {
-            packages = [
-              (rustToolchain pkgs)
-              pkgs.jq
-              self.formatter.${system}
-            ];
+            packages =
+              [
+                (rustToolchain pkgs)
+                pkgs.jq
+              ]
+              # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks it
+              # broken on darwin (rust profiler runtime not in nixpkgs's
+              # darwin rustc); developers on darwin install it via
+              # `cargo install cargo-llvm-cov`.
+              ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov
+              ++ [ self.formatter.${system} ];
           };
         }
       );
