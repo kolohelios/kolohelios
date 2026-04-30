@@ -167,6 +167,50 @@ Until `shaka project new` lands (see issue #23), add a project manually:
 5. If the project introduces new preflight checks, add them to
    `tools/shaka/src/preflight.rs` rather than to CI YAML.
 
+## Parallel work in jj workspaces
+
+For non-trivial work that splits into independent slices (typically a
+parent issue with N sibling sub-issues), `shaka workspace` lets you run
+multiple Claude Code sessions or sub-agents in parallel without
+trampling each other.
+
+Shape:
+
+1. `shaka workspace new --issue <N>` (or `shaka workspace new <name>`)
+   creates a sibling working copy at `../kolohelios-i<N>` that shares
+   the same `.jj/repo` but has its own `@`. Each workspace has a
+   filesystem-level full copy of the repo (~66 files) but the underlying
+   commit storage is shared.
+2. Run `claude` inside each workspace, or spawn sub-agents pointed at
+   each workspace's path. Each session bookmarks, commits, and pushes
+   independently. Concurrent jj operations are serialized via the repo
+   lock — light contention at worst.
+3. As PRs land, rebase the remaining branches on the new `main@origin`.
+   Until #147 (`shaka repo rebase-wip`) lands, this is manual:
+   `jj rebase --branch <bookmark> -d main@origin` per branch, then
+   `jj git push --bookmark <name>` (jj allows the non-fast-forward
+   "move sideways" without `--force` for rebased branches).
+4. `shaka workspace status` shows a per-workspace summary at any time.
+5. `shaka workspace cleanup` forgets workspaces whose PRs have merged.
+   Caveat: when a merge is a squash (the default for this repo), the
+   bookmark is gone after `repo sync`, so `cleanup` won't find
+   candidates — fall back to `shaka workspace forget --force <name>`
+   per workspace.
+
+When briefing sub-agents to work in their own workspaces, two rules
+matter:
+
+- **The agent's commit body MUST include `Closes #<N>`** (or `Refs #<N>`
+  for partial work). `shaka repo send` propagates the `@` commit body
+  straight to the PR description — this is the only way GitHub auto-
+  links the issue. Sub-agents don't have the `/ship` skill that bakes
+  this in; the brief must require it explicitly. Once #146 lands,
+  `shaka commit lint` will catch this automatically.
+- **The agent must re-run `nix develop . --command just validate`
+  immediately before pushing.** It's easy to make a final tweak after a
+  successful validate and forget to re-run; the resulting CI failure
+  cycle is far more expensive than the local validate.
+
 ## Things to avoid
 
 - **Don't edit generated `justfile`s.** They carry a "Do not edit by hand"
@@ -179,3 +223,7 @@ Until `shaka project new` lands (see issue #23), add a project manually:
   Enterprise).
 - **Don't reach for `git commit`/`git rebase`** — use `jj` (and `shaka repo
   sync` for the rebase-on-`main@origin` flow).
+- **Don't push without re-running `just validate` after your last edit.**
+  Even if validate passed earlier in your session, a final tweak can
+  introduce `cargo fmt` or `clippy` violations. The CI failure cycle is
+  slow; the immediately-before-push validate is the cheap insurance.
