@@ -4,6 +4,27 @@ Personal monorepo for infrastructure, tooling, and projects. This file is
 project-specific guidance for AI-assisted development. Personal/global
 preferences live in `~/.claude/CLAUDE.md`.
 
+## Tenets
+
+A few principles shape how we work in this repo. Reach back to them when
+scoping or sequencing.
+
+- **Solo developer for the foreseeable future.** Keep processes
+  lightweight. Don't suggest contributing guides, multi-developer review
+  workflows, or collaboration tooling. Prefer direct edits over RFCs;
+  prefer issue comments over docs.
+- **Devboxes are ephemeral.** Local devboxes (baremetal mac, cloud VM)
+  are ephemeral workspaces, not durable infrastructure. Durable
+  artifacts are: the code repo, flake caches, deployed services. Config
+  changes live in version control. Don't propose stateful devbox
+  patterns; the cost to rebuild a devbox should stay close to zero.
+- **Test the simpler hypothesis before architecting a replacement.**
+  When a task is framed as "replace X to avoid Y," ask first whether X
+  is still load-bearing. Especially true for CI cleanup steps, caching
+  workarounds, retry loops, and other defensively-added plumbing. The
+  cheapest experiment is to remove and see, before designing the
+  replacement.
+
 ## Layout
 
 Top-level directories are **slots**; each slot contains one directory per
@@ -103,6 +124,20 @@ wrapper subsumes both.
 - **Workflow**: rebase on `main@origin`, self-review, then push and open a PR.
   `shaka repo send` automates push + PR creation.
 
+### Pull requests
+
+- **PR body is a brief summary paragraph — no test plan section.**
+  `shaka preflight` gates correctness; long PR bodies add noise without
+  value.
+- **PR title comes from your latest commit's title** — `shaka repo send`
+  propagates the `@` commit title and body straight to the PR. Plan the
+  tip commit's message accordingly.
+- **If the change closes an issue, include `Closes #<N>` in the commit
+  body.** GitHub auto-links and auto-closes on merge. Sub-agents don't
+  have the `/ship` skill that bakes this in — include it explicitly in
+  any sub-agent brief. (#146 will eventually have `shaka commit lint`
+  catch this automatically.)
+
 ### Working with jj
 
 A few jj behaviors trip up agents whose mental model comes from git. Read
@@ -197,19 +232,16 @@ Shape:
    candidates — fall back to `shaka workspace forget --force <name>`
    per workspace.
 
-When briefing sub-agents to work in their own workspaces, two rules
-matter:
+When briefing sub-agents to work in their own workspaces, the brief must
+restate two rules that `/start` and `/ship` would otherwise enforce:
 
-- **The agent's commit body MUST include `Closes #<N>`** (or `Refs #<N>`
-  for partial work). `shaka repo send` propagates the `@` commit body
-  straight to the PR description — this is the only way GitHub auto-
-  links the issue. Sub-agents don't have the `/ship` skill that bakes
-  this in; the brief must require it explicitly. Once #146 lands,
-  `shaka commit lint` will catch this automatically.
-- **The agent must re-run `nix develop . --command just validate`
-  immediately before pushing.** It's easy to make a final tweak after a
-  successful validate and forget to re-run; the resulting CI failure
-  cycle is far more expensive than the local validate.
+- **The standard PR conventions apply** — including `Closes #<N>` in the
+  tip commit body. See [Pull requests](#pull-requests). Sub-agents don't
+  have `/ship` to bake this in; the brief must require it explicitly.
+- **Re-run `nix develop . --command just validate` immediately before
+  pushing.** It's easy to make a final tweak after a successful validate
+  and forget to re-run; the resulting CI failure cycle is far more
+  expensive than the local validate.
 
 ## Things to avoid
 
