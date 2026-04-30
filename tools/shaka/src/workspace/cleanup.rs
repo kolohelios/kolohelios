@@ -51,14 +51,9 @@ pub fn run(dry_run: bool) {
         }
 
         let revset = format!("main@origin..{}@", ws.name);
-        let bookmarks = match jj::bookmarks_on(&revset) {
-            Ok(b) => b,
-            Err(_) => {
-                // Workspace may not have any commits ahead of main@origin, or
-                // main@origin doesn't exist in this repo. Skip it.
-                vec![]
-            }
-        };
+        // Workspace may not have any commits ahead of main@origin, or
+        // main@origin doesn't exist in this repo — treat both as no bookmarks.
+        let bookmarks = jj::bookmarks_on(&revset).unwrap_or_default();
 
         if bookmarks.is_empty() {
             continue;
@@ -76,9 +71,7 @@ pub fn run(dry_run: bool) {
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!(
-                        "{DIM}warn:{RESET} could not query PR for bookmark {bookmark}: {e}"
-                    );
+                    eprintln!("{DIM}warn:{RESET} could not query PR for bookmark {bookmark}: {e}");
                 }
             }
         }

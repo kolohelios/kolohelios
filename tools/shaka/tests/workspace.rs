@@ -231,7 +231,10 @@ fn cleanup_dry_run_does_not_remove_workspace() {
     let new_out = shaka(&repo, &["workspace", "new", "feat-bar"]);
     assert_success(&new_out, "workspace new");
     let workspace_path = parent.path().join("repo-feat-bar");
-    assert!(workspace_path.is_dir(), "workspace dir should exist before cleanup");
+    assert!(
+        workspace_path.is_dir(),
+        "workspace dir should exist before cleanup"
+    );
 
     let cleanup_out = shaka(&repo, &["workspace", "cleanup", "--dry-run"]);
     assert_success(&cleanup_out, "workspace cleanup --dry-run");
