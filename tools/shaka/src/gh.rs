@@ -130,16 +130,26 @@ fn api_write(method: &str, endpoint: &str, body: &Value) -> Result<Value, GhErro
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrState {
+    Open,
+    Closed,
+    Merged,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrInfo {
     pub number: u64,
     pub url: String,
+    pub state: PrState,
 }
 
-/// Find the open PR whose head branch matches `head`. Returns `None` if no PR
-/// exists. `repo` is in `owner/repo` form.
+/// Find the PR whose head branch matches `head`, checking all states (open,
+/// closed, merged). Returns `None` if no PR exists. `repo` is in `owner/repo`
+/// form.
 pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
     let owner = repo.split('/').next().unwrap_or("");
-    let endpoint = format!("/repos/{repo}/pulls?head={owner}:{head}&state=open");
+    // Query all states so we can detect merged PRs.
+    let endpoint = format!("/repos/{repo}/pulls?head={owner}:{head}&state=all");
     let result = api_get(&endpoint)?;
     let Some(first) = result.as_array().and_then(|arr| arr.first()) else {
         return Ok(None);
@@ -153,7 +163,19 @@ pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
             message: format!("PR for head {head} missing 'html_url' field"),
         })?
         .to_string();
-    Ok(Some(PrInfo { number, url }))
+    // A closed PR with a merge_commit_sha is merged; otherwise it's closed.
+    let state = match first["state"].as_str() {
+        Some("open") => PrState::Open,
+        Some("closed") => {
+            if first["merged_at"].is_string() {
+                PrState::Merged
+            } else {
+                PrState::Closed
+            }
+        }
+        _ => PrState::Closed,
+    };
+    Ok(Some(PrInfo { number, url, state }))
 }
 
 /// Run `gh pr create` and return the PR URL.
