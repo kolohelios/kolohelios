@@ -47,6 +47,7 @@
           nixfmt-rfc-style
           nil
           typos
+          cargo-deny
         ];
     in
     {

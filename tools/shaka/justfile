@@ -16,6 +16,9 @@ fmt-check:
 lint:
     cargo clippy --all-targets -- -D warnings
 
+deny:
+    cargo deny check
+
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -36,4 +39,4 @@ nix-fmt-check:
 flake-check:
     nix flake check
 
-validate: fmt-check lint test coverage nix-fmt-check flake-check
+validate: fmt-check lint deny test coverage nix-fmt-check flake-check
