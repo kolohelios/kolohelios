@@ -173,6 +173,34 @@ pub fn pr_create(title: &str, body: &str, head: &str) -> Result<String, GhError>
     Ok(url)
 }
 
+/// Fetch the title of a GitHub issue by number.
+///
+/// Shells out to `gh issue view <n> --json title --jq .title`.
+/// Returns an error if `gh` is not authenticated or the issue does not exist.
+pub fn issue_title(n: u64) -> Result<String, GhError> {
+    let output = Command::new("gh")
+        .args([
+            "issue",
+            "view",
+            &n.to_string(),
+            "--json",
+            "title",
+            "--jq",
+            ".title",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GhError {
+            message: format!("gh issue view {n}: {}", stderr.trim()),
+        });
+    }
+
+    let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(title)
+}
+
 /// Detect owner/repo from the git remote origin URL.
 pub fn detect_repo() -> Result<String, GhError> {
     let output = Command::new("git")
