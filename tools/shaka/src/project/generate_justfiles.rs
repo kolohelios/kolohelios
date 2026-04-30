@@ -31,6 +31,9 @@ fmt-check:
 lint:
     cargo clippy --all-targets -- -D warnings
 
+deny:
+    cargo deny check
+
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -51,7 +54,7 @@ nix-fmt-check:
 flake-check:
     nix flake check
 
-validate: fmt-check lint test coverage nix-fmt-check flake-check
+validate: fmt-check lint deny test coverage nix-fmt-check flake-check
 "#;
 
 const NIX_LIB_TEMPLATE: &str = r#"nix-fmt-check:
@@ -295,7 +298,13 @@ mod tests {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
         assert!(RUST_TEMPLATE
-            .contains("validate: fmt-check lint test coverage nix-fmt-check flake-check"));
+            .contains("validate: fmt-check lint deny test coverage nix-fmt-check flake-check"));
+    }
+
+    #[test]
+    fn rust_template_includes_deny_recipe() {
+        assert!(RUST_TEMPLATE.contains("deny:"));
+        assert!(RUST_TEMPLATE.contains("cargo deny check"));
     }
 
     #[test]
