@@ -221,8 +221,29 @@ matter:
 - **Don't add Claude Code attribution** to commits, code, or docs.
 - **Don't propose GHAS-dependent features** (this repo is private, no
   Enterprise).
-- **Don't reach for `git commit`/`git rebase`** — use `jj` (and `shaka repo
-  sync` for the rebase-on-`main@origin` flow).
+- **Don't run mutating `git` commands.** The repo is jj-colocated; `git
+  stash`, `git stash pop`, `git checkout`, `git reset`, `git commit`,
+  `git rebase`, `git merge` all desync the working copy from jj's view.
+  Read-only `git` (`status`, `log`, `diff`) is fine. To test "what does
+  main look like without my changes," use `jj new main@origin` (the
+  original change is preserved and reachable via `jj log` / `jj edit`);
+  to inspect a previous state, use `jj op log` and `jj op restore`.
+  Use `shaka repo sync` for the rebase-on-`main@origin` flow.
+- **Don't add thin pass-through wrappers.** Don't add justfile targets,
+  scripts, or aliases whose only job is to forward to another tool. If
+  `shaka preflight` is the entry point, document and call it directly —
+  don't put a layer in front whose only purpose is to advertise it.
+  Per-project justfiles with multiple real recipes (`build`, `test`,
+  `lint`, `validate`) are not pass-throughs — those are aggregations.
+- **Don't embed external-format fixtures as string literals in Rust
+  tests.** When testing code that processes external file formats (CUE,
+  YAML, JSON, etc.) by shelling out to tooling, write fixtures as real
+  files in `<crate>/tests/fixtures/<topic>/{valid,invalid}/...` and walk
+  them from integration tests. Real files are syntax-highlighted, can be
+  inspected directly with the underlying tool (e.g.
+  `cue vet schema fixture`), and are the actual artifacts shipped in the
+  repo. Adding coverage = adding a fixture file, not editing test code.
+  See `tools/shaka/tests/schema.rs` for the pattern.
 - **Don't push without re-running `just validate` after your last edit.**
   Even if validate passed earlier in your session, a final tweak can
   introduce `cargo fmt` or `clippy` violations. The CI failure cycle is
