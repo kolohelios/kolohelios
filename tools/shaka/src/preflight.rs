@@ -34,6 +34,15 @@ const CHECKS: &[Check] = &[
         run: shaka_project_generate_justfiles_check,
     },
     Check {
+        name: "shaka project lint",
+        // Any project-internal change can flip a lint outcome — README
+        // presence, .gitignore presence, source files for the rust-has-tests
+        // scan. `*/*/**` covers all of them; the linter itself lives under
+        // `tools/shaka/**`, which `*/*/**` already matches.
+        paths: &["*/*/**"],
+        run: shaka_project_lint,
+    },
+    Check {
         // Whole-repo scan: typos is fast enough that scoping by
         // changed paths isn't worth the complexity, and a fresh
         // entry in typos.toml that suppresses an old false positive
@@ -266,6 +275,10 @@ fn shaka_project_schema_check() -> CheckResult {
 
 fn shaka_project_generate_justfiles_check() -> CheckResult {
     spawn_self(&["project", "generate-justfiles", "--check"])
+}
+
+fn shaka_project_lint() -> CheckResult {
+    spawn_self(&["project", "lint"])
 }
 
 fn typos_check() -> CheckResult {
