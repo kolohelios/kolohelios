@@ -223,19 +223,41 @@ pub fn issue_title(n: u64) -> Result<String, GhError> {
     Ok(title)
 }
 
-/// Detect owner/repo from the git remote origin URL.
+/// Detect owner/repo from the jj git remote named "origin".
+///
+/// Uses `jj git remote list` rather than `git remote get-url` so that this
+/// works from inside a non-default jj workspace, which has no `.git` of its
+/// own — it only has a `.jj` directory that links back to the shared repo.
 pub fn detect_repo() -> Result<String, GhError> {
-    let output = Command::new("git")
-        .args(["remote", "get-url", "origin"])
+    let output = Command::new("jj")
+        .args(["git", "remote", "list"])
         .output()?;
 
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(GhError {
-            message: "no git remote 'origin' found".into(),
+            message: format!("jj git remote list: {}", stderr.trim()),
         });
     }
 
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Each line is "<name> <url>"; find the one named "origin".
+    let url = stdout
+        .lines()
+        .find_map(|line| {
+            let mut parts = line.splitn(2, ' ');
+            let name = parts.next()?;
+            let url = parts.next()?.trim();
+            if name == "origin" {
+                Some(url.to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| GhError {
+            message: "no jj git remote named 'origin' found".into(),
+        })?;
+
     parse_repo_from_url(&url).ok_or_else(|| GhError {
         message: format!("could not parse owner/repo from remote URL: {url}"),
     })
