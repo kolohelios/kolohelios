@@ -122,6 +122,41 @@ fn new_rejects_existing_path() {
 }
 
 #[test]
+fn new_rejects_name_and_issue_together() {
+    let parent = TempDir::new().expect("tempdir");
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+
+    // Passing both <name> and --issue must be rejected by clap before any gh
+    // call is made, so no network access is needed.
+    let out = shaka(&repo, &["workspace", "new", "feat-foo", "--issue", "42"]);
+    assert!(
+        !out.status.success(),
+        "expected failure when both name and --issue are supplied"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn new_rejects_neither_name_nor_issue() {
+    let parent = TempDir::new().expect("tempdir");
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+
+    let out = shaka(&repo, &["workspace", "new"]);
+    assert!(
+        !out.status.success(),
+        "expected failure when neither name nor --issue are supplied"
+    );
+}
+
+#[test]
 fn forget_refuses_default_workspace() {
     let parent = TempDir::new().expect("tempdir");
     let repo = parent.path().join("repo");

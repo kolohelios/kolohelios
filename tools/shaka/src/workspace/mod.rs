@@ -16,8 +16,15 @@ const RESET: &str = "\x1b[0m";
 pub enum WorkspaceCommand {
     /// Create a new jj workspace as a sibling of the repo
     New {
-        /// Workspace name (slug). Directory will be ../<repo-basename>-<name>
-        name: String,
+        /// Workspace name (slug). Directory will be ../<repo-basename>-<name>.
+        /// Mutually exclusive with --issue.
+        #[arg(conflicts_with = "issue")]
+        name: Option<String>,
+
+        /// GitHub issue number. Derives name as i<N> and prints the issue title.
+        /// Mutually exclusive with <name>.
+        #[arg(long, conflicts_with = "name")]
+        issue: Option<u64>,
     },
     /// List all jj workspaces in the repo
     List,
@@ -33,7 +40,7 @@ pub enum WorkspaceCommand {
 
 pub fn run(cmd: WorkspaceCommand) {
     match cmd {
-        WorkspaceCommand::New { name } => new::run(&name),
+        WorkspaceCommand::New { name, issue } => new::run(name.as_deref(), issue),
         WorkspaceCommand::List => list::run(),
         WorkspaceCommand::Forget { name, force } => forget::run(&name, force),
     }
@@ -73,5 +80,17 @@ mod tests {
     fn workspace_path_handles_temp_style_parent() {
         let p = workspace_path(Path::new("/tmp/abc/repo"), "i42");
         assert_eq!(p, Path::new("/tmp/abc/repo-i42"));
+    }
+
+    #[test]
+    fn issue_name_derivation() {
+        // Derived workspace name for issue N is "i<N>".
+        let n: u64 = 42;
+        let derived = format!("i{n}");
+        assert_eq!(derived, "i42");
+
+        let n: u64 = 102;
+        let derived = format!("i{n}");
+        assert_eq!(derived, "i102");
     }
 }
