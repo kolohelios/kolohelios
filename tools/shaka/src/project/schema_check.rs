@@ -30,7 +30,7 @@ pub fn run() {
 
     let projects = discover(Path::new("."));
     if projects.is_empty() {
-        println!("{YELLOW}no projects found in slots {:?}{RESET}", SLOTS);
+        println!("{YELLOW}no projects found in slots {SLOTS:?}{RESET}");
         return;
     }
 
