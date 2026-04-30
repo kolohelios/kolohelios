@@ -157,6 +157,53 @@ fn new_rejects_neither_name_nor_issue() {
 }
 
 #[test]
+fn status_lists_all_workspaces() {
+    let parent = TempDir::new().expect("tempdir");
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+
+    // Create a second workspace
+    let new_out = shaka(&repo, &["workspace", "new", "feat-bar"]);
+    assert_success(&new_out, "workspace new feat-bar");
+
+    // Human-readable output should mention both workspaces
+    let status_out = shaka(&repo, &["workspace", "status"]);
+    assert_success(&status_out, "workspace status");
+    let stdout = String::from_utf8_lossy(&status_out.stdout);
+    assert!(
+        stdout.contains("default"),
+        "status missing default: {stdout}"
+    );
+    assert!(
+        stdout.contains("feat-bar"),
+        "status missing feat-bar: {stdout}"
+    );
+
+    // --json output should be parseable JSON with both workspaces
+    let json_out = shaka(&repo, &["workspace", "status", "--json"]);
+    assert_success(&json_out, "workspace status --json");
+    let json_str = String::from_utf8_lossy(&json_out.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("workspace status --json is not valid JSON");
+    let arr = parsed.as_array().expect("expected JSON array");
+    assert!(
+        arr.len() >= 2,
+        "expected at least 2 workspaces in JSON, got {}: {json_str}",
+        arr.len()
+    );
+    let names: Vec<&str> = arr.iter().filter_map(|v| v["name"].as_str()).collect();
+    assert!(
+        names.contains(&"default"),
+        "JSON missing default workspace: {json_str}"
+    );
+    assert!(
+        names.contains(&"feat-bar"),
+        "JSON missing feat-bar workspace: {json_str}"
+    );
+}
+
+#[test]
 fn forget_refuses_default_workspace() {
     let parent = TempDir::new().expect("tempdir");
     let repo = parent.path().join("repo");

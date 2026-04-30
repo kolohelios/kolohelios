@@ -187,6 +187,13 @@ pub fn current_bookmarks() -> Result<Vec<String>, JjError> {
     bookmarks_on("@")
 }
 
+/// Local bookmarks pointing at a named workspace's `@` (`<name>@`).
+/// For the `default` workspace, pass `"default"` — jj accepts `default@`.
+pub fn bookmarks_on_workspace(workspace: &str) -> Result<Vec<String>, JjError> {
+    let revset = format!("{workspace}@");
+    bookmarks_on(&revset)
+}
+
 /// Move (or create) a bookmark to point at `@`.
 pub fn set_bookmark(name: &str) -> Result<(), JjError> {
     run_streaming(&["bookmark", "set", name, "-r", "@"])

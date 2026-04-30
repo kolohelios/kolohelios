@@ -1,6 +1,7 @@
 mod forget;
 mod list;
 mod new;
+mod status;
 
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,12 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Show status summary across all workspaces
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub fn run(cmd: WorkspaceCommand) {
@@ -43,6 +50,7 @@ pub fn run(cmd: WorkspaceCommand) {
         WorkspaceCommand::New { name, issue } => new::run(name.as_deref(), issue),
         WorkspaceCommand::List => list::run(),
         WorkspaceCommand::Forget { name, force } => forget::run(&name, force),
+        WorkspaceCommand::Status { json } => status::run(json),
     }
 }
 
