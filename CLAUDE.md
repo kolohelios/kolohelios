@@ -227,10 +227,11 @@ Shape:
    "move sideways" without `--force` for rebased branches).
 4. `shaka workspace status` shows a per-workspace summary at any time.
 5. `shaka workspace cleanup` forgets workspaces whose PRs have merged.
-   Caveat: when a merge is a squash (the default for this repo), the
-   bookmark is gone after `repo sync`, so `cleanup` won't find
-   candidates — fall back to `shaka workspace forget --force <name>`
-   per workspace.
+   Caveat: this repo has `deleteBranchOnMerge: true`, so after `repo
+   sync` the local bookmark is gone (jj propagates the remote
+   deletion) and `cleanup`'s bookmark-based lookup misses the
+   workspace. Fall back to `shaka workspace forget --force <name>`
+   per workspace until #164 lands.
 
 When briefing sub-agents to work in their own workspaces, the brief must
 restate two rules that `/start` and `/ship` would otherwise enforce:
