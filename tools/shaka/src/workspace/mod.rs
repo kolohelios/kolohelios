@@ -1,3 +1,4 @@
+mod cleanup;
 mod forget;
 mod list;
 mod new;
@@ -43,6 +44,12 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Remove workspaces whose PRs have been merged
+    Cleanup {
+        /// Preview what would be cleaned up without making any changes
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 pub fn run(cmd: WorkspaceCommand) {
@@ -51,6 +58,7 @@ pub fn run(cmd: WorkspaceCommand) {
         WorkspaceCommand::List => list::run(),
         WorkspaceCommand::Forget { name, force } => forget::run(&name, force),
         WorkspaceCommand::Status { json } => status::run(json),
+        WorkspaceCommand::Cleanup { dry_run } => cleanup::run(dry_run),
     }
 }
 

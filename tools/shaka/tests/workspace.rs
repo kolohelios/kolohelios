@@ -215,3 +215,31 @@ fn forget_refuses_default_workspace() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("default"), "unexpected stderr: {stderr}");
 }
+
+#[test]
+fn cleanup_dry_run_does_not_remove_workspace() {
+    // Verify that `cleanup --dry-run` exits successfully and leaves the
+    // workspace directory intact. We cannot exercise the merged-PR path in
+    // integration tests (that requires network + auth), but we can confirm
+    // that the command handles a repo with no git remote gracefully (warns and
+    // exits 0) and does not touch the workspace directory.
+    let parent = TempDir::new().expect("tempdir");
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+
+    let new_out = shaka(&repo, &["workspace", "new", "feat-bar"]);
+    assert_success(&new_out, "workspace new");
+    let workspace_path = parent.path().join("repo-feat-bar");
+    assert!(workspace_path.is_dir(), "workspace dir should exist before cleanup");
+
+    let cleanup_out = shaka(&repo, &["workspace", "cleanup", "--dry-run"]);
+    assert_success(&cleanup_out, "workspace cleanup --dry-run");
+
+    // Regardless of what was printed, the workspace directory must still exist.
+    assert!(
+        workspace_path.is_dir(),
+        "cleanup --dry-run must not remove the workspace directory: {}",
+        workspace_path.display()
+    );
+}
