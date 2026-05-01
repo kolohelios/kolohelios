@@ -56,6 +56,9 @@ struct ReadmePresent;
 struct GitignorePresent;
 struct RustHasTests;
 struct RustCoverageThresholdNonzero;
+struct RustLicenseDual;
+
+const REQUIRED_RUST_LICENSE: &str = r#"license = "MIT OR Apache-2.0""#;
 
 impl Rule for ReadmePresent {
     fn name(&self) -> &'static str {
@@ -126,12 +129,36 @@ impl Rule for RustCoverageThresholdNonzero {
     }
 }
 
+impl Rule for RustLicenseDual {
+    fn name(&self) -> &'static str {
+        "rust-license-dual"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind == ProjectKind::Rust
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let cargo = project_dir.join("Cargo.toml");
+        let contents = match std::fs::read_to_string(&cargo) {
+            Ok(c) => c,
+            Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
+        };
+        if contents.contains(REQUIRED_RUST_LICENSE) {
+            RuleResult::Pass
+        } else {
+            RuleResult::Fail(format!(
+                "Cargo.toml must declare `{REQUIRED_RUST_LICENSE}` (matches the repo's dual license)"
+            ))
+        }
+    }
+}
+
 fn rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(ReadmePresent),
         Box::new(GitignorePresent),
         Box::new(RustHasTests),
         Box::new(RustCoverageThresholdNonzero),
+        Box::new(RustLicenseDual),
     ]
 }
 
@@ -504,6 +531,80 @@ mod tests {
         };
         assert!(matches!(
             RustCoverageThresholdNonzero.check(tmp.path(), &meta),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_license_dual_only_applies_to_rust() {
+        assert!(RustLicenseDual.applies(&rust_meta()));
+        assert!(!RustLicenseDual.applies(&infra_meta()));
+    }
+
+    #[test]
+    fn rust_license_dual_passes_for_canonical_license() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"MIT OR Apache-2.0\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustLicenseDual.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_license_dual_fails_when_cargo_toml_missing() {
+        let tmp = TempDir::new().unwrap();
+        match RustLicenseDual.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("missing Cargo.toml"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_license_dual_fails_when_license_field_absent() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            RustLicenseDual.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_license_dual_fails_for_different_license_value() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"GPL-3.0\"\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            RustLicenseDual.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_license_dual_rejects_reversed_dual_form() {
+        // SPDX considers `MIT OR Apache-2.0` and `Apache-2.0 OR MIT`
+        // semantically equivalent, but textual canonicalization keeps the
+        // lint check trivial. If we ever need to relax, parse the field.
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"Apache-2.0 OR MIT\"\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            RustLicenseDual.check(tmp.path(), &rust_meta()),
             RuleResult::Fail(_)
         ));
     }

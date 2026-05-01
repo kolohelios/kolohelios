@@ -57,3 +57,15 @@ Kubernetes ExternalSecrets). Secrets are never committed to the repo.
 
 `just` is the standard task runner. Root justfile for cross-project tasks,
 per-project justfiles for project-specific recipes.
+
+## License
+
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+This is a personal monorepo and is not actively soliciting contributions.
+The dual-license declaration applies to the contents regardless.

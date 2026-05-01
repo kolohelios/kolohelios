@@ -110,6 +110,15 @@ fn zero_coverage_threshold_fails_lint() {
 }
 
 #[test]
+fn wrong_license_fails_lint() {
+    let staged = Staged::new(&["wrong-license"]);
+    let out = staged.run_lint();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(stdout.contains("rust-license-dual"), "stdout: {stdout}");
+}
+
+#[test]
 fn rust_only_rules_skip_for_infra() {
     let staged = Staged::new(&["clean-infra"]);
     let out = staged.run_lint();
