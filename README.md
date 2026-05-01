@@ -1,62 +1,74 @@
 # kolohelios
 
-Personal monorepo for infrastructure, tooling, and projects.
+Personal monorepo for infrastructure, tooling, and projects. Public so the
+shared tooling can be referenced freely; not actively soliciting external
+contributions.
 
 ## Layout
 
-| Directory | Purpose |
-|-----------|---------|
-| `apps/` | Applications |
-| `packages/` | Shared libraries and packages |
-| `projects/` | Standalone projects |
-| `tools/` | Developer tooling (e.g. shaka CLI) |
-| `infra/` | Infrastructure as code (Terraform, NixOS) |
+Top-level directories are **slots**; each slot contains one directory per
+project. Every project has its own `flake.nix` — there is no root flake.
+
+| Slot         | Purpose                                              |
+| ------------ | ---------------------------------------------------- |
+| `apps/`      | End-user applications                                |
+| `packages/`  | Shared libraries                                     |
+| `projects/`  | Standalone projects that don't fit another slot      |
+| `services/`  | Long-running services (reserved; not yet populated)  |
+| `tools/`     | Developer tooling (e.g. `tools/shaka`)               |
+| `infra/`     | Infrastructure as code (e.g. `infra/devbox`)         |
+| `nix/`       | Shared nix infrastructure (e.g. `nix/kolohelios-nix`) |
 
 ## Getting started
 
-Prerequisites: [Nix](https://nixos.org/) with flakes enabled.
+Prerequisites: [Nix](https://nixos.org/) with flakes enabled, and
+[direnv](https://direnv.net/) for automatic environment loading.
 
 ```sh
-# Enter the dev shell (or use direnv)
-nix develop
-
-# Run tasks
-just <recipe>
+# Each project has its own dev shell. cd into it; direnv loads the flake.
+cd tools/shaka
+just <recipe>      # build, test, lint, validate, ...
 ```
+
+To run validation across the whole repo (the same command CI runs):
+
+```sh
+tools/shaka/bin/shaka preflight
+# or, scoped to changes since a ref:
+tools/shaka/bin/shaka preflight --since main@origin
+```
+
+## Build system
+
+- **Per-project flakes**, with [`nix/kolohelios-nix`](nix/kolohelios-nix)
+  as a shared lib. Consumers reference it via FlakeHub so they can be
+  evaluated outside this working tree.
+- **`just`** as the per-project task runner. Per-project `justfile`s are
+  generated from `project.cue` by `shaka project generate-justfiles` —
+  don't hand-edit them; CI fails on drift.
+- **`shaka`** ([`tools/shaka`](tools/shaka)) is the build/repo CLI:
+  - `shaka preflight` — runs every CI check locally; CI runs the same
+    command, so local and CI cannot drift.
+  - `shaka project schema-check|lint|generate-justfiles` — project
+    metadata tooling.
+  - `shaka commit lint` — conventional-commit and atomicity enforcement.
+  - `shaka whitespace check|fix` — cross-language hygiene.
+  - `shaka repo sync|send|status` — jj/PR workflow helpers.
+  - `shaka workspace` — sibling jj working copies for parallel sessions.
 
 ## Tenets
 
-### Devboxes are ephemeral
-
-Development environments — whether baremetal Macs or cloud VMs — are disposable
-workspaces. They don't persist and aren't durable. The durable artifacts are:
-
-- The **code repository**
-- **Flake caches** and binary substituters
-- **Deployed services**
-
-Work flows through GitHub Issues: created, picked up, completed. Configuration
-changes must be made in code. Shell history is backed up to object storage, but
-nothing else on a devbox is expected to survive. The dev environment improves
-incrementally, and the cost to rebuild should stay low.
-
-### Secrets live in 1Password
-
-1Password is the canonical secret store — for local development (`op` CLI), CI
-(GitHub Actions integration), and future infrastructure (VM service accounts,
-Kubernetes ExternalSecrets). Secrets are never committed to the repo.
-
-### Version control conventions
-
-- **Jujutsu (jj)** for all version control operations
-- **Conventional commits**: `<type>(<scope>): <subject>` (max 70 chars, declarative language)
-- Title answers "why", body answers "what"
-- Commits are atomic (single logical change) and vertical (one layer/concern)
-
-### Command runner
-
-`just` is the standard task runner. Root justfile for cross-project tasks,
-per-project justfiles for project-specific recipes.
+- **Devboxes are ephemeral.** Local devboxes (baremetal Mac, cloud VM)
+  are disposable workspaces, not durable infrastructure. The durable
+  artifacts are the code repo, the FlakeHub-published flakes, and the
+  deployed services. Configuration changes live in version control.
+- **Secrets live in 1Password.** Canonical for local development (`op`
+  CLI), CI (GitHub Actions integration), and infrastructure. Never
+  committed to the repo.
+- **Version control via [Jujutsu](https://github.com/jj-vcs/jj) (`jj`)**
+  on a colocated git repo. Conventional commits (`<type>(<scope>):
+  <subject>`, max 70 chars), enforced by `shaka commit lint`. Atomic,
+  vertical commits — one logical change per commit.
 
 ## License
 
@@ -66,6 +78,3 @@ Licensed under either of:
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
-
-This is a personal monorepo and is not actively soliciting contributions.
-The dual-license declaration applies to the contents regardless.
