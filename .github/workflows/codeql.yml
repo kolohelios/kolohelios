@@ -1,0 +1,42 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Sunday 04:30 UTC — re-run weekly so newly-published CodeQL queries
+    # exercise the codebase without depending on a push to main.
+    - cron: "30 4 * * 0"
+
+# Cancel an in-flight scan when a new commit lands on the same PR branch.
+# Pushes to main are never cancelled.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (Rust)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust]
+    steps:
+      - uses: actions/checkout@v5
+      # Rust CodeQL only supports `build-mode: none` — it extracts directly
+      # from source, no compile step required. No nix install, no cargo
+      # build, no cache.
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
