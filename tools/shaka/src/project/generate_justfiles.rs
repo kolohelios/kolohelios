@@ -252,7 +252,10 @@ fn read_meta(schema_path: &Path, project_dir: &Path) -> Result<ProjectMeta, Stri
 }
 
 fn write_schema() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir().join("shaka-generate-schema.cue");
+    // Per-process filename — see schema_check::write_schema for the
+    // rationale (parallel test invocations race on a shared path).
+    let path =
+        std::env::temp_dir().join(format!("shaka-generate-schema-{}.cue", std::process::id()));
     let mut f = std::fs::File::create(&path)?;
     f.write_all(SCHEMA.as_bytes())?;
     Ok(path)
