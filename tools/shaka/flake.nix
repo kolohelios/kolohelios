@@ -2,7 +2,7 @@
   description = "shaka — build tooling for kolohelios";
 
   inputs = {
-    kolohelios-nix.url = "path:../../nix/kolohelios-nix";
+    kolohelios-nix.url = "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
     nixpkgs.follows = "kolohelios-nix/nixpkgs";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";

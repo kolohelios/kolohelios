@@ -205,6 +205,9 @@ jobs:
     needs: [changes, validate, build-shaka, build-nix-lib, build-image]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@main
