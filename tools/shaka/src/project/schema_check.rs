@@ -114,7 +114,11 @@ fn validate_project(schema_path: &Path, project_dir: &Path) -> ProjectResult {
 }
 
 pub fn write_schema() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir().join("shaka-project-schema.cue");
+    // Per-process filename so integration tests that spawn multiple shaka
+    // subprocesses in parallel don't race on the same file (cue would see a
+    // half-written schema and fail with "reference '#Project' not found").
+    let path =
+        std::env::temp_dir().join(format!("shaka-project-schema-{}.cue", std::process::id()));
     let mut f = std::fs::File::create(&path)?;
     f.write_all(SCHEMA.as_bytes())?;
     Ok(path)
