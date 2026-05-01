@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Rust crate dependencies for tools/shaka. Group minor + patch updates so
+  # routine bumps land as one PR per week instead of one per crate.
+  - package-ecosystem: cargo
+    directory: /tools/shaka
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions versions referenced in .github/workflows/. Grouped so an
+  # ecosystem-wide bump (common when actions release together) lands as one
+  # PR.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
