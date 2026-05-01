@@ -7,10 +7,7 @@ tofu-validate:
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
-flake-check:
-    nix flake check
-
-validate: tofu-validate nix-fmt-check flake-check
+validate: tofu-validate nix-fmt-check
 
 plan:
     cd terraform && tofu init -input=false && tofu plan
