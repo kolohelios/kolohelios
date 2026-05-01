@@ -36,7 +36,7 @@ jobs:
       image: ${{ steps.filter.outputs.image }}
       nix-lib: ${{ steps.filter.outputs.nix-lib }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - id: base
@@ -73,7 +73,7 @@ jobs:
       TF_VAR_root_pass: ${{ secrets.DEVBOX_ROOT_PASS }}
       TF_VAR_image_id: ${{ vars.DEVBOX_IMAGE_ID }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       # `nix flake check` for infra/devbox evaluates the full NixOS system
@@ -103,7 +103,7 @@ jobs:
       # Skip cargo dependency rebuilds when Cargo.lock is unchanged. Only
       # covers the host-side `cargo` invocations from `just validate`; the
       # `nix flake check` path runs in a sandbox actions/cache can't reach.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             tools/shaka/target/
@@ -132,7 +132,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
@@ -155,7 +155,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
@@ -181,13 +181,13 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
           flakehub: true
       - run: nix build ./infra/devbox#linodeImage
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
           name: linode-image
@@ -209,7 +209,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true

@@ -29,14 +29,14 @@ jobs:
       matrix:
         language: [rust]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       # Rust CodeQL only supports `build-mode: none` — it extracts directly
       # from source, no compile step required. No nix install, no cargo
       # build, no cache.
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}
