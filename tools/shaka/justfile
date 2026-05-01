@@ -39,4 +39,7 @@ nix-fmt-check:
 flake-check:
     nix flake check
 
-validate: fmt-check lint deny test coverage nix-fmt-check flake-check
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: fmt-check lint deny test coverage nix-fmt-check flake-check whitespace-check

@@ -54,7 +54,10 @@ nix-fmt-check:
 flake-check:
     nix flake check
 
-validate: fmt-check lint deny test coverage nix-fmt-check flake-check
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: fmt-check lint deny test coverage nix-fmt-check flake-check whitespace-check
 "#;
 
 const NIX_LIB_TEMPLATE: &str = r#"nix-fmt-check:
@@ -63,7 +66,10 @@ const NIX_LIB_TEMPLATE: &str = r#"nix-fmt-check:
 flake-check:
     nix flake check
 
-validate: nix-fmt-check flake-check
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: nix-fmt-check flake-check whitespace-check
 "#;
 
 // Infra projects intentionally do NOT run `nix flake check` in `validate`.
@@ -79,7 +85,10 @@ const INFRA_TEMPLATE: &str = r#"tofu-validate:
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
-validate: tofu-validate nix-fmt-check
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: tofu-validate nix-fmt-check whitespace-check
 
 plan:
     cd terraform && tofu init -input=false && tofu plan
@@ -278,7 +287,19 @@ mod tests {
     fn nix_lib_template_runs_flake_check() {
         assert!(NIX_LIB_TEMPLATE.contains("flake-check:"));
         assert!(NIX_LIB_TEMPLATE.contains("nix flake check"));
-        assert!(NIX_LIB_TEMPLATE.contains("validate: nix-fmt-check flake-check"));
+        assert!(NIX_LIB_TEMPLATE.contains("validate: nix-fmt-check flake-check whitespace-check"));
+    }
+
+    #[test]
+    fn all_templates_run_whitespace_check() {
+        for tpl in [RUST_TEMPLATE, NIX_LIB_TEMPLATE, INFRA_TEMPLATE] {
+            assert!(tpl.contains("whitespace-check:"));
+            assert!(tpl.contains("../../tools/shaka/bin/shaka whitespace check"));
+            assert!(
+                tpl.contains("whitespace-check\n"),
+                "validate chain must include whitespace-check"
+            );
+        }
     }
 
     #[test]
@@ -310,8 +331,9 @@ mod tests {
     fn rust_template_includes_quality_recipes() {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
-        assert!(RUST_TEMPLATE
-            .contains("validate: fmt-check lint deny test coverage nix-fmt-check flake-check"));
+        assert!(RUST_TEMPLATE.contains(
+            "validate: fmt-check lint deny test coverage nix-fmt-check flake-check whitespace-check"
+        ));
     }
 
     #[test]
@@ -346,6 +368,6 @@ mod tests {
 
     #[test]
     fn infra_template_validate_omits_flake_check() {
-        assert!(INFRA_TEMPLATE.contains("validate: tofu-validate nix-fmt-check\n"));
+        assert!(INFRA_TEMPLATE.contains("validate: tofu-validate nix-fmt-check whitespace-check\n"));
     }
 }
