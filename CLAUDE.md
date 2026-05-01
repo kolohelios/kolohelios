@@ -172,9 +172,7 @@ this before scripting against `jj`:
 ## Issue tracking
 
 Work is tracked in **GitHub Issues**. References like `#21` are GitHub issue
-numbers; use `gh issue view <n>` to read them. The repo is private and does
-not use GitHub Advanced Security — do not propose features that depend on
-GHAS (code scanning, secret scanning Push Protection, etc.).
+numbers; use `gh issue view <n>` to read them.
 
 ## Secrets
 
@@ -252,8 +250,6 @@ restate two rules that `/start` and `/ship` would otherwise enforce:
 - **Don't add CI jobs to `.github/workflows/main.yaml`** for new validation
   steps — extend `shaka preflight` so CI and local stay in lockstep.
 - **Don't add Claude Code attribution** to commits, code, or docs.
-- **Don't propose GHAS-dependent features** (this repo is private, no
-  Enterprise).
 - **Don't run mutating `git` commands.** The repo is jj-colocated; `git
   stash`, `git stash pop`, `git checkout`, `git reset`, `git commit`,
   `git rebase`, `git merge` all desync the working copy from jj's view.
