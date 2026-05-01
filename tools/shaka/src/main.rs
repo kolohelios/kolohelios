@@ -7,6 +7,7 @@ mod jj;
 mod preflight;
 mod project;
 mod repo;
+mod whitespace;
 mod workspace;
 
 #[derive(Parser)]
@@ -49,6 +50,11 @@ enum Commands {
         #[command(subcommand)]
         command: repo::RepoCommand,
     },
+    /// Whitespace and line-ending hygiene (check, fix)
+    Whitespace {
+        #[command(subcommand)]
+        command: whitespace::WhitespaceCommand,
+    },
     /// jj workspace management (sibling working copies)
     Workspace {
         #[command(subcommand)]
@@ -68,6 +74,7 @@ fn main() {
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
+        Commands::Whitespace { command } => whitespace::run(command),
         Commands::Workspace { command } => workspace::run(command),
     }
 }
