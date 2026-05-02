@@ -51,6 +51,11 @@ const CHECKS: &[Check] = &[
         paths: &[],
         run: typos_check,
     },
+    Check {
+        name: "actionlint",
+        paths: &[".github/workflows/**"],
+        run: actionlint_check,
+    },
 ];
 
 pub fn run(keep_going: bool, since: Option<String>) {
@@ -283,6 +288,10 @@ fn shaka_project_lint() -> CheckResult {
 
 fn typos_check() -> CheckResult {
     run_command(&mut Command::new("typos"))
+}
+
+fn actionlint_check() -> CheckResult {
+    run_command(&mut Command::new("actionlint"))
 }
 
 fn spawn_self(args: &[&str]) -> CheckResult {
