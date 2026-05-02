@@ -84,6 +84,11 @@
           default = pkgs.mkShell {
             packages = [
               (rustToolchain pkgs)
+              # actionlint runs in `shaka preflight` against
+              # `.github/workflows/`; shellcheck is its dependency for
+              # linting embedded `run:` scripts.
+              pkgs.actionlint
+              pkgs.shellcheck
             ]
             ++ (workflowPackages pkgs)
             # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks
