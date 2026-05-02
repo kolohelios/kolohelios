@@ -19,3 +19,6 @@ tfplan
 *.pem
 *.key
 .env
+
+# Shaka local state (e.g. workspace ↔ issue links — see tools/shaka/src/workspace/issue_link.rs)
+.shaka/

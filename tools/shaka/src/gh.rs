@@ -178,6 +178,69 @@ pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
     Ok(Some(PrInfo { number, url, state }))
 }
 
+/// Find the merged PR that closed the given issue, if any.
+///
+/// Uses `gh issue view N --json state,closedByPullRequestsReferences`. GitHub
+/// only populates `closedByPullRequestsReferences` for PRs that were merged
+/// with an autoclose keyword (`Closes #N`, `Fixes #N`, …) — exactly the
+/// signal we want for `shaka workspace cleanup` to identify a workspace whose
+/// work has landed, even after `repo sync` has deleted the local bookmark.
+///
+/// Returns `Ok(None)` if the issue is open, has no closing PR reference, or
+/// the issue does not exist. Returns the first referenced PR if multiple.
+pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
+    let output = Command::new("gh")
+        .args([
+            "issue",
+            "view",
+            &n.to_string(),
+            "--json",
+            "state,closedByPullRequestsReferences",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GhError {
+            message: format!("gh issue view {n}: {}", stderr.trim()),
+        });
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    if body.trim().is_empty() {
+        return Ok(None);
+    }
+    let parsed: Value = serde_json::from_str(&body).map_err(|e| GhError {
+        message: format!("failed to parse JSON from gh issue view {n}: {e}"),
+    })?;
+
+    if parsed["state"].as_str() != Some("CLOSED") {
+        return Ok(None);
+    }
+
+    let Some(first) = parsed["closedByPullRequestsReferences"]
+        .as_array()
+        .and_then(|arr| arr.first())
+    else {
+        return Ok(None);
+    };
+
+    let number = first["number"].as_u64().ok_or_else(|| GhError {
+        message: format!("closing PR for issue #{n} missing 'number' field"),
+    })?;
+    let url = first["url"]
+        .as_str()
+        .ok_or_else(|| GhError {
+            message: format!("closing PR for issue #{n} missing 'url' field"),
+        })?
+        .to_string();
+    Ok(Some(PrInfo {
+        number,
+        url,
+        state: PrState::Merged,
+    }))
+}
+
 /// Run `gh pr create` and return the PR URL.
 pub fn pr_create(title: &str, body: &str, head: &str) -> Result<String, GhError> {
     let output = Command::new("gh")
