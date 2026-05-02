@@ -182,21 +182,25 @@ never propose `.env` files checked into the repo.
 
 ## Adding a new project
 
-Until `shaka project new` lands (see issue #23), add a project manually:
+For rust projects, run:
 
-1. Create `<slot>/<name>/project.cue`:
-   ```cue
-   package project
+```
+tools/shaka/bin/shaka project new --name <name> --slot <slot>
+```
 
-   #Project & {
-       name: "<name>"
-       kind: "rust" | "infra" | "nix-lib"  // pick one
-       // rust: also requires a `coverage:` block (see schema)
-   }
-   ```
+`<slot>` is one of `apps`, `packages`, `projects`, `tools`. The command
+writes the canonical skeleton (`project.cue`, `Cargo.toml`, `flake.nix`,
+`.envrc`, `README.md`, `.gitignore`, `src/main.rs`), generates the
+per-project `justfile`, and runs `schema-check` + `audit` against the
+result.
+
+For `infra` and `nix-lib` projects (and any non-rust kind), scaffold by
+hand for now — `project new` only ships the rust template:
+
+1. Create `<slot>/<name>/project.cue` matching `tools/shaka/schema/project.cue`.
 2. Run `shaka project schema-check` to confirm the schema accepts it.
 3. Run `shaka project generate-justfiles` to produce the per-project `justfile`.
-4. Add the project's source files and any flake inputs.
+4. Add the project's source files and flake inputs.
 5. If the project introduces new preflight checks, add them to
    `tools/shaka/src/preflight.rs` rather than to CI YAML.
 
