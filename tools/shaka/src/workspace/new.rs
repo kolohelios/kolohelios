@@ -1,3 +1,4 @@
+use super::issue_link::{self, IssueLink};
 use super::{die, workspace_path, BOLD, DIM, GREEN, RESET};
 use crate::{gh, jj};
 
@@ -38,6 +39,11 @@ pub fn run(name: Option<&str>, issue: Option<u64>) {
     }
 
     if let Some((n, title)) = issue_info {
+        // Persist the issue link so `cleanup` can find the merged PR even
+        // after `repo sync` deletes the local bookmark (see issue #164).
+        if let Err(e) = issue_link::write(&repo_root, &derived_name, &IssueLink { issue: n }) {
+            die(&format!("failed to record issue link: {e}"));
+        }
         println!(
             "{GREEN}{BOLD}created{RESET} workspace {BOLD}{derived_name}{RESET} at \
              {DIM}{}{RESET} (issue #{n}: {title})",

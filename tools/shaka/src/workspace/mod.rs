@@ -1,5 +1,6 @@
 mod cleanup;
 mod forget;
+mod issue_link;
 mod list;
 mod new;
 mod status;

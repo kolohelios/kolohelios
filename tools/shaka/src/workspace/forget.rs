@@ -1,6 +1,7 @@
 use std::fs;
 
-use super::{die, workspace_path, BOLD, GREEN, RESET};
+use super::issue_link;
+use super::{die, workspace_path, BOLD, DIM, GREEN, RESET};
 use crate::jj;
 
 pub fn run(name: &str, force: bool) {
@@ -57,6 +58,10 @@ pub fn run(name: &str, force: bool) {
                 path.display()
             ));
         }
+    }
+
+    if let Err(e) = issue_link::remove(&repo_root, name) {
+        eprintln!("{DIM}warn:{RESET} failed to remove issue link for {name}: {e}");
     }
 
     println!("{GREEN}{BOLD}forgot{RESET} workspace {BOLD}{name}{RESET}");

@@ -216,6 +216,37 @@ fn forget_refuses_default_workspace() {
     assert!(stderr.contains("default"), "unexpected stderr: {stderr}");
 }
 
+/// `workspace forget` should also remove the persisted issue link so the
+/// `.shaka/workspaces/` directory does not accumulate stale entries.
+/// Issue #164: the link is what `cleanup` consults post-`repo sync`.
+#[test]
+fn forget_removes_issue_link() {
+    let parent = TempDir::new().expect("tempdir");
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+
+    let new_out = shaka(&repo, &["workspace", "new", "i42"]);
+    assert_success(&new_out, "workspace new i42");
+
+    // Simulate the link the `--issue` path would have written (we can't
+    // exercise `--issue` in tests because it needs `gh` + network).
+    let link_dir = repo.join(".shaka").join("workspaces");
+    std::fs::create_dir_all(&link_dir).unwrap();
+    let link_path = link_dir.join("i42.json");
+    std::fs::write(&link_path, r#"{"issue":42}"#).unwrap();
+    assert!(link_path.exists(), "fixture link not written");
+
+    let forget_out = shaka(&repo, &["workspace", "forget", "i42", "--force"]);
+    assert_success(&forget_out, "workspace forget i42 --force");
+
+    assert!(
+        !link_path.exists(),
+        "expected issue link to be removed: {}",
+        link_path.display()
+    );
+}
+
 #[test]
 fn cleanup_dry_run_does_not_remove_workspace() {
     // Verify that `cleanup --dry-run` exits successfully and leaves the
