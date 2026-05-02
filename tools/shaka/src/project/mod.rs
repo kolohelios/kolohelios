@@ -1,5 +1,6 @@
 mod audit;
 mod generate_justfiles;
+mod new;
 pub mod schema_check;
 
 use clap::Subcommand;
@@ -16,6 +17,15 @@ pub enum ProjectCommand {
     },
     /// Audit every discovered project for structural conformance
     Audit,
+    /// Scaffold a new project (currently rust-only)
+    New {
+        /// Project name (must match `^[a-z][a-z0-9-]*$`)
+        #[arg(long)]
+        name: String,
+        /// Slot to scaffold under (apps, packages, projects, tools)
+        #[arg(long)]
+        slot: String,
+    },
 }
 
 pub fn run(cmd: ProjectCommand) {
@@ -23,5 +33,6 @@ pub fn run(cmd: ProjectCommand) {
         ProjectCommand::SchemaCheck => schema_check::run(),
         ProjectCommand::GenerateJustfiles { check } => generate_justfiles::run(check),
         ProjectCommand::Audit => audit::run(),
+        ProjectCommand::New { name, slot } => new::run(name, slot),
     }
 }
