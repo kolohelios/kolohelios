@@ -177,24 +177,29 @@ pub fn run() {
         return;
     }
 
-    println!("{BOLD}lint:{RESET} {} projects", projects.len());
+    println!("{BOLD}audit:{RESET} {} projects", projects.len());
 
     let rules = rules();
     let mut failures = 0usize;
 
     for project in &projects {
-        lint_project(project, &schema_path, &rules, &mut failures);
+        audit_project(project, &schema_path, &rules, &mut failures);
     }
 
     println!();
     if failures > 0 {
-        eprintln!("{RED}{BOLD}lint failed{RESET} ({failures} failure(s))");
+        eprintln!("{RED}{BOLD}audit failed{RESET} ({failures} failure(s))");
         std::process::exit(1);
     }
-    println!("{GREEN}{BOLD}lint passed{RESET}");
+    println!("{GREEN}{BOLD}audit passed{RESET}");
 }
 
-fn lint_project(project: &Path, schema_path: &Path, rules: &[Box<dyn Rule>], failures: &mut usize) {
+fn audit_project(
+    project: &Path,
+    schema_path: &Path,
+    rules: &[Box<dyn Rule>],
+    failures: &mut usize,
+) {
     let display = project.display();
     let cue_path = project.join("project.cue");
     if !cue_path.is_file() {

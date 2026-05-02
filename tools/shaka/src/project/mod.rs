@@ -1,5 +1,5 @@
+mod audit;
 mod generate_justfiles;
-mod lint;
 pub mod schema_check;
 
 use clap::Subcommand;
@@ -14,14 +14,14 @@ pub enum ProjectCommand {
         #[arg(long)]
         check: bool,
     },
-    /// Run structural lints against every discovered project
-    Lint,
+    /// Audit every discovered project for structural conformance
+    Audit,
 }
 
 pub fn run(cmd: ProjectCommand) {
     match cmd {
         ProjectCommand::SchemaCheck => schema_check::run(),
         ProjectCommand::GenerateJustfiles { check } => generate_justfiles::run(check),
-        ProjectCommand::Lint => lint::run(),
+        ProjectCommand::Audit => audit::run(),
     }
 }
