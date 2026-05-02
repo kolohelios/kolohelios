@@ -4,9 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Required so the `Gate` check fires on speculative queue builds —
-  # without it, branch protection waits forever and the queue stalls.
-  merge_group:
   # Manual trigger from the Actions UI. Useful for forcing publish jobs
   # (build-shaka, build-nix-lib, build-image) to run when path filters
   # would otherwise skip them — e.g. bootstrapping FlakeHub publishing
@@ -14,14 +11,13 @@ on:
   # change.
   workflow_dispatch:
 
-# Cancel an in-flight run only on PR pushes — `jj git push` and
-# force-pushes during iteration would otherwise leave the previous run
-# churning to completion for nothing. Push-to-main runs gate the next
-# batch of PRs and merge_group runs gate the queue, so neither may be
-# cancelled.
+# Cancel an in-flight run when a new commit lands on the same PR branch:
+# `jj git push` and force-pushes during iteration would otherwise leave the
+# previous run churning to completion for nothing. Pushes to `main` never
+# cancel — that run gates the next batch of PRs.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
 
 jobs:
   # ── Detect changed paths ──────────────────────────────────────
@@ -45,7 +41,7 @@ jobs:
           fetch-depth: 0
       - id: base
         run: |
-          BASE="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
           if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
             BASE=$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)
           fi
