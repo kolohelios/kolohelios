@@ -27,7 +27,7 @@ debug binary.
   CUE schema.
 - `project generate-justfiles [--check]` — regenerates per-project
   `justfile`s from each `project.cue`. `--check` fails on drift.
-- `project lint` — structural lints (README/.gitignore presence, rust test
+- `project audit` — structural audit (README/.gitignore presence, rust test
   presence, coverage threshold sanity).
 - `commit lint -r <revset>` — enforces conventional commit format, title
   length, body wrap, and atomicity.
