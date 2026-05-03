@@ -1,0 +1,686 @@
+[
+  {
+    "name": "theedwards.us",
+    "status": "active",
+    "expiry_date": "2026-07-06",
+    "whois_privacy": "unsupported",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.com",
+    "status": "active",
+    "expiry_date": "2027-03-26",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.me",
+    "status": "active",
+    "expiry_date": "2027-03-26",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.blog",
+    "status": "active",
+    "expiry_date": "2026-05-06",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "genderneutralrobot.com",
+    "status": "active",
+    "expiry_date": "2026-10-14",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "clo-thing.com",
+    "status": "active",
+    "expiry_date": "2026-11-23",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "snarkoverflow.org",
+    "status": "active",
+    "expiry_date": "2026-11-23",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.dev",
+    "status": "active",
+    "expiry_date": "2026-05-11",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "violentlyintroverted.com",
+    "status": "active",
+    "expiry_date": "2026-11-19",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "customhomecost.com",
+    "status": "active",
+    "expiry_date": "2026-12-22",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "suxy.design",
+    "status": "active",
+    "expiry_date": "2027-04-24",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "extramedium.fish",
+    "status": "active",
+    "expiry_date": "2027-05-01",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "twobyteam.com",
+    "status": "active",
+    "expiry_date": "2027-05-01",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "epiphanic.info",
+    "status": "active",
+    "expiry_date": "2026-05-16",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "off",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "wayposting.com",
+    "status": "active",
+    "expiry_date": "2026-12-30",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "wayposting.org",
+    "status": "active",
+    "expiry_date": "2026-12-30",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "wayposting.app",
+    "status": "active",
+    "expiry_date": "2026-12-30",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "wayposting.net",
+    "status": "active",
+    "expiry_date": "2026-12-30",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "buzzingo.app",
+    "status": "active",
+    "expiry_date": "2026-10-29",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "buzzingo.org",
+    "status": "active",
+    "expiry_date": "2026-10-29",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.cloud",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.us",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "unsupported",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "findph.one",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "takesonetoknow.one",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohe.me",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohe.dev",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohe.cloud",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohe.app",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.net",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.app",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "kayden.ns.cloudflare.com",
+      "nora.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohelios.co",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "kolohe.co",
+    "status": "active",
+    "expiry_date": "2026-11-08",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "nora.ns.cloudflare.com",
+      "kayden.ns.cloudflare.com"
+    ]
+  },
+  {
+    "name": "cosmicchuckle.com",
+    "status": "active",
+    "expiry_date": "2027-04-21",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "eelings.com",
+    "status": "active",
+    "expiry_date": "2027-04-28",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "eelings.app",
+    "status": "active",
+    "expiry_date": "2027-04-28",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "dashprism.com",
+    "status": "active",
+    "expiry_date": "2027-04-28",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "dashprism.app",
+    "status": "active",
+    "expiry_date": "2027-04-28",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.com",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.app",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.dev",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.net",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "getzetlk.com",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.us",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "unsupported",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com",
+      "ns1.linode.com",
+      "ns2.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.link",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlk.monster",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "zetlkemail.com",
+    "status": "active",
+    "expiry_date": "2026-08-02",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "kolohelabs.com",
+    "status": "active",
+    "expiry_date": "2026-09-25",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "kolohelabs.dev",
+    "status": "active",
+    "expiry_date": "2026-09-25",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "kolohelabs.app",
+    "status": "active",
+    "expiry_date": "2026-09-25",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "kolohelabs.net",
+    "status": "active",
+    "expiry_date": "2026-09-25",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "cinctra.com",
+    "status": "active",
+    "expiry_date": "2027-04-11",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  },
+  {
+    "name": "cinctra.org",
+    "status": "active",
+    "expiry_date": "2027-04-11",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": [
+      "ns1.linode.com",
+      "ns2.linode.com",
+      "ns3.linode.com",
+      "ns4.linode.com",
+      "ns5.linode.com"
+    ]
+  }
+]
