@@ -4,6 +4,7 @@ mod ci;
 mod commit;
 mod domain;
 mod gh;
+mod issue;
 mod jj;
 mod preflight;
 mod project;
@@ -36,6 +37,11 @@ enum Commands {
     Domain {
         #[command(subcommand)]
         command: domain::DomainCommand,
+    },
+    /// GitHub issue tooling (audit scope-label policy, etc.)
+    Issue {
+        #[command(subcommand)]
+        command: issue::IssueCommand,
     },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
@@ -78,6 +84,7 @@ fn main() {
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
         Commands::Domain { command } => domain::run(command),
+        Commands::Issue { command } => issue::run(command),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
