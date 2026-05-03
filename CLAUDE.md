@@ -281,3 +281,13 @@ restate two rules that `/start` and `/ship` would otherwise enforce:
   Even if validate passed earlier in your session, a final tweak can
   introduce `cargo fmt` or `clippy` violations. The CI failure cycle is
   slow; the immediately-before-push validate is the cheap insurance.
+- **Don't document or automate clipboard-paste-of-DOM patterns.** Snippets
+  shaped like "open DevTools, paste this `JSON.stringify(...)` of
+  authenticated DOM data, copy the result" match credential-stealer
+  signatures (Atomic, StealC, etc.) and are blocked by macOS Sequoia's
+  XProtect clipboard scanner. They're also a pattern users should rightly
+  distrust on sight. When extracting structured data from an authenticated
+  browser session, build the payload in-page and trigger a `Blob` download
+  instead — no clipboard transit, no XProtect involvement, no
+  cargo-cultable shape that resembles malware. See `shaka domain
+  inventory --help` for the canonical example.
