@@ -204,20 +204,31 @@ hand for now — `project new` only ships the rust template:
 5. If the project introduces new preflight checks, add them to
    `tools/shaka/src/preflight.rs` rather than to CI YAML.
 
-## Parallel work in jj workspaces
+## Workspaces
 
-For non-trivial work that splits into independent slices (typically a
-parent issue with N sibling sub-issues), `shaka workspace` lets you run
-multiple Claude Code sessions or sub-agents in parallel without
-trampling each other.
+**Every issue gets its own `shaka workspace`.** `/start` invokes
+`shaka workspace new --issue <N>` by default; the user can opt out
+("in-place") for trivial doc tweaks. The primary tree is reserved for
+sync, audit, and cross-cutting reads — never carrying WIP for the
+issue you're picking up.
+
+Why workspace-per-issue is the default:
+
+- Primary stays clean. Cross-cutting ops (`shaka repo sync`,
+  `shaka repo audit`, `gh`-from-cwd, reading state across all in-flight
+  changes) never compete with WIP for some specific issue.
+- Parallel slices are free. Pick up a second issue while the first is
+  in CI; both have their own filesystem trees but share `.jj/repo`.
+- Hygiene is solved. `shaka workspace cleanup` finds merged workspaces
+  via persisted issue links (no longer dependent on bookmark presence).
 
 Shape:
 
-1. `shaka workspace new --issue <N>` (or `shaka workspace new <name>`)
+1. `/start <N>` (or manually: `shaka workspace new --issue <N>`)
    creates a sibling working copy at `../kolohelios-i<N>` that shares
    the same `.jj/repo` but has its own `@`. Each workspace has a
-   filesystem-level full copy of the repo (~66 files) but the underlying
-   commit storage is shared.
+   filesystem-level full copy of the repo but the underlying commit
+   storage is shared.
 2. Run `claude` inside each workspace, or spawn sub-agents pointed at
    each workspace's path. Each session bookmarks, commits, and pushes
    independently. Concurrent jj operations are serialized via the repo
@@ -228,12 +239,10 @@ Shape:
    `jj git push --bookmark <name>` (jj allows the non-fast-forward
    "move sideways" without `--force` for rebased branches).
 4. `shaka workspace status` shows a per-workspace summary at any time.
-5. `shaka workspace cleanup` forgets workspaces whose PRs have merged.
-   Caveat: this repo has `deleteBranchOnMerge: true`, so after `repo
-   sync` the local bookmark is gone (jj propagates the remote
-   deletion) and `cleanup`'s bookmark-based lookup misses the
-   workspace. Fall back to `shaka workspace forget --force <name>`
-   per workspace until #164 lands.
+5. `shaka workspace cleanup` forgets workspaces whose PRs have merged
+   (uses the persisted issue link, so it works regardless of remote
+   branch deletion). Workspaces created without `--issue` (ad-hoc
+   names) need `shaka workspace forget --force <name>`.
 
 When briefing sub-agents to work in their own workspaces, the brief must
 restate two rules that `/start` and `/ship` would otherwise enforce:
