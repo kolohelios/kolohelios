@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 mod ci;
 mod commit;
+mod domain;
 mod gh;
 mod jj;
 mod preflight;
@@ -30,6 +31,11 @@ enum Commands {
     Commit {
         #[command(subcommand)]
         command: commit::CommitCommand,
+    },
+    /// Domain inventory and drift tooling
+    Domain {
+        #[command(subcommand)]
+        command: domain::DomainCommand,
     },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
@@ -71,6 +77,7 @@ fn main() {
         }
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
+        Commands::Domain { command } => domain::run(command),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),

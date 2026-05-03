@@ -1,0 +1,20 @@
+[
+  {
+    "name": "alpha.example",
+    "status": "active",
+    "expiry_date": "2027-01-01",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": ["nora.ns.cloudflare.com", "kayden.ns.cloudflare.com"]
+  },
+  {
+    "name": "alpha.example",
+    "status": "active",
+    "expiry_date": "2027-01-01",
+    "whois_privacy": "on",
+    "locked": "on",
+    "autorenew": "on",
+    "nameservers": ["nora.ns.cloudflare.com", "kayden.ns.cloudflare.com"]
+  }
+]
