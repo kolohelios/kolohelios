@@ -1,5 +1,6 @@
 mod audit;
 mod pr;
+mod rebase_open_prs;
 pub mod send;
 mod status;
 mod sync;
@@ -54,6 +55,17 @@ pub enum RepoCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Rebase every open PR whose base is `main` onto the current main@origin
+    ///
+    /// Intended to run from CI on `push: main`. PRs labeled `do-not-rebase`
+    /// are skipped. Successful rebases force-push with a lease and post a
+    /// `success` commit status (context: `auto-rebase`); conflicts post a
+    /// `failure` status on the PR head and the workflow exits non-zero.
+    RebaseOpenPrs {
+        /// Print what would happen without rebasing or pushing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 pub fn run(cmd: RepoCommand) {
@@ -67,5 +79,6 @@ pub fn run(cmd: RepoCommand) {
         } => send::run(bookmark, no_pr, dry_run),
         RepoCommand::Pr { bookmark, dry_run } => pr::run(bookmark, dry_run),
         RepoCommand::Status { json } => status::run(json),
+        RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
     }
 }

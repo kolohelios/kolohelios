@@ -79,6 +79,11 @@ pub fn api_patch(endpoint: &str, body: &Value) -> Result<Value, GhError> {
     api_write("PATCH", endpoint, body)
 }
 
+/// Run `gh api -X POST <endpoint>` with a JSON body on stdin.
+pub fn api_post(endpoint: &str, body: &Value) -> Result<Value, GhError> {
+    api_write("POST", endpoint, body)
+}
+
 /// Run `gh api -X PUT <endpoint>` with a JSON body on stdin.
 pub fn api_put(endpoint: &str, body: &Value) -> Result<Value, GhError> {
     api_write("PUT", endpoint, body)
@@ -286,6 +291,106 @@ pub fn issue_title(n: u64) -> Result<String, GhError> {
     Ok(title)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenPr {
+    pub number: u64,
+    pub head_ref: String,
+    pub head_sha: String,
+    pub url: String,
+    pub labels: Vec<String>,
+}
+
+/// List open PRs whose base is `base`, with the fields needed for rebasing.
+///
+/// Shells out to `gh pr list --base <base> --state open --json
+/// number,headRefName,headRefOid,url,labels`.
+pub fn list_open_prs_against(base: &str) -> Result<Vec<OpenPr>, GhError> {
+    let output = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--base",
+            base,
+            "--state",
+            "open",
+            "--json",
+            "number,headRefName,headRefOid,url,labels",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GhError {
+            message: format!("gh pr list: {}", stderr.trim()),
+        });
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_open_prs(&body)
+}
+
+pub(crate) fn parse_open_prs(body: &str) -> Result<Vec<OpenPr>, GhError> {
+    let value: Value = serde_json::from_str(body).map_err(|e| GhError {
+        message: format!("failed to parse gh pr list JSON: {e}"),
+    })?;
+    let arr = value.as_array().ok_or_else(|| GhError {
+        message: "gh pr list did not return an array".into(),
+    })?;
+
+    arr.iter()
+        .map(|v| {
+            let number = v["number"].as_u64().ok_or_else(|| GhError {
+                message: "PR missing 'number'".into(),
+            })?;
+            let head_ref = v["headRefName"]
+                .as_str()
+                .ok_or_else(|| GhError {
+                    message: format!("PR #{number} missing 'headRefName'"),
+                })?
+                .to_string();
+            let head_sha = v["headRefOid"]
+                .as_str()
+                .ok_or_else(|| GhError {
+                    message: format!("PR #{number} missing 'headRefOid'"),
+                })?
+                .to_string();
+            let url = v["url"]
+                .as_str()
+                .ok_or_else(|| GhError {
+                    message: format!("PR #{number} missing 'url'"),
+                })?
+                .to_string();
+            let labels = v["labels"]
+                .as_array()
+                .map(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(|l| l["name"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok(OpenPr {
+                number,
+                head_ref,
+                head_sha,
+                url,
+                labels,
+            })
+        })
+        .collect()
+}
+
+/// Detect owner/repo. Prefers `$GITHUB_REPOSITORY` (set in GitHub Actions),
+/// falling back to [`detect_repo`] for local invocations.
+pub fn detect_repo_or_env() -> Result<String, GhError> {
+    if let Ok(r) = std::env::var("GITHUB_REPOSITORY") {
+        if !r.is_empty() {
+            return Ok(r);
+        }
+    }
+    detect_repo()
+}
+
 /// Detect owner/repo from the jj git remote named "origin".
 ///
 /// Uses `jj git remote list` rather than `git remote get-url` so that this
@@ -370,5 +475,43 @@ mod tests {
             parse_repo_from_url("https://github.com/owner/repo"),
             Some("owner/repo".into())
         );
+    }
+
+    #[test]
+    fn parse_open_prs_extracts_fields() {
+        let body = r#"[
+            {
+                "number": 12,
+                "headRefName": "feat/x",
+                "headRefOid": "abc123",
+                "url": "https://github.com/o/r/pull/12",
+                "labels": [{"name": "ci"}, {"name": "do-not-rebase"}]
+            },
+            {
+                "number": 13,
+                "headRefName": "fix/y",
+                "headRefOid": "def456",
+                "url": "https://github.com/o/r/pull/13",
+                "labels": []
+            }
+        ]"#;
+        let prs = parse_open_prs(body).unwrap();
+        assert_eq!(prs.len(), 2);
+        assert_eq!(prs[0].number, 12);
+        assert_eq!(prs[0].head_ref, "feat/x");
+        assert_eq!(prs[0].head_sha, "abc123");
+        assert_eq!(prs[0].labels, vec!["ci", "do-not-rebase"]);
+        assert_eq!(prs[1].labels, Vec::<String>::new());
+    }
+
+    #[test]
+    fn parse_open_prs_empty() {
+        assert!(parse_open_prs("[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_open_prs_missing_field_errors() {
+        let body = r#"[{"number": 1, "headRefName": "x", "url": "u"}]"#;
+        assert!(parse_open_prs(body).is_err());
     }
 }
