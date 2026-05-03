@@ -1,10 +1,10 @@
 ---
-description: Start working on a GitHub issue — sync, read, bookmark, and plan
-allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(jj *), Bash(gh issue view:*), Bash(gh issue list:*), Read, Glob, Grep
+description: Start working on a GitHub issue — create workspace, read, bookmark, and plan
+allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(shaka workspace new:*), Bash(jj *), Bash(gh issue view:*), Bash(gh issue list:*), Read, Glob, Grep
 argument-hint: <issue-number>
 ---
 
-Pick up GitHub issue `$1` and set up the workspace to work on it. Walk the
+Pick up GitHub issue `$1` and set up a workspace to work on it. Walk the
 user through each step, surface anything that needs human judgment, and stop
 for confirmation before writing code.
 
@@ -19,29 +19,36 @@ assumptions, file reads, or plans from earlier work into the new task. Don't
 proceed unless the conversation is fresh or the user explicitly confirms it's
 fine to continue.
 
-### 1. Check for in-progress work
+### 1. Create a workspace
 
-Run `shaka repo status --json` for a structured snapshot (`bookmarks`,
-`change_id`, `parent.is_main_origin`, `dirty`, `ahead`, `pr`). If `dirty.total
-> 0` or `ahead > 0` and `bookmarks` is empty, there's WIP without a bookmark —
-surface the current change to the user before doing anything else. The change
-will be preserved either way, but the user should decide whether to:
+**Default: every issue gets its own `shaka workspace`.** This keeps the
+primary tree clean for sync, audit, and cross-cutting reads, and it means
+the user's WIP elsewhere is undisturbed.
 
-- Set a bookmark on it first (`jj bookmark create <name> -r @`)
-- Continue and let it sit as an orphan change reachable via `jj log`
-- Abort the `/start` flow
+Fetch first so the new workspace parents on the latest main:
 
-Don't proceed silently if there's WIP without a bookmark.
+```
+jj git fetch
+```
 
-### 2. Sync on main@origin
+Then create the workspace:
 
-Run `shaka repo sync` to fetch and rebase the working copy onto
-`main@origin`. If it errors (conflicts, network), stop and report.
+```
+tools/shaka/bin/shaka workspace new --issue $1
+```
 
-Re-run `shaka repo status --json` to confirm `parent.is_main_origin` is `true`
-and `dirty.total` is `0`.
+This creates a sibling working copy at `../kolohelios-i$1` parented on the
+current `main@origin`. If the command errors (path collision, repo lock),
+stop and report.
 
-### 3. Read the issue
+**Opt-out:** if the user explicitly asks to work in-place ("in-place", "in
+primary", or similar), skip workspace creation. Then run `shaka repo status
+--json` in primary — if `dirty.total > 0` or `ahead > 0` and `bookmarks` is
+empty, surface the WIP and let the user decide before proceeding. The
+in-place path is reserved for trivial doc tweaks; default to workspace
+otherwise.
+
+### 2. Read the issue
 
 Run `gh issue view $1` and read the full body. If the issue has comments
 worth reading, run `gh issue view $1 --comments`. Summarize for the user:
@@ -53,7 +60,7 @@ worth reading, run `gh issue view $1 --comments`. Summarize for the user:
 If the issue references other issues (`#NN`), files, or prior PRs, read
 those for context too. Don't guess — read the actual referenced material.
 
-### 4. Propose a bookmark name
+### 3. Propose a bookmark name
 
 Derive a bookmark from the issue title in the form
 `<type>/<short-description>`:
@@ -67,9 +74,16 @@ Derive a bookmark from the issue title in the form
   `feat/skills-start-issue`).
 
 Propose the name to the user and wait for confirmation or a counter-suggestion
-before creating it. Then run `jj bookmark create <name> -r @`.
+before creating it. Then, from the new workspace path
+(`/Users/jedwards/code/kolohelios-i$1`):
 
-### 5. Plan and confirm
+```
+jj bookmark create <name> -r @
+```
+
+For the in-place opt-out path, run from the primary tree.
+
+### 4. Plan and confirm
 
 Outline an implementation approach in the response — files to touch,
 sequencing of commits (one logical change per commit, per project
@@ -79,6 +93,8 @@ confirm or redirect before writing any code.
 ## Conventions
 
 - One issue per bookmark — don't mix work from multiple issues.
+- One workspace per issue — keeps primary clean for sync, audit, and
+  cross-cutting reads.
 - Bookmark `<type>` must match the conventional commit type used in the
   eventual commit(s).
 - Never use `git` for working-copy mutations — only `jj`.
@@ -89,8 +105,8 @@ confirm or redirect before writing any code.
 
 Halt and report to the user when:
 
-- `@` has WIP without a bookmark (step 1)
-- `shaka repo sync` hits a conflict or network error
+- `shaka workspace new` errors (path collision, repo lock)
+- In the in-place opt-out path: `@` has WIP without a bookmark
 - `gh issue view` fails (issue doesn't exist, auth missing)
 - The issue title doesn't yield an obvious conventional type and labels
   don't disambiguate
