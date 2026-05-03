@@ -1,0 +1,89 @@
+# blogctl
+
+CLI for managing Markdown blog post drafts across a linear workflow.
+Drafts and prompts live in a private workdir outside this repo (passed via
+`--workdir`); `blogctl` itself ships only as tooling.
+
+## Workflow stages
+
+```
+concept → ideation → editing → final-editing → published
+                                                  archive (terminal)
+```
+
+Stage is encoded in two places that must agree: the directory the file
+sits in, and the `status:` field in its frontmatter. `blogctl` fails
+loudly on any mismatch.
+
+## Workdir layout
+
+```
+<workdir>/
+  concepts/
+  ideation/
+  editing/
+  final-editing/
+  published/
+  archive/
+  history/
+    published-posts/
+  prompts/
+  .blog-os.toml
+```
+
+`history/` and `prompts/` are reserved extension points for upcoming
+features (historical-consistency checks, OpenRouter prompt loading); they
+are scaffolded eagerly by `init`.
+
+## Commands
+
+```text
+blogctl init    --workdir <path>
+blogctl new     "Post Title" --workdir <path> [--slug SLUG]
+blogctl list    --workdir <path>
+blogctl show    <slug> --workdir <path>
+blogctl promote <slug> --workdir <path>
+blogctl demote  <slug> --workdir <path>
+```
+
+`new` writes a fresh `.md` into `concepts/` with a slug derived from the
+title (override with `--slug`). `promote`/`demote` move the file across
+stage directories and rewrite `status:` and `updated_at:` in the
+frontmatter. `published` won't demote without a future `--force` flag;
+`archive` is reserved for a future explicit transition.
+
+## Markdown file format
+
+```markdown
+---
+title: "Example Title"
+slug: example-title
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+todoist_task_id: null
+history_checked: false
+---
+
+Draft text here.
+```
+
+Timestamps are RFC 3339 UTC. The Markdown file is the source of truth.
+
+## Extension points
+
+- `commands/` — add a new `pub fn run(...)` module and wire it into
+  `cli::Command`.
+- `storage::Repository` — only place that touches the filesystem.
+- `post::Post::parse`/`render` — only place that touches YAML.
+
+OpenRouter calls, prompt loading, historical-consistency checks, and
+Todoist import are deliberately out of this slice; they slot in alongside
+the modules above without rewiring.
+
+## Development
+
+This project lives in the kolohelios monorepo. Run validation with
+`just validate` from inside the project's nix dev shell, or
+`tools/shaka/bin/shaka preflight` from the repo root.
