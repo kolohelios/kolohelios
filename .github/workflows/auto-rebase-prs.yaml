@@ -12,6 +12,10 @@ name: Auto-rebase PRs
 on:
   push:
     branches: [main]
+  # Manual trigger from the Actions UI — useful for verifying the App
+  # install or a rotated private key without waiting for main to move
+  # organically.
+  workflow_dispatch:
 
 # A second push to main that lands while we're rebasing makes the in-flight
 # run stale — its rebases would target an out-of-date base. Cancel it; the
@@ -23,6 +27,12 @@ concurrency:
 jobs:
   rebase:
     runs-on: ubuntu-latest
+    # `id-token: write` lets DeterminateSystems/nix-installer-action mint an
+    # OIDC token for FlakeHub — `nix develop ./tools/shaka` resolves the
+    # `kolohelios-nix` private flake input via FlakeHub and fails without it.
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/create-github-app-token@v2
         id: app-token

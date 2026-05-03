@@ -89,6 +89,22 @@ If you need a new per-project check, extend the appropriate template in
 `validate` recipe picks it up. If it spans projects, add it to `CHECKS`.
 Either way, do **not** add a new GitHub Actions job.
 
+The exception is automation that responds to repo events rather than
+gating PRs — e.g. `auto-rebase-prs.yaml` rebases open PRs on `push:
+main`. These can't live in `shaka preflight` because they don't gate
+the current change set. Two things to remember when adding one:
+
+- **`permissions: id-token: write`** is required on the job if it
+  runs `nix develop` — `DeterminateSystems/nix-installer-action`
+  mints an OIDC token to authenticate with FlakeHub for private
+  inputs like `kolohelios-nix`, and fails without it.
+- **Force-push or status-write operations need a GitHub App token,
+  not `GITHUB_TOKEN`.** Pushes via `GITHUB_TOKEN` don't re-trigger CI
+  on the destination branch; this is a documented GitHub limitation.
+  See `.github/auto-rebase-app.md` for the `kolohelios-bot` setup
+  pattern (mint via `actions/create-github-app-token@v2`, pass to
+  `actions/checkout` and `GH_TOKEN`).
+
 ### Running `shaka`
 
 `shaka` is **not** on `$PATH` globally. Always invoke it via the wrapper:
