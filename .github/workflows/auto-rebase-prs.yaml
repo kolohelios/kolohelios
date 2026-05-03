@@ -1,0 +1,55 @@
+name: Auto-rebase PRs
+
+# When main moves, rebase every open PR whose base is `main` onto the new
+# tip. Conflicts surface as a failing `auto-rebase` commit status on the PR
+# head; the workflow run goes red so the failure is visible in the Actions
+# UI as well. PRs labeled `do-not-rebase` are skipped.
+#
+# Authenticates as the kolohelios-bot GitHub App so force-push and status
+# posting bypass the GITHUB_TOKEN's contents-write/checks-write limits and
+# (more importantly) so post-rebase pushes re-trigger CI on each PR — which
+# pushes via the default GITHUB_TOKEN do not.
+on:
+  push:
+    branches: [main]
+
+# A second push to main that lands while we're rebasing makes the in-flight
+# run stale — its rebases would target an out-of-date base. Cancel it; the
+# new run will pick up every PR that still needs attention.
+concurrency:
+  group: auto-rebase-prs
+  cancel-in-progress: true
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.KOLOHELIOS_BOT_APP_ID }}
+          private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: actions/cache@v5
+        with:
+          path: |
+            tools/shaka/target/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+          key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Configure git identity for rebase commits
+        run: |
+          git config --global user.name 'kolohelios-bot[bot]'
+          git config --global user.email '${{ vars.KOLOHELIOS_BOT_APP_ID }}+kolohelios-bot[bot]@users.noreply.github.com'
+      - name: Rebase open PRs
+        run: nix develop ./tools/shaka --command tools/shaka/bin/shaka repo rebase-open-prs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

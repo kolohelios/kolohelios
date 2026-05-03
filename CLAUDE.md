@@ -138,6 +138,35 @@ wrapper subsumes both.
   any sub-agent brief. (#146 will eventually have `shaka commit lint`
   catch this automatically.)
 
+### Auto-rebase on `main` movement
+
+When `main@origin` moves, `.github/workflows/auto-rebase-prs.yaml`
+rebases every open PR whose base is `main` onto the new tip. Successful
+rebases force-push the PR branch (with `--force-with-lease`) and post a
+`success` `auto-rebase` commit status; conflicts post a `failure`
+status on the PR head describing the conflicting paths, and the
+workflow run goes red.
+
+- **Opt out with the `do-not-rebase` label.** Apply it to a PR you
+  don't want the bot touching (e.g. one you're actively rebasing
+  yourself).
+- **`auto-rebase` is informational, not a required check.** It only
+  appears on a PR after `main` has moved — making it required would
+  block every freshly-opened PR. Its job is to flag conflicts the
+  author needs to resolve, not to gate merge.
+- **After a bot rebase, run `jj git fetch` locally.** The bookmark
+  tracks the change_id, so jj reconciles automatically: the local
+  bookmark moves to the rebased commit and your `@` (if it was on the
+  bookmark) follows. To resolve a conflict the bot couldn't, run
+  `jj rebase --branch <bookmark> -d main@origin` then
+  `jj git push --bookmark <bookmark>`.
+- **The bot authenticates as the `kolohelios-bot` GitHub App** —
+  required so post-rebase pushes re-trigger the PR's normal CI (which
+  pushes via `GITHUB_TOKEN` do not). App settings, secret/variable
+  names, and rotation steps live in `.github/auto-rebase-app.md`.
+- See also #147 (`shaka repo rebase-wip`), the local-side companion
+  for branches you're actively iterating on.
+
 ### Working with jj
 
 A few jj behaviors trip up agents whose mental model comes from git. Read
