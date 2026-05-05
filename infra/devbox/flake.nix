@@ -2,7 +2,7 @@
   description = "kolohelios — devbox NixOS configuration and Linode image";
 
   inputs = {
-    kolohelios-nix.url = "path:../../nix/kolohelios-nix";
+    kolohelios-nix.url = "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
     nixpkgs.follows = "kolohelios-nix/nixpkgs";
   };
 
