@@ -223,12 +223,9 @@ fn just_validate(project_dir: &Path) -> CheckResult {
 
 fn changed_paths(since: &str) -> Result<Vec<String>, String> {
     // Resolve via jj rather than git so this works inside a sibling
-    // workspace whose `.git` isn't reachable on the filesystem. The
-    // revset spans `<since>..@` so paths reflect the calling workspace's
-    // `@`, not whatever the colocated index happens to point at. See
+    // workspace whose `.git` isn't reachable on the filesystem. See
     // issue #210.
-    let revset = format!("{since}..@");
-    crate::jj::changed_paths(&revset).map_err(|e| e.to_string())
+    crate::jj::changed_paths(since, "@").map_err(|e| e.to_string())
 }
 
 fn matches_any(path: &str, patterns: &[&str]) -> bool {
