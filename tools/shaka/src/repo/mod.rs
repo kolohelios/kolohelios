@@ -1,4 +1,5 @@
 mod audit;
+mod bump_locks;
 mod pr;
 mod rebase_open_prs;
 pub mod send;
@@ -66,6 +67,18 @@ pub enum RepoCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Run `nix flake update <input>` across every project that consumes the
+    /// input, leaving the changed `flake.lock`s in the working copy.
+    ///
+    /// Intended to run from a scheduled CI workflow that commits the
+    /// resulting diff and opens a single lockstep PR. Discovery is
+    /// grep-based; the audit rule `kolohelios-nix-via-flakehub` enforces
+    /// that consumers pin via the canonical FlakeHub URL.
+    BumpLocks {
+        /// Flake input name to update across all consuming projects
+        #[arg(long)]
+        input: String,
+    },
 }
 
 pub fn run(cmd: RepoCommand) {
@@ -80,5 +93,6 @@ pub fn run(cmd: RepoCommand) {
         RepoCommand::Pr { bookmark, dry_run } => pr::run(bookmark, dry_run),
         RepoCommand::Status { json } => status::run(json),
         RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
+        RepoCommand::BumpLocks { input } => bump_locks::run(input),
     }
 }
