@@ -60,7 +60,7 @@ worth reading, run `gh issue view $1 --comments`. Summarize for the user:
 If the issue references other issues (`#NN`), files, or prior PRs, read
 those for context too. Don't guess — read the actual referenced material.
 
-### 3. Propose a bookmark name
+### 3. Create the bookmark
 
 Derive a bookmark from the issue title in the form
 `<type>/<short-description>`:
@@ -73,9 +73,10 @@ Derive a bookmark from the issue title in the form
   to the project where applicable (e.g. `feat/shaka-commit-lint`,
   `feat/skills-start-issue`).
 
-Propose the name to the user and wait for confirmation or a counter-suggestion
-before creating it. Then, from the new workspace path
-(`/Users/jedwards/code/kolohelios-i$1`):
+Don't ask for confirmation on the name — we always work from issues, so
+the issue number is the load-bearing identifier and the bookmark name
+adds no signal worth a round-trip. Create it directly from the new
+workspace path (`/Users/jedwards/code/kolohelios-i$1`):
 
 ```
 jj bookmark create <name> -r @
@@ -110,4 +111,4 @@ Halt and report to the user when:
 - `gh issue view` fails (issue doesn't exist, auth missing)
 - The issue title doesn't yield an obvious conventional type and labels
   don't disambiguate
-- The user has not confirmed the bookmark name or the plan
+- The user has not confirmed the plan
