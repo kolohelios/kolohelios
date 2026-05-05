@@ -111,10 +111,14 @@ jobs:
             ~/.cargo/git/
           key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
+      # `actions/checkout` produces a git-only tree. shaka's preflight and
+      # commit lint both shell out to jj, so colocate before either runs —
+      # otherwise `push: main` (which skips commit lint) breaks preflight.
+      - name: Colocate jj on the git checkout
+        run: nix develop ./tools/shaka --command jj git init --colocate
       - name: shaka commit lint
         if: github.event_name == 'pull_request'
         run: |
-          nix develop ./tools/shaka --command jj git init --colocate
           nix develop ./tools/shaka --command tools/shaka/bin/shaka commit lint \
             -r '${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}'
       - name: shaka preflight
