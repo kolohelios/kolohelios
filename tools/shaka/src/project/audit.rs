@@ -57,8 +57,11 @@ struct GitignorePresent;
 struct RustHasTests;
 struct RustCoverageThresholdNonzero;
 struct RustLicenseDual;
+struct KoloheliosNixViaFlakehub;
 
 const REQUIRED_RUST_LICENSE: &str = r#"license = "MIT OR Apache-2.0""#;
+const REQUIRED_KOLOHELIOS_NIX_URL: &str =
+    "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
 
 impl Rule for ReadmePresent {
     fn name(&self) -> &'static str {
@@ -152,6 +155,62 @@ impl Rule for RustLicenseDual {
     }
 }
 
+impl Rule for KoloheliosNixViaFlakehub {
+    fn name(&self) -> &'static str {
+        "kolohelios-nix-via-flakehub"
+    }
+    fn applies(&self, _meta: &ProjectMeta) -> bool {
+        true
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let flake = project_dir.join("flake.nix");
+        let Ok(contents) = std::fs::read_to_string(&flake) else {
+            return RuleResult::Pass;
+        };
+        match extract_kolohelios_nix_url(&contents) {
+            None => RuleResult::Pass,
+            Some(url) if url == REQUIRED_KOLOHELIOS_NIX_URL => RuleResult::Pass,
+            Some(url) => RuleResult::Fail(format!(
+                "kolohelios-nix input must use FlakeHub URL `{REQUIRED_KOLOHELIOS_NIX_URL}` (found: `{url}`)"
+            )),
+        }
+    }
+}
+
+// Parses an inline `kolohelios-nix.url = "<url>";` declaration, accepting
+// both the in-block form (inside `inputs = { ... }`) and the top-level
+// `inputs.kolohelios-nix.url = "..."` form. Returns the URL if found,
+// ignoring lines that are commented out (whitespace then `#`). Block-form
+// (`kolohelios-nix = { url = "..."; }`) is intentionally not supported —
+// every current consumer uses the inline form, and the rule fails closed
+// (returns None → Pass via "rule didn't apply") rather than silently
+// accepting a malformed declaration.
+fn extract_kolohelios_nix_url(flake_contents: &str) -> Option<String> {
+    for line in flake_contents.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let Some(after_attr) = trimmed
+            .strip_prefix("inputs.kolohelios-nix.url")
+            .or_else(|| trimmed.strip_prefix("kolohelios-nix.url"))
+        else {
+            continue;
+        };
+        let Some(after_eq) = after_attr.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let Some(after_quote) = after_eq.trim_start().strip_prefix('"') else {
+            continue;
+        };
+        let Some(end) = after_quote.find('"') else {
+            continue;
+        };
+        return Some(after_quote[..end].to_string());
+    }
+    None
+}
+
 fn rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(ReadmePresent),
@@ -159,6 +218,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustHasTests),
         Box::new(RustCoverageThresholdNonzero),
         Box::new(RustLicenseDual),
+        Box::new(KoloheliosNixViaFlakehub),
     ]
 }
 
@@ -595,6 +655,88 @@ mod tests {
             RustLicenseDual.check(tmp.path(), &rust_meta()),
             RuleResult::Fail(_)
         ));
+    }
+
+    #[test]
+    fn kolohelios_nix_via_flakehub_passes_when_no_flake_nix() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(
+            KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_nix_via_flakehub_passes_when_flake_does_not_reference_input() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{ inputs.nixpkgs.url = \"github:NixOS/nixpkgs\"; outputs = { ... }: { }; }\n",
+        )
+        .unwrap();
+        assert_eq!(
+            KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_nix_via_flakehub_passes_for_canonical_url() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  inputs = {\n    kolohelios-nix.url = \"https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz\";\n    nixpkgs.follows = \"kolohelios-nix/nixpkgs\";\n  };\n}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_nix_via_flakehub_fails_for_path_input() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  inputs = {\n    kolohelios-nix.url = \"path:../../nix/kolohelios-nix\";\n  };\n}\n",
+        )
+        .unwrap();
+        match KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("path:../../nix/kolohelios-nix"), "got: {msg}");
+                assert!(msg.contains("FlakeHub URL"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn kolohelios_nix_via_flakehub_fails_for_github_url() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  inputs.kolohelios-nix.url = \"github:kolohelios/kolohelios-nix\";\n}\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn kolohelios_nix_via_flakehub_ignores_comment_only_mentions() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  # kolohelios-nix.url is consumed via path: input from a sibling lib\n  inputs.nixpkgs.url = \"github:NixOS/nixpkgs\";\n}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
     }
 
     #[test]

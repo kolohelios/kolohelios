@@ -127,3 +127,24 @@ fn rust_only_rules_skip_for_infra() {
     // clean-infra has no src/, no tests/ — but rust-* rules don't apply to infra.
     assert!(stdout.contains("audit passed"), "stdout: {stdout}");
 }
+
+#[test]
+fn flakehub_pinned_kolohelios_nix_passes_audit() {
+    let staged = Staged::new(&["flake-flakehub-input"]);
+    let out = staged.run_audit();
+    let stdout = stdout_of(&out);
+    assert!(out.status.success(), "stdout: {stdout}");
+    assert!(stdout.contains("audit passed"), "stdout: {stdout}");
+}
+
+#[test]
+fn path_pinned_kolohelios_nix_fails_audit() {
+    let staged = Staged::new(&["flake-path-input"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("kolohelios-nix-via-flakehub"),
+        "stdout: {stdout}"
+    );
+}
