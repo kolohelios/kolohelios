@@ -141,12 +141,18 @@ pub fn file_list(revset: &str, paths: &[String]) -> Result<Vec<String>, JjError>
         .collect())
 }
 
-/// Paths changed in the given revset, repo-root-relative. Renames and
+/// Paths changed between two revisions, repo-root-relative. Renames and
 /// copies expand to both the source and destination paths so callers
 /// reasoning about per-project impact see every project the change
 /// touches.
-pub fn changed_paths(revset: &str) -> Result<Vec<String>, JjError> {
-    let out = run(&["diff", "--summary", "-r", revset])?;
+///
+/// Uses `--from`/`--to` rather than the `from..to` revset because CI
+/// runs against the synthetic `refs/pull/<n>/merge` test-merge — a
+/// merge commit whose first parent is the base. `from..to` evaluates
+/// to a revset jj rejects as having gaps, but `--from`/`--to` just
+/// diffs two trees regardless of topology.
+pub fn changed_paths(from: &str, to: &str) -> Result<Vec<String>, JjError> {
+    let out = run(&["diff", "--summary", "--from", from, "--to", to])?;
     Ok(parse_changed_paths(&out))
 }
 
