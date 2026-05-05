@@ -70,14 +70,22 @@ pub enum RepoCommand {
     /// Run `nix flake update <input>` across every project that consumes the
     /// input, leaving the changed `flake.lock`s in the working copy.
     ///
-    /// Intended to run from a scheduled CI workflow that commits the
-    /// resulting diff and opens a single lockstep PR. Discovery is
-    /// grep-based; the audit rule `kolohelios-nix-via-flakehub` enforces
-    /// that consumers pin via the canonical FlakeHub URL.
+    /// Intended to run from a scheduled CI workflow. Without `--pr-branch`,
+    /// changes stay in the working copy. With `--pr-branch <name>`, after
+    /// bumping shaka switches to that branch, commits, force-pushes, and
+    /// opens (or, if one is already open for the branch, updates) a single
+    /// lockstep PR. Discovery is grep-based; the audit rule
+    /// `kolohelios-nix-via-flakehub` enforces that consumers pin via the
+    /// canonical FlakeHub URL.
     BumpLocks {
         /// Flake input name to update across all consuming projects
         #[arg(long)]
         input: String,
+        /// If set, after bumping, switch to this branch, commit the changes,
+        /// force-push, and open or update a PR. Requires GH_TOKEN with PR
+        /// write scope and a clean working copy on entry.
+        #[arg(long)]
+        pr_branch: Option<String>,
     },
 }
 
@@ -93,6 +101,6 @@ pub fn run(cmd: RepoCommand) {
         RepoCommand::Pr { bookmark, dry_run } => pr::run(bookmark, dry_run),
         RepoCommand::Status { json } => status::run(json),
         RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
-        RepoCommand::BumpLocks { input } => bump_locks::run(input),
+        RepoCommand::BumpLocks { input, pr_branch } => bump_locks::run(input, pr_branch),
     }
 }
