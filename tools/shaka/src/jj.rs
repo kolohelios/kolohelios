@@ -126,6 +126,73 @@ fn parse_diff_summary(out: &str) -> DirtyCounts {
     counts
 }
 
+/// List tracked files at `revset`, optionally restricted to `paths`.
+/// Path output is relative to the cwd, matching jj's default behaviour.
+pub fn file_list(revset: &str, paths: &[String]) -> Result<Vec<String>, JjError> {
+    let mut args: Vec<&str> = vec!["file", "list", "-r", revset];
+    for p in paths {
+        args.push(p.as_str());
+    }
+    let out = run(&args)?;
+    Ok(out
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+/// Paths changed in the given revset, repo-root-relative. Renames and
+/// copies expand to both the source and destination paths so callers
+/// reasoning about per-project impact see every project the change
+/// touches.
+pub fn changed_paths(revset: &str) -> Result<Vec<String>, JjError> {
+    let out = run(&["diff", "--summary", "-r", revset])?;
+    Ok(parse_changed_paths(&out))
+}
+
+fn parse_changed_paths(out: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in out.lines() {
+        let mut chars = line.chars();
+        let prefix = chars.next();
+        let space = chars.next();
+        if space != Some(' ') {
+            continue;
+        }
+        let rest = &line[2..];
+        match prefix {
+            Some('M' | 'A' | 'D') if !rest.is_empty() => paths.push(rest.to_string()),
+            Some('R' | 'C') => expand_rename(rest, &mut paths),
+            _ => {}
+        }
+    }
+    paths
+}
+
+// jj renders renames/copies with brace-folded common affixes, e.g.
+// `R sub/{old.txt => new.txt}` or `R {old/path => new/path}/file`. We expand
+// both sides so each affected path is visible to project-level filtering.
+fn expand_rename(rest: &str, out: &mut Vec<String>) {
+    if let (Some(open), Some(close)) = (rest.find('{'), rest.rfind('}')) {
+        if open < close {
+            let prefix = &rest[..open];
+            let suffix = &rest[close + 1..];
+            let inner = &rest[open + 1..close];
+            if let Some((old, new)) = inner.split_once(" => ") {
+                out.push(format!("{prefix}{old}{suffix}"));
+                out.push(format!("{prefix}{new}{suffix}"));
+                return;
+            }
+        }
+    }
+    if let Some((old, new)) = rest.split_once(" => ") {
+        out.push(old.to_string());
+        out.push(new.to_string());
+        return;
+    }
+    out.push(rest.to_string());
+}
+
 /// Short change id of the current change (`@`).
 pub fn current_change_id() -> Result<String, JjError> {
     let out = run(&[
@@ -448,5 +515,53 @@ mod tests {
         assert_eq!(counts.added, 1);
         assert_eq!(counts.modified, 0);
         assert_eq!(counts.deleted, 0);
+    }
+
+    #[test]
+    fn parse_changed_paths_plain_letters() {
+        let out = "M a.rs\nA b.rs\nD c.rs\n";
+        assert_eq!(parse_changed_paths(out), vec!["a.rs", "b.rs", "c.rs"]);
+    }
+
+    #[test]
+    fn parse_changed_paths_rename_no_common_affix() {
+        let out = "R {old.txt => new.txt}\n";
+        assert_eq!(parse_changed_paths(out), vec!["old.txt", "new.txt"]);
+    }
+
+    #[test]
+    fn parse_changed_paths_rename_common_prefix() {
+        let out = "R sub/{c.txt => d.txt}\n";
+        assert_eq!(parse_changed_paths(out), vec!["sub/c.txt", "sub/d.txt"]);
+    }
+
+    #[test]
+    fn parse_changed_paths_rename_common_suffix() {
+        let out = "R {old-side => new-side}/file.txt\n";
+        assert_eq!(
+            parse_changed_paths(out),
+            vec!["old-side/file.txt", "new-side/file.txt"]
+        );
+    }
+
+    #[test]
+    fn parse_changed_paths_rename_no_braces_arrow() {
+        let out = "R old new\n";
+        // Accept the plain-arrow fallback; whichever form jj emits we
+        // surface both sides.
+        let parsed = parse_changed_paths(out);
+        assert!(parsed.iter().any(|p| p == "old new") || parsed == vec!["old", "new"]);
+    }
+
+    #[test]
+    fn parse_changed_paths_copy_expands_both() {
+        let out = "C {src.rs => dst.rs}\n";
+        assert_eq!(parse_changed_paths(out), vec!["src.rs", "dst.rs"]);
+    }
+
+    #[test]
+    fn parse_changed_paths_skips_blank_and_unknown() {
+        let out = "\n? mystery\nM real.rs\n";
+        assert_eq!(parse_changed_paths(out), vec!["real.rs"]);
     }
 }

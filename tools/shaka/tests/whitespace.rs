@@ -1,13 +1,14 @@
 //! Integration tests for `shaka whitespace check|fix`.
 //!
-//! Each test stages a small set of files into a fresh git repo inside a
-//! tempdir and runs the shaka binary against it. The fixtures are written
-//! programmatically rather than checked in: byte-level differences (BOM,
-//! CRLF, trailing whitespace) don't survive editor or git normalization
-//! reliably and are easier to inspect as named byte literals than as files.
-//! The pure-scanner unit tests in `src/whitespace.rs` cover content
-//! semantics; these tests cover the wiring (CLI args, git ls-files
-//! enumeration, exit codes, output mentions the right files).
+//! Each test stages a small set of files into a fresh jj-colocated repo
+//! inside a tempdir and runs the shaka binary against it. The fixtures
+//! are written programmatically rather than checked in: byte-level
+//! differences (BOM, CRLF, trailing whitespace) don't survive editor
+//! normalization reliably and are easier to inspect as named byte
+//! literals than as files. The pure-scanner unit tests in
+//! `src/whitespace.rs` cover content semantics; these tests cover the
+//! wiring (CLI args, jj-based file enumeration, exit codes, output
+//! mentions the right files).
 
 use std::path::Path;
 use std::process::Command;
@@ -28,12 +29,16 @@ impl Repo {
             }
             std::fs::write(&path, bytes).unwrap();
         }
-        run(root.path(), &["git", "init", "-q"]);
-        // Disable any line-ending normalization so the test bytes survive
-        // `git add` round-trips intact.
+        run(root.path(), &["jj", "git", "init", "--colocate"]);
+        // Disable any line-ending normalization on the colocated git so
+        // the test bytes survive snapshot round-trips intact.
         run(root.path(), &["git", "config", "core.autocrlf", "false"]);
         run(root.path(), &["git", "config", "core.safecrlf", "false"]);
-        run(root.path(), &["git", "add", "-A"]);
+        // Snapshot the seeded files into `@`, then advance `@` past
+        // them. Sibling workspaces created later parent on `@-`, so the
+        // seeded files have to be a committed ancestor — not in primary's
+        // current `@` — for them to be visible across workspaces.
+        run(root.path(), &["jj", "new"]);
         Repo { root }
     }
 
@@ -149,14 +154,19 @@ fn check_skips_binary_files() {
 }
 
 #[test]
-fn check_skips_untracked_files() {
-    let repo = Repo::new(&[("a.txt", b"hello\n")]);
-    // Add a polluted file that isn't tracked — git ls-files should skip it.
-    std::fs::write(repo.path().join("untracked.txt"), b"trailing \n").unwrap();
+fn check_skips_gitignored_files() {
+    // jj auto-snapshots files in the working tree, so the only durable
+    // way to keep a file out of `@`'s tree is to .gitignore it. Verify
+    // that whitespace check honors that exclusion.
+    let repo = Repo::new(&[
+        ("a.txt", b"hello\n"),
+        (".gitignore", b"build/\n"),
+        ("build/garbage.txt", b"trailing \n"),
+    ]);
     let out = repo.shaka(&["whitespace", "check"]);
     assert!(
         out.status.success(),
-        "untracked file was incorrectly flagged\nstdout: {}\nstderr: {}",
+        "ignored file was incorrectly flagged\nstdout: {}\nstderr: {}",
         stdout_of(&out),
         stderr_of(&out)
     );
@@ -209,6 +219,83 @@ fn fix_rewrites_files_in_place() {
         stdout_of(&out),
         stderr_of(&out)
     );
+}
+
+#[test]
+fn check_runs_inside_jj_sibling_workspace() {
+    // Regression for #210: in a jj sibling workspace, `.git` isn't
+    // reachable on the filesystem because the colocated `.git` lives
+    // only under the primary tree. shaka must enumerate via jj rather
+    // than walking up for git.
+    let repo = Repo::new(&[("a.txt", b"trailing \n")]);
+    let parent = tempfile::TempDir::new().unwrap();
+    let sibling = parent.path().join("ws-sibling");
+    run(
+        repo.path(),
+        &[
+            "jj",
+            "workspace",
+            "add",
+            "--name",
+            "ws-sibling",
+            sibling.to_str().unwrap(),
+        ],
+    );
+
+    let out = Command::new(SHAKA_BIN)
+        .args(["whitespace", "check"])
+        .current_dir(&sibling)
+        .output()
+        .expect("failed to spawn shaka");
+    assert!(
+        !out.status.success(),
+        "expected failure on bad whitespace from sibling\nstdout: {}\nstderr: {}",
+        stdout_of(&out),
+        stderr_of(&out)
+    );
+    let combined = format!("{}{}", stdout_of(&out), stderr_of(&out));
+    assert!(combined.contains("a.txt"), "output: {combined}");
+    assert!(
+        combined.contains("trailing whitespace"),
+        "output: {combined}"
+    );
+}
+
+#[test]
+fn check_finds_files_added_only_in_sibling() {
+    // The crux of #210: a file that exists only in the sibling
+    // workspace's `@` is invisible to primary's git index. Using jj for
+    // enumeration ensures shaka still scans it.
+    let repo = Repo::new(&[("clean.txt", b"hello\n")]);
+    let parent = tempfile::TempDir::new().unwrap();
+    let sibling = parent.path().join("ws-sibling");
+    run(
+        repo.path(),
+        &[
+            "jj",
+            "workspace",
+            "add",
+            "--name",
+            "ws-sibling",
+            sibling.to_str().unwrap(),
+        ],
+    );
+
+    std::fs::write(sibling.join("polluted.txt"), b"trailing \n").unwrap();
+
+    let out = Command::new(SHAKA_BIN)
+        .args(["whitespace", "check"])
+        .current_dir(&sibling)
+        .output()
+        .expect("failed to spawn shaka");
+    assert!(
+        !out.status.success(),
+        "sibling-only file went undetected\nstdout: {}\nstderr: {}",
+        stdout_of(&out),
+        stderr_of(&out)
+    );
+    let combined = format!("{}{}", stdout_of(&out), stderr_of(&out));
+    assert!(combined.contains("polluted.txt"), "output: {combined}");
 }
 
 #[test]
