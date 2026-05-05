@@ -247,10 +247,13 @@ pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
 }
 
 /// Run `gh pr create` and return the PR URL.
-pub fn pr_create(title: &str, body: &str, head: &str) -> Result<String, GhError> {
+///
+/// Passes `--repo` so this works inside a sibling jj workspace where
+/// `gh`'s implicit walk-up for `.git` would fail. See issue #221.
+pub fn pr_create(repo: &str, title: &str, body: &str, head: &str) -> Result<String, GhError> {
     let output = Command::new("gh")
         .args([
-            "pr", "create", "--title", title, "--body", body, "--head", head,
+            "pr", "create", "--repo", repo, "--title", title, "--body", body, "--head", head,
         ])
         .output()?;
     if !output.status.success() {
