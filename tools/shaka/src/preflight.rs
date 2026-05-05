@@ -222,20 +222,13 @@ fn just_validate(project_dir: &Path) -> CheckResult {
 }
 
 fn changed_paths(since: &str) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
-        .args(["diff", "--name-only", since])
-        .output()
-        .map_err(|e| format!("failed to spawn git: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!("git diff failed: {stderr}"));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(String::from)
-        .collect())
+    // Resolve via jj rather than git so this works inside a sibling
+    // workspace whose `.git` isn't reachable on the filesystem. The
+    // revset spans `<since>..@` so paths reflect the calling workspace's
+    // `@`, not whatever the colocated index happens to point at. See
+    // issue #210.
+    let revset = format!("{since}..@");
+    crate::jj::changed_paths(&revset).map_err(|e| e.to_string())
 }
 
 fn matches_any(path: &str, patterns: &[&str]) -> bool {
@@ -291,7 +284,29 @@ fn typos_check() -> CheckResult {
 }
 
 fn actionlint_check() -> CheckResult {
-    run_command(&mut Command::new("actionlint"))
+    // Pass workflow paths explicitly so actionlint doesn't walk up
+    // looking for a `.git` directory — that walk fails inside a jj
+    // sibling workspace whose colocated `.git` lives only in the
+    // primary tree. Discovery via `jj file list` also gives us a
+    // workspace-correct view of which workflows exist. See issue #210.
+    let tracked = match crate::jj::file_list("@", &[".github/workflows".to_string()]) {
+        Ok(paths) => paths,
+        Err(e) => {
+            return CheckResult::Fail {
+                detail: format!("could not list workflows: {e}"),
+            };
+        }
+    };
+    let workflows: Vec<String> = tracked
+        .into_iter()
+        .filter(|p| p.ends_with(".yaml") || p.ends_with(".yml"))
+        .collect();
+    if workflows.is_empty() {
+        return CheckResult::Pass;
+    }
+    let mut cmd = Command::new("actionlint");
+    cmd.args(&workflows);
+    run_command(&mut cmd)
 }
 
 fn spawn_self(args: &[&str]) -> CheckResult {

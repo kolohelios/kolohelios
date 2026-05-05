@@ -1,8 +1,8 @@
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use clap::Subcommand;
+
+use crate::jj;
 
 const RED: &str = "\x1b[31m";
 const GREEN: &str = "\x1b[32m";
@@ -68,7 +68,7 @@ impl Issue {
 }
 
 fn check(paths: &[String]) -> bool {
-    let files = match git_ls_files(paths) {
+    let files = match list_tracked_files(paths) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("{RED}{BOLD}error:{RESET} {e}");
@@ -115,7 +115,7 @@ fn check(paths: &[String]) -> bool {
 }
 
 fn fix(paths: &[String]) -> bool {
-    let files = match git_ls_files(paths) {
+    let files = match list_tracked_files(paths) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("{RED}{BOLD}error:{RESET} {e}");
@@ -301,31 +301,21 @@ fn is_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(BINARY_PROBE).any(|&b| b == 0)
 }
 
-fn git_ls_files(paths: &[String]) -> Result<Vec<PathBuf>, String> {
-    let mut cmd = Command::new("git");
-    cmd.args(["ls-files", "-z", "--"]);
-    if paths.is_empty() {
-        cmd.arg(".");
+// Enumerate via jj rather than git so the listing reflects the calling
+// jj workspace's `@`. `git ls-files` reads the colocated index, which is
+// pinned to the primary workspace and never sees files added in a
+// sibling workspace's `@`. See issue #210.
+fn list_tracked_files(paths: &[String]) -> Result<Vec<PathBuf>, String> {
+    let owned: Vec<String>;
+    let arg_slice: &[String] = if paths.is_empty() {
+        owned = vec![".".to_string()];
+        &owned
     } else {
-        for p in paths {
-            cmd.arg(p);
-        }
-    }
-    let output = cmd
-        .output()
-        .map_err(|e| format!("failed to spawn git: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git ls-files failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    Ok(output
-        .stdout
-        .split(|&b| b == 0)
-        .filter(|s| !s.is_empty())
-        .map(|s| PathBuf::from(std::ffi::OsStr::from_bytes(s)))
-        .collect())
+        paths
+    };
+    jj::file_list("@", arg_slice)
+        .map(|files| files.into_iter().map(PathBuf::from).collect())
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
