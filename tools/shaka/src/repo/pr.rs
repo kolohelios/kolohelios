@@ -65,7 +65,7 @@ pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
 
     match gh::pr_for_head(&repo, &bookmark) {
         Ok(Some(pr)) => println!("{GREEN}{BOLD}pushed{RESET} (PR: {})", pr.url),
-        Ok(None) => match gh::pr_create(title, body, &bookmark) {
+        Ok(None) => match gh::pr_create(&repo, title, body, &bookmark) {
             Ok(url) => println!("{GREEN}{BOLD}created{RESET} ({url})"),
             Err(e) => {
                 eprintln!("{RED}{BOLD}pr create failed:{RESET} {e}");
