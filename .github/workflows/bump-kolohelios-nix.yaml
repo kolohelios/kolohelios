@@ -1,0 +1,76 @@
+name: Bump kolohelios-nix locks
+
+# Daily bump of the `kolohelios-nix` flake input across every consumer
+# (`apps/blogctl`, `infra/devbox`, `tools/shaka`). When at least one
+# consumer's lock changes, opens a single lockstep PR (`bot/bump-kolohelios-nix`).
+# If a PR is already open for that branch, force-pushes fresher locks
+# onto it instead of opening a duplicate. No auto-merge.
+#
+# All branch / commit / push / PR-or-update logic lives in
+# `shaka repo bump-locks --pr-branch <name>`. This workflow is the thin
+# scheduler that calls it with the right credentials.
+#
+# Authenticates as the `kolohelios-bot` GitHub App so the resulting push
+# re-triggers the PR's normal CI (which pushes via the default
+# `GITHUB_TOKEN` do not).
+on:
+  schedule:
+    # 00:00 UTC daily. Picks up new `kolohelios-nix` releases ≤24h after
+    # publish.
+    - cron: "0 0 * * *"
+  # Manual trigger for ad-hoc bumps and verification after rotating the
+  # bot's credentials.
+  workflow_dispatch:
+
+# A second invocation that lands while we're still bumping would race on
+# the bot branch. Cancel any in-flight run; the new one will see the
+# latest state.
+concurrency:
+  group: bump-kolohelios-nix
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # `id-token: write` lets DeterminateSystems/nix-installer-action mint
+    # an OIDC token for FlakeHub, which `nix develop ./tools/shaka` and
+    # `nix flake update kolohelios-nix` both need to fetch the private
+    # `kolohelios-nix` flake.
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.KOLOHELIOS_BOT_APP_ID }}
+          private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: actions/cache@v5
+        with:
+          path: |
+            tools/shaka/target/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+          key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Configure git identity
+        run: |
+          git config --global user.name 'kolohelios-bot[bot]'
+          git config --global user.email '${{ vars.KOLOHELIOS_BOT_APP_ID }}+kolohelios-bot[bot]@users.noreply.github.com'
+      - name: Bump kolohelios-nix and open or update PR
+        run: |
+          nix develop ./tools/shaka --command \
+            tools/shaka/bin/shaka repo bump-locks \
+              --input kolohelios-nix \
+              --pr-branch bot/bump-kolohelios-nix
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

@@ -52,10 +52,14 @@ hand. CI fails on drift.
   appropriate flake when you `cd` into a project (each has a `.envrc` with
   `use flake`).
 - **`kolohelios-nix`** (`nix/kolohelios-nix/`) is the shared lib every
-  consumer flake imports as a `path:` input, with
+  consumer flake imports via the FlakeHub URL
+  (`https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz`), with
   `nixpkgs.follows = "kolohelios-nix/nixpkgs"`. It exports
   `lib.forEachSupportedSystem`, `lib.workflowPackages`, and `formatter` so
   consumers stay thin. Published to FlakeHub by the `build-nix-lib` CI job.
+  The audit rule `kolohelios-nix-via-flakehub` (in `shaka project audit`)
+  enforces the FlakeHub URL form so no consumer drifts back to a `path:`
+  input.
 - **`just`** as the command runner for **per-project** recipes (`build`,
   `test`, `fmt-check`, `lint`, `validate`). There is no cross-project root
   justfile — for repo-wide validation, run `shaka preflight` directly.
@@ -182,6 +186,32 @@ workflow run goes red.
   names, and rotation steps live in `.github/auto-rebase-app.md`.
 - See also #147 (`shaka repo rebase-wip`), the local-side companion
   for branches you're actively iterating on.
+
+### Daily kolohelios-nix lock bump
+
+`.github/workflows/bump-kolohelios-nix.yaml` runs daily at 00:00 UTC
+(also `workflow_dispatch:` for manual triggers). It runs
+`shaka repo bump-locks --input kolohelios-nix --pr-branch
+bot/bump-kolohelios-nix`, which:
+
+1. Walks every project, runs `nix flake update kolohelios-nix` inside
+   each that consumes the input, and notes which `flake.lock`s changed.
+2. If anything changed, branches off `main`, commits all changed
+   `flake.lock`s in one commit titled
+   `chore(deps): bump kolohelios-nix flake input`, and force-pushes
+   to `bot/bump-kolohelios-nix`.
+3. Opens a single lockstep PR; if one is already open for that branch,
+   the force-push updates it in place instead of creating a duplicate.
+
+No auto-merge — the PR is reviewed and merged manually after CI is
+green. The `kolohelios-nix-via-flakehub` audit rule guarantees that
+every consumer pins via the FlakeHub URL, so the bumper's grep-based
+discovery is safe.
+
+The workflow authenticates as the `kolohelios-bot` GitHub App (same
+secret/variable as `auto-rebase-prs.yaml`) so the post-bump push
+re-triggers the PR's normal CI — pushes via the default
+`GITHUB_TOKEN` do not.
 
 ### Working with jj
 

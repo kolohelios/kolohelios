@@ -1,6 +1,7 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::gh::{self, PrState};
 use crate::project::schema_check;
 
 const GREEN: &str = "\x1b[32m";
@@ -18,7 +19,7 @@ enum BumpResult {
     Failed(String),
 }
 
-pub fn run(input: String) {
+pub fn run(input: String, pr_branch: Option<String>) {
     let projects = schema_check::discover(Path::new("."));
     if projects.is_empty() {
         println!("{YELLOW}no projects found{RESET}");
@@ -27,7 +28,7 @@ pub fn run(input: String) {
 
     println!("{BOLD}bump-locks:{RESET} input `{input}`");
 
-    let mut updated = 0usize;
+    let mut updated_paths: Vec<PathBuf> = Vec::new();
     let mut unchanged = 0usize;
     let mut skipped = 0usize;
     let mut failed = 0usize;
@@ -37,7 +38,7 @@ pub fn run(input: String) {
         match bump_one(project, &input) {
             BumpResult::Updated => {
                 println!("  {GREEN}{BOLD}updated{RESET}   {display}");
-                updated += 1;
+                updated_paths.push(project.clone());
             }
             BumpResult::Unchanged => {
                 println!("  {DIM}unchanged{RESET} {display}");
@@ -55,13 +56,21 @@ pub fn run(input: String) {
 
     println!();
     println!(
-        "{} projects scanned, {updated} updated, {unchanged} unchanged, {skipped} skipped",
+        "{} projects scanned, {} updated, {unchanged} unchanged, {skipped} skipped",
         projects.len(),
+        updated_paths.len(),
     );
 
     if failed > 0 {
         eprintln!("{RED}{BOLD}bump-locks failed{RESET} ({failed} failure(s))");
         std::process::exit(1);
+    }
+
+    if let Some(branch) = pr_branch {
+        if let Err(e) = publish_pr(&input, &branch, &updated_paths) {
+            eprintln!("{RED}{BOLD}publish failed:{RESET} {e}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -99,6 +108,55 @@ fn bump_one(project: &Path, input: &str) -> BumpResult {
     } else {
         BumpResult::Updated
     }
+}
+
+fn publish_pr(input: &str, branch: &str, updated: &[PathBuf]) -> Result<(), String> {
+    if updated.is_empty() {
+        println!("{DIM}no changes to publish{RESET}");
+        return Ok(());
+    }
+
+    git(&["checkout", "-B", branch])?;
+    git(&["add", "-A"])?;
+    let title = format!("chore(deps): bump {input} flake input");
+    git(&["commit", "-m", &title])?;
+    git(&["push", "--force-with-lease", "origin", branch])?;
+
+    let repo = gh::detect_repo_or_env().map_err(|e| e.message)?;
+    if let Some(pr) = gh::pr_for_head(&repo, branch).map_err(|e| e.message)? {
+        if pr.state == PrState::Open {
+            println!("{GREEN}{BOLD}updated existing PR:{RESET} {}", pr.url);
+            return Ok(());
+        }
+    }
+
+    let body = format_pr_body(input, updated);
+    let url = gh::pr_create(&repo, &title, &body, branch).map_err(|e| e.message)?;
+    println!("{GREEN}{BOLD}created PR:{RESET} {url}");
+    Ok(())
+}
+
+fn git(args: &[&str]) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|e| format!("failed to spawn git {}: {e}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {}: {}", args.join(" "), stderr.trim()));
+    }
+    Ok(())
+}
+
+fn format_pr_body(input: &str, updated: &[PathBuf]) -> String {
+    let mut body =
+        format!("Automated daily bump of `{input}` across all FlakeHub-pinned consumers.\n\n");
+    body.push_str("Updated `flake.lock` in:\n");
+    for project in updated {
+        body.push_str(&format!("- `{}`\n", project.display()));
+    }
+    body.push_str("\nNo auto-merge. Review the lockfile diff and merge when CI is green.\n");
+    body
 }
 
 // Returns true iff `flake.nix` contents declare `input_name` as a flake
@@ -168,5 +226,20 @@ mod tests {
         // `foo-bar.url` is not the `foo` input even though it starts with `foo`.
         let nix = "{\n  inputs.foo-bar.url = \"x\";\n}\n";
         assert!(!references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn pr_body_lists_each_updated_project() {
+        let body = format_pr_body(
+            "kolohelios-nix",
+            &[
+                PathBuf::from("./apps/blogctl"),
+                PathBuf::from("./infra/devbox"),
+            ],
+        );
+        assert!(body.contains("`kolohelios-nix`"));
+        assert!(body.contains("./apps/blogctl"));
+        assert!(body.contains("./infra/devbox"));
+        assert!(body.contains("No auto-merge"));
     }
 }
