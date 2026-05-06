@@ -281,11 +281,15 @@ hand for now — `project new` only ships the rust template:
 
 ## Workspaces
 
-**Every issue gets its own `shaka workspace`.** `/start` invokes
-`shaka workspace new --issue <N>` by default; the user can opt out
-("in-place") for trivial doc tweaks. The primary tree is reserved for
-sync, audit, and cross-cutting reads — never carrying WIP for the
-issue you're picking up.
+**Every issue gets its own `shaka workspace` — and the primary tree is
+off-limits for issue work.** Before your first `Edit` or `Write` in
+this repo, verify cwd ends in `kolohelios-i<N>/` (a workspace), not
+bare `kolohelios/` (the primary tree). If you're in primary, **stop
+and create the workspace first** — don't edit-now-reshuffle-later.
+
+`/start` invokes `shaka workspace new --issue <N>` by default. The
+primary tree is reserved for sync, audit, and cross-cutting reads —
+never carrying WIP for the issue you're picking up.
 
 Why workspace-per-issue is the default:
 
@@ -332,6 +336,10 @@ restate two rules that `/start` and `/ship` would otherwise enforce:
 
 ## Things to avoid
 
+- **Don't edit code in the primary tree.** Issue work belongs in a
+  `shaka workspace` — see [Workspaces](#workspaces). If you catch
+  yourself about to run `Edit` or `Write` from bare `kolohelios/`
+  (not `kolohelios-i<N>/`), stop and create a workspace first.
 - **Don't edit generated `justfile`s.** They carry a "Do not edit by hand"
   header and CI fails on drift. Change
   `tools/shaka/src/project/generate_justfiles.rs` instead.
