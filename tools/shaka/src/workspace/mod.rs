@@ -9,11 +9,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 
-const RED: &str = "\x1b[31m";
-const GREEN: &str = "\x1b[32m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 #[derive(Subcommand)]
 pub enum WorkspaceCommand {

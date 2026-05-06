@@ -1,11 +1,6 @@
 use crate::gh;
 use crate::jj;
-
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const YELLOW: &str = "\x1b[33m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
 
 pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
     let description = match jj::current_description() {

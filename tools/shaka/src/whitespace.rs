@@ -3,13 +3,7 @@ use std::path::{Path, PathBuf};
 use clap::Subcommand;
 
 use crate::jj;
-
-const RED: &str = "\x1b[31m";
-const GREEN: &str = "\x1b[32m";
-const YELLOW: &str = "\x1b[33m";
-const DIM: &str = "\x1b[2m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 const BOM: &[u8] = b"\xef\xbb\xbf";
 const BINARY_PROBE: usize = 8192;

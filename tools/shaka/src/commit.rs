@@ -3,12 +3,7 @@ use std::process::Command;
 
 use clap::Subcommand;
 
-const RED: &str = "\x1b[31m";
-const YELLOW: &str = "\x1b[33m";
-const GREEN: &str = "\x1b[32m";
-const DIM: &str = "\x1b[2m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 const TYPES: &[&str] = &[
     "feat", "fix", "docs", "chore", "refactor", "test", "style", "perf", "ci", "build",

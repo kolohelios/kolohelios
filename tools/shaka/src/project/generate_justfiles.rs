@@ -4,12 +4,7 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const YELLOW: &str = "\x1b[33m";
-const DIM: &str = "\x1b[2m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 const SCHEMA: &str = include_str!("../../schema/project.cue");
 const SLOTS: &[&str] = &["apps", "infra", "nix", "packages", "services", "tools"];

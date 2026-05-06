@@ -2,13 +2,7 @@ use serde::Serialize;
 
 use crate::gh;
 use crate::jj;
-
-const GREEN: &str = "\x1b[32m";
-const YELLOW: &str = "\x1b[33m";
-const RED: &str = "\x1b[31m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 #[derive(Serialize)]
 struct Status {

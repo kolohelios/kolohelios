@@ -3,11 +3,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::gh;
-
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, GREEN, RED, RESET};
 
 // Every open issue must carry at least one of these labels. New scope
 // labels must be added here AND created in the repo (`gh label create`).
