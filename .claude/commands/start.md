@@ -44,9 +44,9 @@ the relevant files directly. Don't guess; read the referenced material.
 
 ### 2. Create a workspace
 
-**Default: every issue gets its own `shaka workspace`.** This keeps the
-primary tree clean for sync, audit, and cross-cutting reads, and it means
-the user's WIP elsewhere is undisturbed.
+**Every issue gets its own `shaka workspace` — no exceptions.** This keeps
+the primary tree clean for sync, audit, and cross-cutting reads, and it
+means the user's WIP elsewhere is undisturbed.
 
 ```
 tools/shaka/bin/shaka workspace new --issue $1
@@ -55,13 +55,6 @@ tools/shaka/bin/shaka workspace new --issue $1
 This creates a sibling working copy at `../kolohelios-i$1` parented on the
 current `main@origin` (already up-to-date from the previous step's fetch).
 If the command errors (path collision, repo lock), stop and report.
-
-**Opt-out:** if the user explicitly asks to work in-place ("in-place", "in
-primary", or similar), skip workspace creation. Then run `shaka repo status
---json` in primary — if `dirty.total > 0` or `ahead > 0` and `bookmarks` is
-empty, surface the WIP and let the user decide before proceeding. The
-in-place path is reserved for trivial doc tweaks; default to workspace
-otherwise.
 
 ### 3. Create the bookmark
 
@@ -84,8 +77,6 @@ workspace path (`/Users/jedwards/code/kolohelios-i$1`):
 ```
 jj bookmark create <name> -r @
 ```
-
-For the in-place opt-out path, run from the primary tree.
 
 ### 4. Plan and confirm
 
@@ -110,7 +101,6 @@ confirm or redirect before writing any code.
 Halt and report to the user when:
 
 - `shaka workspace new` errors (path collision, repo lock)
-- In the in-place opt-out path: `@` has WIP without a bookmark
 - `shaka issue brief` fails (issue doesn't exist, auth missing)
 - The issue title doesn't yield an obvious conventional type and labels
   don't disambiguate
