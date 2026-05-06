@@ -106,7 +106,7 @@ the current change set. Two things to remember when adding one:
   not `GITHUB_TOKEN`.** Pushes via `GITHUB_TOKEN` don't re-trigger CI
   on the destination branch; this is a documented GitHub limitation.
   See `.github/auto-rebase-app.md` for the `kolohelios-bot` setup
-  pattern (mint via `actions/create-github-app-token@v2`, pass to
+  pattern (mint via `actions/create-github-app-token@v3`, pass to
   `actions/checkout` and `GH_TOKEN`).
 
 ### Running `shaka`
