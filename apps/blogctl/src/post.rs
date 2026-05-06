@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use crate::error::{Error, Result};
+use crate::kind::Kind;
 use crate::stage::Stage;
 
 /// Frontmatter metadata. Mirrors the YAML block at the top of every post
@@ -13,6 +14,7 @@ use crate::stage::Stage;
 pub struct PostMetadata {
     pub title: String,
     pub slug: String,
+    pub kind: Kind,
     pub status: Stage,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
@@ -136,6 +138,7 @@ mod tests {
         PostMetadata {
             title: "Example Title".into(),
             slug: "example-title".into(),
+            kind: Kind::Post,
             status: Stage::Concept,
             created_at: datetime!(2026-05-03 00:00:00 UTC),
             updated_at: datetime!(2026-05-03 00:00:00 UTC),
@@ -154,6 +157,7 @@ mod tests {
         let raw = r#"---
 title: "Example Title"
 slug: example-title
+kind: post
 status: concept
 created_at: 2026-05-03T00:00:00Z
 updated_at: 2026-05-03T00:00:00Z
@@ -167,11 +171,47 @@ Draft text here.
         let post = parse(raw).unwrap();
         assert_eq!(post.metadata.title, "Example Title");
         assert_eq!(post.metadata.slug, "example-title");
+        assert_eq!(post.metadata.kind, Kind::Post);
         assert_eq!(post.metadata.status, Stage::Concept);
         assert!(post.metadata.tags.is_empty());
         assert!(post.metadata.todoist_task_id.is_none());
         assert!(!post.metadata.history_checked);
         assert_eq!(post.body, "\nDraft text here.\n");
+    }
+
+    #[test]
+    fn parse_round_trips_article_kind() {
+        let raw = r#"---
+title: "Long-form essay"
+slug: long-form-essay
+kind: article
+status: ideation
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+---
+
+Body.
+"#;
+        let post = parse(raw).unwrap();
+        assert_eq!(post.metadata.kind, Kind::Article);
+    }
+
+    #[test]
+    fn parse_rejects_unknown_kind() {
+        let raw = r#"---
+title: "X"
+slug: x
+kind: essay
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+---
+
+Body.
+"#;
+        assert!(matches!(parse(raw), Err(Error::FrontmatterParse { .. })));
     }
 
     #[test]
@@ -227,7 +267,7 @@ Draft text here.
 
     #[test]
     fn parse_tolerates_body_lines_starting_with_dashes() {
-        let raw = "---\ntitle: T\nslug: t\nstatus: concept\ncreated_at: 2026-05-03T00:00:00Z\nupdated_at: 2026-05-03T00:00:00Z\ntags: []\n---\n\n--- not a delimiter ---\n";
+        let raw = "---\ntitle: T\nslug: t\nkind: post\nstatus: concept\ncreated_at: 2026-05-03T00:00:00Z\nupdated_at: 2026-05-03T00:00:00Z\ntags: []\n---\n\n--- not a delimiter ---\n";
         let post = parse(raw).unwrap();
         assert!(post.body.contains("--- not a delimiter ---"));
     }

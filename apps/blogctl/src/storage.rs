@@ -9,9 +9,12 @@ use crate::post::{Post, PostMetadata};
 use crate::stage::Stage;
 
 const CONFIG_FILE: &str = ".blog-os.toml";
-const HISTORY_DIR: &str = "history";
-const HISTORY_PUBLISHED: &str = "history/published-posts";
-const PROMPTS_DIR: &str = "prompts";
+const README_FILE: &str = "README.md";
+
+/// Canonical workdir README, baked in at build time. `init` writes this
+/// file when one is not already present; `readme regenerate` overwrites
+/// whatever is currently there.
+pub const README_TEMPLATE: &str = include_str!("../templates/workdir-readme.md");
 
 /// On-disk config persisted at `<workdir>/.blog-os.toml`. Versioned so we
 /// can evolve the schema as features land (OpenRouter, Todoist, …).
@@ -50,6 +53,10 @@ impl Workdir {
         self.root.join(CONFIG_FILE)
     }
 
+    pub fn readme_path(&self) -> PathBuf {
+        self.root.join(README_FILE)
+    }
+
     pub fn stage_dir(&self, stage: Stage) -> PathBuf {
         self.root.join(stage.dirname())
     }
@@ -58,16 +65,11 @@ impl Workdir {
         self.stage_dir(stage).join(format!("{slug}.md"))
     }
 
-    /// All directories that should exist after `init`. Stage directories
-    /// hold drafts; `history/` and `prompts/` are reserved for future
-    /// features but are scaffolded eagerly so users don't have to mkdir
-    /// before first use.
+    /// All directories that should exist after `init`. Only the stage
+    /// directories — prompt files live at the workdir root next to
+    /// `.blog-os.toml` and `README.md`.
     pub fn directories(&self) -> Vec<PathBuf> {
-        let mut dirs: Vec<PathBuf> = Stage::ALL.iter().map(|s| self.stage_dir(*s)).collect();
-        dirs.push(self.root.join(HISTORY_DIR));
-        dirs.push(self.root.join(HISTORY_PUBLISHED));
-        dirs.push(self.root.join(PROMPTS_DIR));
-        dirs
+        Stage::ALL.iter().map(|s| self.stage_dir(*s)).collect()
     }
 }
 
@@ -117,6 +119,7 @@ impl Repository {
         let config_path = self.workdir.config_path();
         let serialized = toml::to_string(&Config::current()).map_err(Error::ConfigSerialize)?;
         fs::write(&config_path, serialized).map_err(|e| Error::io(&config_path, e))?;
+        self.write_readme(false)?;
         Ok(())
     }
 
@@ -124,6 +127,19 @@ impl Repository {
         let path = self.workdir.config_path();
         let raw = fs::read_to_string(&path).map_err(|e| Error::io(&path, e))?;
         toml::from_str(&raw).map_err(|source| Error::ConfigParse { path, source })
+    }
+
+    /// Write the canonical README into the workdir. Returns `true` if
+    /// the file was (over)written, `false` if a README already existed
+    /// and `force` was false (init's path — preserves a user's
+    /// pre-existing README).
+    pub fn write_readme(&self, force: bool) -> Result<bool> {
+        let path = self.workdir.readme_path();
+        if path.exists() && !force {
+            return Ok(false);
+        }
+        fs::write(&path, README_TEMPLATE).map_err(|e| Error::io(&path, e))?;
+        Ok(true)
     }
 
     /// Persist a brand-new post in its claimed stage directory. Fails if
@@ -281,6 +297,7 @@ mod tests {
             PostMetadata {
                 title: format!("Title {slug}"),
                 slug: slug.to_string(),
+                kind: crate::kind::Kind::Post,
                 status: stage,
                 created_at: datetime!(2026-05-03 00:00:00 UTC),
                 updated_at: datetime!(2026-05-03 00:00:00 UTC),
@@ -300,14 +317,19 @@ mod tests {
     }
 
     #[test]
-    fn init_creates_every_stage_and_extension_directory() {
+    fn init_creates_every_stage_directory_and_config() {
         let (tmp, _repo) = fresh_repo();
         for &stage in Stage::ALL {
             assert!(tmp.path().join(stage.dirname()).is_dir(), "{}", stage);
         }
-        assert!(tmp.path().join("history/published-posts").is_dir());
-        assert!(tmp.path().join("prompts").is_dir());
         assert!(tmp.path().join(".blog-os.toml").is_file());
+    }
+
+    #[test]
+    fn init_does_not_create_prompts_or_history_subdirs() {
+        let (tmp, _repo) = fresh_repo();
+        assert!(!tmp.path().join("prompts").exists());
+        assert!(!tmp.path().join("history").exists());
     }
 
     #[test]
@@ -315,6 +337,48 @@ mod tests {
         let (_tmp, repo) = fresh_repo();
         let cfg = repo.read_config().unwrap();
         assert_eq!(cfg.version, Config::CURRENT_VERSION);
+    }
+
+    #[test]
+    fn init_writes_readme_with_setup_directives() {
+        let (tmp, _repo) = fresh_repo();
+        let readme =
+            fs::read_to_string(tmp.path().join("README.md")).expect("README.md present after init");
+        assert!(readme.contains("jj git init --colocate"));
+        assert!(readme.contains("--allow-new"));
+        assert!(readme.contains("--allow-backwards"));
+        assert!(readme.contains("blogctl readme regenerate"));
+    }
+
+    #[test]
+    fn init_preserves_a_pre_existing_readme() {
+        let tmp = TempDir::new().unwrap();
+        let custom = "my hand-rolled README\n";
+        fs::write(tmp.path().join("README.md"), custom).unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        repo.init().unwrap();
+        let readme = fs::read_to_string(tmp.path().join("README.md")).unwrap();
+        assert_eq!(readme, custom, "init must not clobber a user's README");
+    }
+
+    #[test]
+    fn write_readme_force_overwrites_existing() {
+        let (tmp, repo) = fresh_repo();
+        fs::write(tmp.path().join("README.md"), "stale").unwrap();
+        let written = repo.write_readme(true).unwrap();
+        assert!(written);
+        let readme = fs::read_to_string(tmp.path().join("README.md")).unwrap();
+        assert!(readme.contains("jj git init --colocate"));
+    }
+
+    #[test]
+    fn write_readme_without_force_skips_existing() {
+        let (tmp, repo) = fresh_repo();
+        fs::write(tmp.path().join("README.md"), "user wrote this").unwrap();
+        let written = repo.write_readme(false).unwrap();
+        assert!(!written, "expected write_readme(false) to skip");
+        let readme = fs::read_to_string(tmp.path().join("README.md")).unwrap();
+        assert_eq!(readme, "user wrote this");
     }
 
     #[test]

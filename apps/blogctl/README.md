@@ -1,14 +1,14 @@
 # blogctl
 
 CLI for managing Markdown blog post drafts across a linear workflow.
-Drafts and prompts live in a private workdir outside this repo (passed via
+Drafts live in a private workdir outside this repo (passed via
 `--workdir`); `blogctl` itself ships only as tooling.
 
 ## Workflow stages
 
 ```
 concept → ideation → editing → final-editing → published
-                                                  archive (terminal)
+                                                  abandoned (terminal)
 ```
 
 Stage is encoded in two places that must agree: the directory the file
@@ -24,16 +24,16 @@ loudly on any mismatch.
   editing/
   final-editing/
   published/
-  archive/
-  history/
-    published-posts/
-  prompts/
+  abandoned/
   .blog-os.toml
+  README.md
+  <prompt files>
 ```
 
-`history/` and `prompts/` are reserved extension points for upcoming
-features (historical-consistency checks, OpenRouter prompt loading); they
-are scaffolded eagerly by `init`.
+`init` writes the stage directories, `.blog-os.toml`, and a generated
+`README.md`. Prompt files (loaded by future OpenRouter integration) live
+at the workdir root next to the config; refresh the README from
+`blogctl`'s baked-in template via `blogctl readme regenerate`.
 
 ## Commands
 
@@ -50,7 +50,7 @@ blogctl demote  <slug> --workdir <path>
 title (override with `--slug`). `promote`/`demote` move the file across
 stage directories and rewrite `status:` and `updated_at:` in the
 frontmatter. `published` won't demote without a future `--force` flag;
-`archive` is reserved for a future explicit transition.
+`abandoned` is reserved for a future explicit transition.
 
 ## Markdown file format
 

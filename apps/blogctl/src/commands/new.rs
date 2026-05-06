@@ -3,12 +3,18 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 
 use crate::error::Result;
+use crate::kind::Kind;
 use crate::post::{Post, PostMetadata};
 use crate::stage::Stage;
 use crate::storage::{Repository, Workdir};
 use crate::{slug, Error};
 
-pub fn run(title: String, workdir: PathBuf, slug_override: Option<String>) -> Result<()> {
+pub fn run(
+    title: String,
+    workdir: PathBuf,
+    slug_override: Option<String>,
+    kind: Kind,
+) -> Result<()> {
     if title.trim().is_empty() {
         return Err(Error::EmptyTitle(title));
     }
@@ -23,6 +29,7 @@ pub fn run(title: String, workdir: PathBuf, slug_override: Option<String>) -> Re
     let metadata = PostMetadata {
         title,
         slug: resolved_slug.clone(),
+        kind,
         status: Stage::Concept,
         created_at: now,
         updated_at: now,

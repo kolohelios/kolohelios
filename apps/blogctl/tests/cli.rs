@@ -52,11 +52,15 @@ fn init_creates_expected_layout() {
         "editing",
         "final-editing",
         "published",
-        "archive",
-        "history/published-posts",
-        "prompts",
+        "abandoned",
     ] {
         assert!(tmp.path().join(d).is_dir(), "missing dir after init: {d}");
+    }
+    for absent in ["history", "prompts"] {
+        assert!(
+            !tmp.path().join(absent).exists(),
+            "should not create {absent}/"
+        );
     }
     assert!(tmp.path().join(".blog-os.toml").is_file());
 }
@@ -184,4 +188,55 @@ fn new_accepts_explicit_slug_override() {
         "new with --slug",
     );
     assert!(tmp.path().join("concepts/short.md").is_file());
+}
+
+#[test]
+fn init_writes_readme_template() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    let readme =
+        std::fs::read_to_string(tmp.path().join("README.md")).expect("README.md after init");
+    for needle in [
+        "jj git init --colocate",
+        "--allow-new",
+        "--allow-backwards",
+        "kind: post",
+    ] {
+        assert!(readme.contains(needle), "README missing {needle:?}");
+    }
+}
+
+#[test]
+fn readme_regenerate_overwrites_user_edits() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    std::fs::write(tmp.path().join("README.md"), "stale\n").unwrap();
+    assert_success(
+        &run(&["readme", "regenerate", "--workdir", &wd]),
+        "readme regenerate",
+    );
+    let readme = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
+    assert!(readme.contains("jj git init --colocate"));
+}
+
+#[test]
+fn new_writes_kind_into_frontmatter() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(
+        &run(&["new", "Long Form", "--workdir", &wd, "--kind", "article"]),
+        "new --kind article",
+    );
+    let body = std::fs::read_to_string(tmp.path().join("concepts/long-form.md")).unwrap();
+    assert!(body.contains("kind: article"));
+
+    assert_success(&run(&["new", "Short", "--workdir", &wd]), "new (default)");
+    let body = std::fs::read_to_string(tmp.path().join("concepts/short.md")).unwrap();
+    assert!(body.contains("kind: post"));
 }

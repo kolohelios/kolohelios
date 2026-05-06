@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 
 use crate::commands;
 use crate::error::Result;
+use crate::kind::Kind;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -31,6 +32,10 @@ pub enum Command {
         /// Override the auto-derived slug.
         #[arg(long)]
         slug: Option<String>,
+        /// Surface this targets: `post` (short-form feed) or `article`
+        /// (long-form). Drives prompt/exit-criteria selection downstream.
+        #[arg(long, value_enum, default_value_t = Kind::Post)]
+        kind: Kind,
     },
     /// List every post in the workdir, grouped by stage.
     List {
@@ -55,6 +60,22 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         workdir: PathBuf,
     },
+    /// Manage the generated workdir `README.md`.
+    Readme {
+        #[command(subcommand)]
+        action: ReadmeAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ReadmeAction {
+    /// Overwrite the workdir `README.md` with the canonical template
+    /// baked into `blogctl`. Use after a `blogctl` upgrade to pick up
+    /// template changes.
+    Regenerate {
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -69,11 +90,15 @@ pub fn dispatch(cmd: Command) -> Result<()> {
             title,
             workdir,
             slug,
-        } => commands::new::run(title, workdir, slug),
+            kind,
+        } => commands::new::run(title, workdir, slug, kind),
         Command::List { workdir } => commands::list::run(workdir),
         Command::Show { slug, workdir } => commands::show::run(slug, workdir),
         Command::Promote { slug, workdir } => commands::promote::run(slug, workdir),
         Command::Demote { slug, workdir } => commands::demote::run(slug, workdir),
+        Command::Readme { action } => match action {
+            ReadmeAction::Regenerate { workdir } => commands::readme::regenerate(workdir),
+        },
     }
 }
 
@@ -96,13 +121,37 @@ mod tests {
                 "--slug",
                 "hello",
             ],
+            vec![
+                "blogctl",
+                "new",
+                "Hello",
+                "--workdir",
+                "/tmp/wd",
+                "--kind",
+                "article",
+            ],
             vec!["blogctl", "list", "--workdir", "/tmp/wd"],
             vec!["blogctl", "show", "hello", "--workdir", "/tmp/wd"],
             vec!["blogctl", "promote", "hello", "--workdir", "/tmp/wd"],
             vec!["blogctl", "demote", "hello", "--workdir", "/tmp/wd"],
+            vec!["blogctl", "readme", "regenerate", "--workdir", "/tmp/wd"],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }
+    }
+
+    #[test]
+    fn new_rejects_unknown_kind() {
+        let args = vec![
+            "blogctl",
+            "new",
+            "Hello",
+            "--workdir",
+            "/tmp/wd",
+            "--kind",
+            "essay",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
     }
 
     #[test]
