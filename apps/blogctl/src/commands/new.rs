@@ -14,6 +14,7 @@ pub fn run(
     workdir: PathBuf,
     slug_override: Option<String>,
     kind: Kind,
+    theme: Option<String>,
 ) -> Result<()> {
     if title.trim().is_empty() {
         return Err(Error::EmptyTitle(title));
@@ -24,12 +25,22 @@ pub fn run(
     };
 
     let repo = Repository::open(Workdir::new(&workdir))?;
+    let config = repo.read_config()?;
+    let resolved_theme = theme.unwrap_or_else(|| config.defaults.theme.clone());
+    if !config.themes.contains_key(&resolved_theme) {
+        let known: Vec<String> = config.themes.keys().cloned().collect();
+        return Err(Error::UnknownTheme {
+            theme: resolved_theme,
+            known,
+        });
+    }
 
     let now = OffsetDateTime::now_utc();
     let metadata = PostMetadata {
         title,
         slug: resolved_slug.clone(),
         kind,
+        theme: resolved_theme,
         status: Stage::Concept,
         created_at: now,
         updated_at: now,

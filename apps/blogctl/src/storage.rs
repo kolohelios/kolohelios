@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,15 @@ use crate::stage::Stage;
 const CONFIG_FILE: &str = ".blog-os.toml";
 const README_FILE: &str = "README.md";
 
+/// Default narrative theme. Used by `PostMetadata`'s serde default and by
+/// `Config::current()` to seed `defaults.theme`.
+pub const DEFAULT_THEME: &str = "standard";
+
+/// Themes pre-declared by `init`. Keeps the validation list non-empty
+/// out of the box so `blogctl new --theme parable` works on a fresh
+/// workdir without the user editing the config first.
+const STARTER_THEMES: &[&str] = &["standard", "parable"];
+
 /// Canonical workdir README, baked in at build time. `init` writes this
 /// file when one is not already present; `readme regenerate` overwrites
 /// whatever is currently there.
@@ -21,14 +31,53 @@ pub const README_TEMPLATE: &str = include_str!("../templates/workdir-readme.md")
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
     pub version: u32,
+    #[serde(default)]
+    pub defaults: Defaults,
+    #[serde(default)]
+    pub themes: BTreeMap<String, ThemeConfig>,
+}
+
+/// Workdir-wide defaults. Currently just the theme `blogctl new` selects
+/// when `--theme` is not given; will grow as additional defaults land.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Defaults {
+    #[serde(default = "default_theme_name")]
+    pub theme: String,
+}
+
+impl Default for Defaults {
+    fn default() -> Self {
+        Self {
+            theme: DEFAULT_THEME.to_string(),
+        }
+    }
+}
+
+fn default_theme_name() -> String {
+    DEFAULT_THEME.to_string()
+}
+
+/// Per-theme configuration. The `prompts` map is reserved for the
+/// run-stage resolver (#233) — it stays empty in this slice but the
+/// schema slot is here so the file format doesn't churn later.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ThemeConfig {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prompts: BTreeMap<String, String>,
 }
 
 impl Config {
     pub const CURRENT_VERSION: u32 = 1;
 
     pub fn current() -> Self {
+        let themes = STARTER_THEMES
+            .iter()
+            .map(|name| (name.to_string(), ThemeConfig::default()))
+            .collect();
         Self {
             version: Self::CURRENT_VERSION,
+            defaults: Defaults::default(),
+            themes,
         }
     }
 }
@@ -298,6 +347,7 @@ mod tests {
                 title: format!("Title {slug}"),
                 slug: slug.to_string(),
                 kind: crate::kind::Kind::Post,
+                theme: DEFAULT_THEME.to_string(),
                 status: stage,
                 created_at: datetime!(2026-05-03 00:00:00 UTC),
                 updated_at: datetime!(2026-05-03 00:00:00 UTC),
@@ -337,6 +387,30 @@ mod tests {
         let (_tmp, repo) = fresh_repo();
         let cfg = repo.read_config().unwrap();
         assert_eq!(cfg.version, Config::CURRENT_VERSION);
+    }
+
+    #[test]
+    fn init_seeds_default_theme_and_starter_themes() {
+        let (_tmp, repo) = fresh_repo();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(cfg.defaults.theme, DEFAULT_THEME);
+        assert!(cfg.themes.contains_key("standard"));
+        assert!(cfg.themes.contains_key("parable"));
+    }
+
+    #[test]
+    fn config_with_only_version_back_fills_defaults_and_themes() {
+        let tmp = TempDir::new().unwrap();
+        // Simulate a workdir from before the themes field landed: just
+        // `version = 1` in the config file.
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        fs::write(repo.workdir().config_path(), "version = 1\n").unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(cfg.defaults.theme, DEFAULT_THEME);
+        assert!(cfg.themes.is_empty());
     }
 
     #[test]

@@ -36,6 +36,10 @@ pub enum Command {
         /// (long-form). Drives prompt/exit-criteria selection downstream.
         #[arg(long, value_enum, default_value_t = Kind::Post)]
         kind: Kind,
+        /// Narrative theme. Defaults to the workdir's
+        /// `defaults.theme`; must be declared in `[themes.*]`.
+        #[arg(long)]
+        theme: Option<String>,
     },
     /// List every post in the workdir, grouped by stage.
     List {
@@ -91,7 +95,8 @@ pub fn dispatch(cmd: Command) -> Result<()> {
             workdir,
             slug,
             kind,
-        } => commands::new::run(title, workdir, slug, kind),
+            theme,
+        } => commands::new::run(title, workdir, slug, kind, theme),
         Command::List { workdir } => commands::list::run(workdir),
         Command::Show { slug, workdir } => commands::show::run(slug, workdir),
         Command::Promote { slug, workdir } => commands::promote::run(slug, workdir),
@@ -129,6 +134,15 @@ mod tests {
                 "/tmp/wd",
                 "--kind",
                 "article",
+            ],
+            vec![
+                "blogctl",
+                "new",
+                "Hello",
+                "--workdir",
+                "/tmp/wd",
+                "--theme",
+                "parable",
             ],
             vec!["blogctl", "list", "--workdir", "/tmp/wd"],
             vec!["blogctl", "show", "hello", "--workdir", "/tmp/wd"],

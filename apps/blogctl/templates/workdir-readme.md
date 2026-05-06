@@ -32,6 +32,24 @@ blogctl new "Title" --workdir .                  # kind: post
 blogctl new "Title" --workdir . --kind article   # kind: article
 ```
 
+## Themes
+
+Themes are a narrative-style layer over the kind × stage grid. Each
+post declares a `theme:` in its frontmatter, validated against the
+`[themes.*]` table in `.blog-os.toml` at create time. `init` seeds two
+themes; you can add more by declaring `[themes.<name>]` in the config.
+
+- **`standard`** — default prose. Used when `--theme` is not given.
+- **`parable`** — allegorical narrative.
+
+```sh
+blogctl new "Title" --workdir .                   # theme: standard (default)
+blogctl new "Title" --workdir . --theme parable   # theme: parable
+```
+
+Theme drives prompt selection at `blogctl run-stage` time (model and
+exit criteria stay theme-agnostic for now).
+
 ## Layout
 
 ```
@@ -44,12 +62,12 @@ blogctl new "Title" --workdir . --kind article   # kind: article
   abandoned/
   .blog-os.toml
   README.md
-  <prompt files>          # e.g. ideation-post.md, editing-article.md
+  <prompt files>          # e.g. ideation-post-standard.md
 ```
 
 Prompt files live at the workdir root next to `.blog-os.toml`. They are
 loaded by the OpenRouter integration; naming follows the pattern
-`<stage>-<kind>.md`.
+`<stage>-<kind>-<theme>.md`.
 
 ## Version control
 
