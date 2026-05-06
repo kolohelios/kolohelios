@@ -39,6 +39,9 @@ pub enum Error {
     #[error("invalid stage {0:?}")]
     InvalidStage(String),
 
+    #[error("invalid kind {0:?}: expected `post` or `article`")]
+    InvalidKind(String),
+
     #[error("invalid slug {0:?}: {1}")]
     InvalidSlug(String, String),
 

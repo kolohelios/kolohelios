@@ -1,6 +1,7 @@
 ---
 title: "Approaching Polish"
 slug: approaching-polish
+kind: post
 status: final-editing
 created_at: 2026-05-03T00:00:00Z
 updated_at: 2026-05-03T11:00:00Z

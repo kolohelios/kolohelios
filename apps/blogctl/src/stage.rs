@@ -13,7 +13,7 @@ pub enum Stage {
     Editing,
     FinalEditing,
     Published,
-    Archive,
+    Abandoned,
 }
 
 impl Stage {
@@ -23,7 +23,7 @@ impl Stage {
         Stage::Editing,
         Stage::FinalEditing,
         Stage::Published,
-        Stage::Archive,
+        Stage::Abandoned,
     ];
 
     pub fn dirname(self) -> &'static str {
@@ -33,7 +33,7 @@ impl Stage {
             Stage::Editing => "editing",
             Stage::FinalEditing => "final-editing",
             Stage::Published => "published",
-            Stage::Archive => "archive",
+            Stage::Abandoned => "abandoned",
         }
     }
 
@@ -44,7 +44,7 @@ impl Stage {
             Stage::Editing => "editing",
             Stage::FinalEditing => "final-editing",
             Stage::Published => "published",
-            Stage::Archive => "archive",
+            Stage::Abandoned => "abandoned",
         }
     }
 
@@ -53,19 +53,19 @@ impl Stage {
     }
 
     /// Promote along the linear workflow: concept → ideation → editing →
-    /// final-editing → published. Archive and Published are terminal.
+    /// final-editing → published. Abandoned and Published are terminal.
     pub fn promote(self) -> Result<Stage> {
         match self {
             Stage::Concept => Ok(Stage::Ideation),
             Stage::Ideation => Ok(Stage::Editing),
             Stage::Editing => Ok(Stage::FinalEditing),
             Stage::FinalEditing => Ok(Stage::Published),
-            Stage::Published | Stage::Archive => Err(Error::PromoteFromTerminal(self)),
+            Stage::Published | Stage::Abandoned => Err(Error::PromoteFromTerminal(self)),
         }
     }
 
     /// Demote one step back. Concept can't demote; Published refuses
-    /// without an explicit force (a future flag); Archive can't demote.
+    /// without an explicit force (a future flag); Abandoned can't demote.
     pub fn demote(self) -> Result<Stage> {
         match self {
             Stage::Concept => Err(Error::DemoteFromInitial(self)),
@@ -73,7 +73,7 @@ impl Stage {
             Stage::Editing => Ok(Stage::Ideation),
             Stage::FinalEditing => Ok(Stage::Editing),
             Stage::Published => Err(Error::DemotePublished),
-            Stage::Archive => Err(Error::DemoteFromInitial(self)),
+            Stage::Abandoned => Err(Error::DemoteFromInitial(self)),
         }
     }
 }
@@ -93,7 +93,7 @@ impl FromStr for Stage {
             "editing" => Ok(Stage::Editing),
             "final-editing" => Ok(Stage::FinalEditing),
             "published" => Ok(Stage::Published),
-            "archive" => Ok(Stage::Archive),
+            "abandoned" => Ok(Stage::Abandoned),
             other => Err(Error::InvalidStage(other.to_string())),
         }
     }
@@ -118,9 +118,9 @@ mod tests {
     }
 
     #[test]
-    fn promote_from_archive_is_terminal() {
-        let err = Stage::Archive.promote().unwrap_err();
-        assert!(matches!(err, Error::PromoteFromTerminal(Stage::Archive)));
+    fn promote_from_abandoned_is_terminal() {
+        let err = Stage::Abandoned.promote().unwrap_err();
+        assert!(matches!(err, Error::PromoteFromTerminal(Stage::Abandoned)));
     }
 
     #[test]
