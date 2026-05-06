@@ -58,6 +58,8 @@ frontmatter. `published` won't demote without a future `--force` flag;
 ---
 title: "Example Title"
 slug: example-title
+kind: post
+theme: standard
 status: concept
 created_at: 2026-05-03T00:00:00Z
 updated_at: 2026-05-03T00:00:00Z
@@ -69,7 +71,10 @@ history_checked: false
 Draft text here.
 ```
 
-Timestamps are RFC 3339 UTC. The Markdown file is the source of truth.
+Timestamps are RFC 3339 UTC. `kind` is one of `post` or `article`;
+`theme` is any name declared in `.blog-os.toml`'s `[themes.*]` table
+(the binary seeds `standard` and `parable`). The Markdown file is the
+source of truth.
 
 ## Extension points
 

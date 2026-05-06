@@ -42,6 +42,9 @@ pub enum Error {
     #[error("invalid kind {0:?}: expected `post` or `article`")]
     InvalidKind(String),
 
+    #[error("unknown theme {theme:?}: known themes are {}", known.join(", "))]
+    UnknownTheme { theme: String, known: Vec<String> },
+
     #[error("invalid slug {0:?}: {1}")]
     InvalidSlug(String, String),
 

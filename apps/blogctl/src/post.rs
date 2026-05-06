@@ -6,6 +6,7 @@ use time::OffsetDateTime;
 use crate::error::{Error, Result};
 use crate::kind::Kind;
 use crate::stage::Stage;
+use crate::storage::DEFAULT_THEME;
 
 /// Frontmatter metadata. Mirrors the YAML block at the top of every post
 /// file. Fields stay required so a round-trip preserves shape; clients
@@ -15,6 +16,11 @@ pub struct PostMetadata {
     pub title: String,
     pub slug: String,
     pub kind: Kind,
+    /// Narrative theme. Validated against the workdir config's
+    /// `[themes.*]` table at `blogctl new` time; defaults to
+    /// `"standard"` on parse so posts predating this field still load.
+    #[serde(default = "default_theme")]
+    pub theme: String,
     pub status: Stage,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
@@ -26,6 +32,10 @@ pub struct PostMetadata {
     pub todoist_task_id: Option<String>,
     #[serde(default)]
     pub history_checked: bool,
+}
+
+fn default_theme() -> String {
+    DEFAULT_THEME.to_string()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +149,7 @@ mod tests {
             title: "Example Title".into(),
             slug: "example-title".into(),
             kind: Kind::Post,
+            theme: "standard".into(),
             status: Stage::Concept,
             created_at: datetime!(2026-05-03 00:00:00 UTC),
             updated_at: datetime!(2026-05-03 00:00:00 UTC),
@@ -158,6 +169,7 @@ mod tests {
 title: "Example Title"
 slug: example-title
 kind: post
+theme: parable
 status: concept
 created_at: 2026-05-03T00:00:00Z
 updated_at: 2026-05-03T00:00:00Z
@@ -172,11 +184,30 @@ Draft text here.
         assert_eq!(post.metadata.title, "Example Title");
         assert_eq!(post.metadata.slug, "example-title");
         assert_eq!(post.metadata.kind, Kind::Post);
+        assert_eq!(post.metadata.theme, "parable");
         assert_eq!(post.metadata.status, Stage::Concept);
         assert!(post.metadata.tags.is_empty());
         assert!(post.metadata.todoist_task_id.is_none());
         assert!(!post.metadata.history_checked);
         assert_eq!(post.body, "\nDraft text here.\n");
+    }
+
+    #[test]
+    fn parse_defaults_theme_to_standard_when_field_missing() {
+        let raw = r#"---
+title: "Pre-theme post"
+slug: pre-theme-post
+kind: post
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+---
+
+Body.
+"#;
+        let post = parse(raw).unwrap();
+        assert_eq!(post.metadata.theme, "standard");
     }
 
     #[test]

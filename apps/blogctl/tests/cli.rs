@@ -240,3 +240,36 @@ fn new_writes_kind_into_frontmatter() {
     let body = std::fs::read_to_string(tmp.path().join("concepts/short.md")).unwrap();
     assert!(body.contains("kind: post"));
 }
+
+#[test]
+fn new_writes_theme_into_frontmatter() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+
+    assert_success(&run(&["new", "Default", "--workdir", &wd]), "new (default)");
+    let body = std::fs::read_to_string(tmp.path().join("concepts/default.md")).unwrap();
+    assert!(body.contains("theme: standard"));
+
+    assert_success(
+        &run(&["new", "Allegory", "--workdir", &wd, "--theme", "parable"]),
+        "new --theme parable",
+    );
+    let body = std::fs::read_to_string(tmp.path().join("concepts/allegory.md")).unwrap();
+    assert!(body.contains("theme: parable"));
+}
+
+#[test]
+fn new_rejects_unknown_theme_with_known_list() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    let out = run(&["new", "Bogus", "--workdir", &wd, "--theme", "noir"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("unknown theme"), "stderr was: {err}");
+    assert!(err.contains("standard"), "stderr was: {err}");
+    assert!(err.contains("parable"), "stderr was: {err}");
+}
