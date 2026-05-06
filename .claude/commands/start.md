@@ -1,6 +1,6 @@
 ---
 description: Start working on a GitHub issue — create workspace, read, bookmark, and plan
-allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(shaka workspace new:*), Bash(jj *), Bash(gh issue view:*), Bash(gh issue list:*), Read, Glob, Grep
+allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(shaka workspace new:*), Bash(tools/shaka/bin/shaka issue brief:*), Bash(jj *), Read, Glob, Grep
 argument-hint: <issue-number>
 ---
 
@@ -19,27 +19,42 @@ assumptions, file reads, or plans from earlier work into the new task. Don't
 proceed unless the conversation is fresh or the user explicitly confirms it's
 fine to continue.
 
-### 1. Create a workspace
+### 1. Read the issue
+
+Fetch the issue body and any comments in one shot:
+
+```
+tools/shaka/bin/shaka issue brief $1
+```
+
+This runs `jj git fetch` (so the next step's workspace parents on the
+latest main), then prints a tree-formatted summary of the issue header,
+body, and comments. If the issue doesn't exist, `brief` exits non-zero
+with a clear error — stop and report rather than guessing.
+
+Summarize for the user from the brief output:
+
+- The scope (what the issue is asking for)
+- Acceptance criteria (explicit or implied)
+- Any constraints or conventions called out
+
+If the issue references other issues (`#NN`), files, or prior PRs, read
+those for context too — `shaka issue brief <N>` for sibling issues, or
+the relevant files directly. Don't guess; read the referenced material.
+
+### 2. Create a workspace
 
 **Default: every issue gets its own `shaka workspace`.** This keeps the
 primary tree clean for sync, audit, and cross-cutting reads, and it means
 the user's WIP elsewhere is undisturbed.
-
-Fetch first so the new workspace parents on the latest main:
-
-```
-jj git fetch
-```
-
-Then create the workspace:
 
 ```
 tools/shaka/bin/shaka workspace new --issue $1
 ```
 
 This creates a sibling working copy at `../kolohelios-i$1` parented on the
-current `main@origin`. If the command errors (path collision, repo lock),
-stop and report.
+current `main@origin` (already up-to-date from the previous step's fetch).
+If the command errors (path collision, repo lock), stop and report.
 
 **Opt-out:** if the user explicitly asks to work in-place ("in-place", "in
 primary", or similar), skip workspace creation. Then run `shaka repo status
@@ -47,18 +62,6 @@ primary", or similar), skip workspace creation. Then run `shaka repo status
 empty, surface the WIP and let the user decide before proceeding. The
 in-place path is reserved for trivial doc tweaks; default to workspace
 otherwise.
-
-### 2. Read the issue
-
-Run `gh issue view $1` and read the full body. If the issue has comments
-worth reading, run `gh issue view $1 --comments`. Summarize for the user:
-
-- The scope (what the issue is asking for)
-- Acceptance criteria (explicit or implied)
-- Any constraints or conventions called out
-
-If the issue references other issues (`#NN`), files, or prior PRs, read
-those for context too. Don't guess — read the actual referenced material.
 
 ### 3. Create the bookmark
 
@@ -108,7 +111,7 @@ Halt and report to the user when:
 
 - `shaka workspace new` errors (path collision, repo lock)
 - In the in-place opt-out path: `@` has WIP without a bookmark
-- `gh issue view` fails (issue doesn't exist, auth missing)
+- `shaka issue brief` fails (issue doesn't exist, auth missing)
 - The issue title doesn't yield an obvious conventional type and labels
   don't disambiguate
 - The user has not confirmed the plan
