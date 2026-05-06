@@ -4,12 +4,7 @@ use std::process::Command;
 use serde_json::json;
 
 use crate::gh::{self, OpenPr};
-
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const YELLOW: &str = "\x1b[33m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
 
 const STATUS_CONTEXT: &str = "auto-rebase";
 const OPT_OUT_LABEL: &str = "do-not-rebase";

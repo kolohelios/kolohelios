@@ -1,8 +1,6 @@
 use serde::Serialize;
 
-use super::{die, workspace_path, BOLD, DIM, GREEN, RED, RESET};
-
-const YELLOW: &str = "\x1b[33m";
+use super::{die, workspace_path, BOLD, DIM, GREEN, RED, RESET, YELLOW};
 use crate::jj;
 
 #[derive(Serialize)]

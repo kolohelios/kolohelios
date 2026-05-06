@@ -9,6 +9,7 @@ mod jj;
 mod preflight;
 mod project;
 mod repo;
+mod term;
 mod whitespace;
 mod workspace;
 

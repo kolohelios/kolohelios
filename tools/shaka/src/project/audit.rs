@@ -4,13 +4,7 @@ use std::process::Command;
 use serde::Deserialize;
 
 use crate::project::schema_check;
-
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const YELLOW: &str = "\x1b[33m";
-const DIM: &str = "\x1b[2m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuleResult {
