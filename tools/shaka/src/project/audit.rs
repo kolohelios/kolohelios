@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -6,10 +7,31 @@ use serde::Deserialize;
 use crate::project::schema_check;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
+const AUDIT_CONFIG_SCHEMA: &str = include_str!("../../schema/audit-config.cue");
+const AUDIT_CONFIG_DATA: &str = include_str!("../../audit-config.cue");
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuleResult {
     Pass,
     Fail(String),
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum Severity {
+    Fail,
+    Off,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditConfigEntry {
+    name: String,
+    severity: Severity,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditConfig {
+    rules: Vec<AuditConfigEntry>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -225,6 +247,21 @@ pub fn run() {
         }
     };
 
+    let rules = rules();
+
+    let severities = match load_audit_config() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} could not load audit-config.cue: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if let Err(e) = validate_severities(&severities, &rules) {
+        eprintln!("{RED}{BOLD}error:{RESET} audit-config / rule registry mismatch:\n{e}");
+        std::process::exit(1);
+    }
+
     let projects = schema_check::discover(Path::new("."));
     if projects.is_empty() {
         println!("{YELLOW}no projects found{RESET}");
@@ -233,11 +270,10 @@ pub fn run() {
 
     println!("{BOLD}audit:{RESET} {} projects", projects.len());
 
-    let rules = rules();
     let mut failures = 0usize;
 
     for project in &projects {
-        audit_project(project, &schema_path, &rules, &mut failures);
+        audit_project(project, &schema_path, &rules, &severities, &mut failures);
     }
 
     println!();
@@ -252,6 +288,7 @@ fn audit_project(
     project: &Path,
     schema_path: &Path,
     rules: &[Box<dyn Rule>],
+    severities: &HashMap<String, Severity>,
     failures: &mut usize,
 ) {
     let display = project.display();
@@ -275,6 +312,9 @@ fn audit_project(
     let mut applied = 0usize;
     for rule in rules {
         if !rule.applies(&meta) {
+            continue;
+        }
+        if severities.get(rule.name()) == Some(&Severity::Off) {
             continue;
         }
         applied += 1;
@@ -317,6 +357,75 @@ fn load_meta(schema_path: &Path, project_cue: &Path) -> Result<ProjectMeta, Stri
     }
 
     serde_json::from_slice(&output.stdout).map_err(|e| format!("could not parse project.cue: {e}"))
+}
+
+fn load_audit_config() -> Result<HashMap<String, Severity>, String> {
+    let dir = std::env::temp_dir().join(format!("shaka-audit-config-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create temp dir: {e}"))?;
+    let schema_path = dir.join("schema-audit-config.cue");
+    let data_path = dir.join("audit-config.cue");
+    std::fs::write(&schema_path, AUDIT_CONFIG_SCHEMA)
+        .map_err(|e| format!("could not write audit schema: {e}"))?;
+    std::fs::write(&data_path, AUDIT_CONFIG_DATA)
+        .map_err(|e| format!("could not write audit config: {e}"))?;
+
+    let output = Command::new("cue")
+        .arg("export")
+        .arg("--out")
+        .arg("json")
+        .arg(&schema_path)
+        .arg(&data_path)
+        .output()
+        .map_err(|e| format!("failed to spawn cue: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if stderr.is_empty() { stdout } else { stderr };
+        return Err(format!("cue export failed: {detail}"));
+    }
+    let cfg: AuditConfig = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("could not parse audit-config: {e}"))?;
+
+    let mut map = HashMap::new();
+    for entry in cfg.rules {
+        if map.insert(entry.name.clone(), entry.severity).is_some() {
+            return Err(format!("duplicate audit rule name: {}", entry.name));
+        }
+    }
+    Ok(map)
+}
+
+fn validate_severities(
+    severities: &HashMap<String, Severity>,
+    rules: &[Box<dyn Rule>],
+) -> Result<(), String> {
+    let registry: HashSet<&str> = rules.iter().map(|r| r.name()).collect();
+    let mut errors = Vec::new();
+
+    let mut unknown: Vec<&String> = severities
+        .keys()
+        .filter(|k| !registry.contains(k.as_str()))
+        .collect();
+    unknown.sort();
+    for name in unknown {
+        errors.push(format!("  unknown rule in audit-config: {name}"));
+    }
+
+    let mut missing: Vec<&str> = rules
+        .iter()
+        .map(|r| r.name())
+        .filter(|n| !severities.contains_key(*n))
+        .collect();
+    missing.sort();
+    for name in missing {
+        errors.push(format!("  audit-config missing severity for rule: {name}"));
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
 }
 
 fn has_rust_tests(project_dir: &Path) -> bool {
@@ -748,5 +857,45 @@ mod tests {
             RustLicenseDual.check(tmp.path(), &rust_meta()),
             RuleResult::Fail(_)
         ));
+    }
+
+    fn severities_all_fail() -> HashMap<String, Severity> {
+        rules()
+            .iter()
+            .map(|r| (r.name().to_string(), Severity::Fail))
+            .collect()
+    }
+
+    #[test]
+    fn embedded_audit_config_loads_and_matches_registry() {
+        let severities = load_audit_config().expect("audit-config.cue must load");
+        validate_severities(&severities, &rules())
+            .expect("embedded audit-config must cover every registered rule");
+    }
+
+    #[test]
+    fn validate_severities_errors_on_unknown_rule_name() {
+        let mut severities = severities_all_fail();
+        severities.insert("ghost-rule".into(), Severity::Fail);
+        match validate_severities(&severities, &rules()) {
+            Err(msg) => assert!(msg.contains("ghost-rule"), "got: {msg}"),
+            Ok(()) => panic!("expected Err for unknown rule"),
+        }
+    }
+
+    #[test]
+    fn validate_severities_errors_on_missing_rule() {
+        let mut severities = severities_all_fail();
+        severities.remove("readme-present");
+        match validate_severities(&severities, &rules()) {
+            Err(msg) => assert!(msg.contains("readme-present"), "got: {msg}"),
+            Ok(()) => panic!("expected Err for missing rule"),
+        }
+    }
+
+    #[test]
+    fn validate_severities_passes_when_every_rule_has_a_severity() {
+        validate_severities(&severities_all_fail(), &rules())
+            .expect("all-fail map must satisfy parity check");
     }
 }
