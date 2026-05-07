@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::object_store::registry;
-use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
+use crate::term::{BOLD, DIM, GREEN, RED, RESET};
 
 const BUCKET: &str = "kolohelios";
 const CLUSTER: &str = "us-sea-1";
@@ -93,11 +93,55 @@ pub fn emit(module: &str, force: bool) {
     );
 }
 
-pub fn migrate(_module: &str) {
-    eprintln!(
-        "{RED}{BOLD}error:{RESET} {YELLOW}object-store tfstate migrate not yet implemented{RESET}"
+pub fn migrate(module: &str) {
+    let module_path = PathBuf::from(module);
+    if !module_path.is_dir() {
+        eprintln!(
+            "{RED}{BOLD}error:{RESET} module path does not exist or is not a directory: {module}"
+        );
+        std::process::exit(1);
+    }
+
+    let backend = module_path.join("backend.tf");
+    if !backend.exists() {
+        eprintln!(
+            "{RED}{BOLD}error:{RESET} no backend.tf in {module}. Run \
+            `shaka object-store tfstate emit --module {module}` first."
+        );
+        std::process::exit(1);
+    }
+
+    if !crate::object_store::s3::creds_present() {
+        eprintln!(
+            "{RED}{BOLD}error:{RESET} AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY must be set \
+            in the environment for tofu to authenticate against the remote backend."
+        );
+        std::process::exit(1);
+    }
+
+    println!(
+        "{BOLD}tfstate migrate{RESET}  module={DIM}{module}{RESET}\n\
+         {DIM}running: tofu init -migrate-state{RESET}"
     );
-    std::process::exit(1);
+
+    let status = std::process::Command::new("tofu")
+        .current_dir(&module_path)
+        .args(["init", "-migrate-state"])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            println!("{GREEN}{BOLD}migrated{RESET} state for {module}");
+        }
+        Ok(s) => {
+            eprintln!("{RED}{BOLD}error:{RESET} tofu init -migrate-state exited with status {s}");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} could not spawn tofu: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Walk up from `start` looking for the nearest directory that contains a
