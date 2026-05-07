@@ -451,6 +451,152 @@ pub(crate) fn parse_open_prs(body: &str) -> Result<Vec<OpenPr>, GhError> {
         .collect()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListState {
+    Open,
+    Closed,
+    All,
+}
+
+impl ListState {
+    fn as_arg(self) -> &'static str {
+        match self {
+            ListState::Open => "open",
+            ListState::Closed => "closed",
+            ListState::All => "all",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IssueState {
+    Open,
+    Closed,
+}
+
+impl IssueState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            IssueState::Open => "OPEN",
+            IssueState::Closed => "CLOSED",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueSummary {
+    pub number: u64,
+    pub title: String,
+    pub state: IssueState,
+    pub labels: Vec<String>,
+    pub url: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// List GitHub issues from `repo` matching the given filters.
+///
+/// Shells out to `gh issue list --json number,title,state,labels,url,createdAt,updatedAt`.
+/// `labels` are AND-combined when more than one is supplied.
+pub fn list_issues(
+    repo: &str,
+    state: ListState,
+    labels: &[String],
+    milestone: Option<&str>,
+    limit: u32,
+) -> Result<Vec<IssueSummary>, GhError> {
+    let limit = limit.to_string();
+    let mut args: Vec<String> = vec![
+        "issue".into(),
+        "list".into(),
+        "--repo".into(),
+        repo.into(),
+        "--state".into(),
+        state.as_arg().into(),
+        "--limit".into(),
+        limit,
+        "--json".into(),
+        "number,title,state,labels,url,createdAt,updatedAt".into(),
+    ];
+    for label in labels {
+        args.push("--label".into());
+        args.push(label.clone());
+    }
+    if let Some(m) = milestone {
+        args.push("--milestone".into());
+        args.push(m.to_string());
+    }
+
+    let output = Command::new("gh").args(&args).output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GhError {
+            message: format!("gh issue list: {}", stderr.trim()),
+        });
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_issue_list(&body)
+}
+
+pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError> {
+    let value: Value = serde_json::from_str(body).map_err(|e| GhError {
+        message: format!("failed to parse gh issue list JSON: {e}"),
+    })?;
+    let arr = value.as_array().ok_or_else(|| GhError {
+        message: "gh issue list did not return an array".into(),
+    })?;
+
+    arr.iter()
+        .map(|v| {
+            let number = v["number"].as_u64().ok_or_else(|| GhError {
+                message: "issue missing 'number'".into(),
+            })?;
+            let title = v["title"]
+                .as_str()
+                .ok_or_else(|| GhError {
+                    message: format!("issue #{number} missing 'title'"),
+                })?
+                .to_string();
+            let state = match v["state"].as_str() {
+                Some("OPEN") => IssueState::Open,
+                Some("CLOSED") => IssueState::Closed,
+                other => {
+                    return Err(GhError {
+                        message: format!("issue #{number} has unexpected state {other:?}"),
+                    });
+                }
+            };
+            let labels = v["labels"]
+                .as_array()
+                .map(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(|l| l["name"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let url = v["url"]
+                .as_str()
+                .ok_or_else(|| GhError {
+                    message: format!("issue #{number} missing 'url'"),
+                })?
+                .to_string();
+            let created_at = v["createdAt"].as_str().unwrap_or("").to_string();
+            let updated_at = v["updatedAt"].as_str().unwrap_or("").to_string();
+            Ok(IssueSummary {
+                number,
+                title,
+                state,
+                labels,
+                url,
+                created_at,
+                updated_at,
+            })
+        })
+        .collect()
+}
+
 /// Detect owner/repo. Prefers `$GITHUB_REPOSITORY` (set in GitHub Actions),
 /// falling back to [`detect_repo`] for local invocations.
 pub fn detect_repo_or_env() -> Result<String, GhError> {
@@ -622,5 +768,57 @@ mod tests {
     fn parse_pr_for_issue_unknown_state_errors() {
         let body = r#"[{"number": 1, "state": "WAT", "url": "u"}]"#;
         assert!(parse_pr_for_issue(body).is_err());
+    }
+
+    #[test]
+    fn parse_issue_list_extracts_fields() {
+        let body = r#"[
+            {
+                "number": 244,
+                "title": "feat(shaka): add issue list",
+                "state": "OPEN",
+                "labels": [{"name": "shaka"}, {"name": "good first issue"}],
+                "url": "https://github.com/o/r/issues/244",
+                "createdAt": "2026-05-06T00:00:00Z",
+                "updatedAt": "2026-05-06T01:00:00Z"
+            },
+            {
+                "number": 209,
+                "title": "feat(shaka): add issue audit",
+                "state": "CLOSED",
+                "labels": [],
+                "url": "https://github.com/o/r/issues/209",
+                "createdAt": "2026-05-01T00:00:00Z",
+                "updatedAt": "2026-05-03T00:00:00Z"
+            }
+        ]"#;
+        let issues = parse_issue_list(body).unwrap();
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].number, 244);
+        assert_eq!(issues[0].state, IssueState::Open);
+        assert_eq!(issues[0].labels, vec!["shaka", "good first issue"]);
+        assert_eq!(issues[0].url, "https://github.com/o/r/issues/244");
+        assert_eq!(issues[1].state, IssueState::Closed);
+        assert_eq!(issues[1].labels, Vec::<String>::new());
+    }
+
+    #[test]
+    fn parse_issue_list_empty() {
+        assert!(parse_issue_list("[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_issue_list_missing_field_errors() {
+        let body = r#"[{"number": 1, "state": "OPEN", "labels": [], "url": "u"}]"#;
+        assert!(parse_issue_list(body).is_err());
+    }
+
+    #[test]
+    fn parse_issue_list_unknown_state_errors() {
+        let body = r#"[{
+            "number": 1, "title": "t", "state": "WEIRD",
+            "labels": [], "url": "u", "createdAt": "", "updatedAt": ""
+        }]"#;
+        assert!(parse_issue_list(body).is_err());
     }
 }
