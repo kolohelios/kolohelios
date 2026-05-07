@@ -35,9 +35,16 @@ pub fn emit(module: &str, force: bool) {
         }
     };
 
+    let project_canon = project_dir.canonicalize().unwrap_or(project_dir.clone());
     let owned: Vec<_> = entries
         .iter()
-        .filter(|e| e.project == project_dir && e.namespace.kind == "tfstate")
+        .filter(|e| {
+            e.namespace.kind == "tfstate"
+                && e.project
+                    .canonicalize()
+                    .map(|p| p == project_canon)
+                    .unwrap_or(false)
+        })
         .collect();
     let ns = match owned.as_slice() {
         [] => {
