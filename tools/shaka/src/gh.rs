@@ -246,6 +246,74 @@ pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
     }))
 }
 
+/// Find a PR (open, closed, or merged) whose body references `Closes #n`.
+/// Returns the first match (most recently updated by gh's default sort).
+///
+/// Relies on the repo convention of `Closes #N` in PR bodies (CLAUDE.md);
+/// `Fixes`/`Resolves` aren't matched. For merged PRs that closed the issue
+/// you can also use [`merged_pr_for_issue`] — this helper additionally
+/// catches *open* PRs, which `closedByPullRequestsReferences` does not.
+pub fn pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError> {
+    let query = format!("in:body Closes #{n}");
+    let output = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--search",
+            &query,
+            "--state",
+            "all",
+            "--limit",
+            "1",
+            "--json",
+            "number,state,url",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GhError {
+            message: format!("gh pr list (search Closes #{n}): {}", stderr.trim()),
+        });
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_pr_for_issue(&body)
+}
+
+pub(crate) fn parse_pr_for_issue(body: &str) -> Result<Option<PrInfo>, GhError> {
+    let value: Value = serde_json::from_str(body).map_err(|e| GhError {
+        message: format!("failed to parse gh pr list JSON: {e}"),
+    })?;
+    let Some(first) = value.as_array().and_then(|a| a.first()) else {
+        return Ok(None);
+    };
+    let number = first["number"].as_u64().ok_or_else(|| GhError {
+        message: "PR missing 'number' field".into(),
+    })?;
+    let url = first["url"]
+        .as_str()
+        .ok_or_else(|| GhError {
+            message: format!("PR #{number} missing 'url' field"),
+        })?
+        .to_string();
+    // gh pr list reports state as upper-case OPEN/CLOSED/MERGED (unlike the
+    // REST API which uses lower-case open/closed plus a separate merged_at).
+    let state = match first["state"].as_str() {
+        Some("OPEN") => PrState::Open,
+        Some("MERGED") => PrState::Merged,
+        Some("CLOSED") => PrState::Closed,
+        other => {
+            return Err(GhError {
+                message: format!("PR #{number} has unexpected state {other:?}"),
+            });
+        }
+    };
+    Ok(Some(PrInfo { number, url, state }))
+}
+
 /// Run `gh pr create` and return the PR URL.
 ///
 /// Passes `--repo` so this works inside a sibling jj workspace where
@@ -516,5 +584,43 @@ mod tests {
     fn parse_open_prs_missing_field_errors() {
         let body = r#"[{"number": 1, "headRefName": "x", "url": "u"}]"#;
         assert!(parse_open_prs(body).is_err());
+    }
+
+    #[test]
+    fn parse_pr_for_issue_open() {
+        let body = r#"[{"number": 42, "state": "OPEN", "url": "https://gh.com/o/r/pull/42"}]"#;
+        let pr = parse_pr_for_issue(body).unwrap().unwrap();
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.state, PrState::Open);
+        assert_eq!(pr.url, "https://gh.com/o/r/pull/42");
+    }
+
+    #[test]
+    fn parse_pr_for_issue_merged() {
+        let body = r#"[{"number": 7, "state": "MERGED", "url": "u"}]"#;
+        assert_eq!(
+            parse_pr_for_issue(body).unwrap().unwrap().state,
+            PrState::Merged
+        );
+    }
+
+    #[test]
+    fn parse_pr_for_issue_closed() {
+        let body = r#"[{"number": 7, "state": "CLOSED", "url": "u"}]"#;
+        assert_eq!(
+            parse_pr_for_issue(body).unwrap().unwrap().state,
+            PrState::Closed
+        );
+    }
+
+    #[test]
+    fn parse_pr_for_issue_empty() {
+        assert!(parse_pr_for_issue("[]").unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_pr_for_issue_unknown_state_errors() {
+        let body = r#"[{"number": 1, "state": "WAT", "url": "u"}]"#;
+        assert!(parse_pr_for_issue(body).is_err());
     }
 }

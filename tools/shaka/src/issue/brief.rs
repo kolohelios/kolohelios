@@ -2,7 +2,8 @@ use std::process::Command;
 
 use serde_json::{json, Value};
 
-use crate::gh;
+use crate::gh::{self, PrInfo, PrState};
+use crate::workspace::{self, WorkspaceRef};
 
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
@@ -40,11 +41,25 @@ pub fn run(n: u64, no_fetch: bool, json_out: bool) {
         }
     };
 
+    let workspace = workspace::find_for_issue(n);
+    let pr = match gh::pr_for_issue(&repo, n) {
+        Ok(p) => p,
+        Err(e) => {
+            // PR lookup is best-effort metadata, not load-bearing. A search
+            // failure (rate limit, transient API hiccup) shouldn't fail the
+            // whole brief — warn and continue with `pr: null`.
+            eprintln!("{DIM}warn:{RESET} could not query PR for issue #{n}: {e}");
+            None
+        }
+    };
+
     if json_out {
-        let payload = json!({
-            "fetch": fetch_output,
-            "issue": issue,
-        });
+        let payload = build_payload(
+            fetch_output.as_deref(),
+            &issue,
+            workspace.as_ref(),
+            pr.as_ref(),
+        );
         match serde_json::to_string_pretty(&payload) {
             Ok(s) => println!("{s}"),
             Err(e) => {
@@ -53,7 +68,55 @@ pub fn run(n: u64, no_fetch: bool, json_out: bool) {
             }
         }
     } else {
-        print!("{}", render_tree(n, fetch_output.as_deref(), &issue));
+        print!(
+            "{}",
+            render_tree(
+                n,
+                fetch_output.as_deref(),
+                &issue,
+                workspace.as_ref(),
+                pr.as_ref()
+            )
+        );
+    }
+}
+
+fn build_payload(
+    fetch: Option<&str>,
+    issue: &Value,
+    workspace: Option<&WorkspaceRef>,
+    pr: Option<&PrInfo>,
+) -> Value {
+    let workspace_value = workspace
+        .map(|w| {
+            json!({
+                "name": w.name,
+                "path": w.path.to_string_lossy(),
+            })
+        })
+        .unwrap_or(Value::Null);
+    let pr_value = pr
+        .map(|p| {
+            json!({
+                "number": p.number,
+                "url": p.url,
+                "state": pr_state_str(&p.state),
+            })
+        })
+        .unwrap_or(Value::Null);
+    json!({
+        "fetch": fetch,
+        "issue": issue,
+        "workspace": workspace_value,
+        "pr": pr_value,
+    })
+}
+
+fn pr_state_str(s: &PrState) -> &'static str {
+    match s {
+        PrState::Open => "OPEN",
+        PrState::Closed => "CLOSED",
+        PrState::Merged => "MERGED",
     }
 }
 
@@ -102,7 +165,13 @@ fn fetch_issue(repo: &str, n: u64) -> Result<Value, String> {
         .map_err(|e| format!("failed to parse JSON from gh issue view {n}: {e}"))
 }
 
-fn render_tree(n: u64, fetch: Option<&str>, issue: &Value) -> String {
+fn render_tree(
+    n: u64,
+    fetch: Option<&str>,
+    issue: &Value,
+    workspace: Option<&WorkspaceRef>,
+    pr: Option<&PrInfo>,
+) -> String {
     let mut out = String::new();
     out.push_str(&format!("{BOLD}shaka issue brief #{n}{RESET}\n"));
 
@@ -151,6 +220,24 @@ fn render_tree(n: u64, fetch: Option<&str>, issue: &Value) -> String {
     ));
     if !url.is_empty() {
         out.push_str(&format!("│   {DIM}{url}{RESET}\n"));
+    }
+    if let Some(ws) = workspace {
+        out.push_str(&format!(
+            "│   workspace: {BOLD}{}{RESET}  {DIM}{}{RESET}\n",
+            ws.name,
+            ws.path.display()
+        ));
+    }
+    if let Some(pr) = pr {
+        let (pr_color, pr_label) = match pr.state {
+            PrState::Open => (GREEN, "open"),
+            PrState::Merged => (YELLOW, "merged"),
+            PrState::Closed => (RED, "closed"),
+        };
+        out.push_str(&format!(
+            "│   pr: {BOLD}#{}{RESET} ({pr_color}{pr_label}{RESET})  {DIM}{}{RESET}\n",
+            pr.number, pr.url
+        ));
     }
     if !body.trim().is_empty() {
         out.push_str("│\n");
@@ -227,7 +314,7 @@ mod tests {
             "comments": [],
         });
 
-        let out = strip_ansi(&render_tree(216, Some(""), &issue));
+        let out = strip_ansi(&render_tree(216, Some(""), &issue, None, None));
         assert!(out.contains("shaka issue brief #216"));
         assert!(out.contains("├── fetching from origin"));
         assert!(out.contains("│   nothing changed"));
@@ -238,6 +325,8 @@ mod tests {
         assert!(out.contains("│   First line."));
         assert!(out.contains("│   Second paragraph."));
         assert!(out.contains("└── comments (0)"));
+        assert!(!out.contains("workspace:"));
+        assert!(!out.contains("pr:"));
     }
 
     #[test]
@@ -254,7 +343,7 @@ mod tests {
             "comments": [],
         });
 
-        let out = strip_ansi(&render_tree(1, None, &issue));
+        let out = strip_ansi(&render_tree(1, None, &issue, None, None));
         assert!(out.contains("├── fetching from origin (skipped)"));
         assert!(out.contains("labels: (none)"));
     }
@@ -276,12 +365,94 @@ mod tests {
             ],
         });
 
-        let out = strip_ansi(&render_tree(5, Some(""), &issue));
+        let out = strip_ansi(&render_tree(5, Some(""), &issue, None, None));
         assert!(out.contains("└── comments (2)"));
         assert!(out.contains("    ├── alice — 2026-04-01"));
         assert!(out.contains("    │   first"));
         assert!(out.contains("    └── bob — 2026-04-02"));
         assert!(out.contains("        second"));
         assert!(out.contains("        line"));
+    }
+
+    fn minimal_issue() -> Value {
+        json!({
+            "number": 231,
+            "title": "t",
+            "state": "OPEN",
+            "labels": [],
+            "author": {"login": "u"},
+            "body": "",
+            "url": "",
+            "createdAt": "",
+            "comments": [],
+        })
+    }
+
+    #[test]
+    fn renders_workspace_and_pr_when_present() {
+        let issue = minimal_issue();
+        let ws = WorkspaceRef {
+            name: "i231".to_string(),
+            path: std::path::PathBuf::from("/Users/me/code/kolohelios-i231"),
+        };
+        let pr = PrInfo {
+            number: 234,
+            url: "https://github.com/o/r/pull/234".to_string(),
+            state: PrState::Open,
+        };
+        let out = strip_ansi(&render_tree(231, Some(""), &issue, Some(&ws), Some(&pr)));
+        assert!(out.contains("│   workspace: i231  /Users/me/code/kolohelios-i231"));
+        assert!(out.contains("│   pr: #234 (open)  https://github.com/o/r/pull/234"));
+    }
+
+    #[test]
+    fn renders_pr_states_with_labels() {
+        let issue = minimal_issue();
+        for (state, label) in [
+            (PrState::Open, "open"),
+            (PrState::Merged, "merged"),
+            (PrState::Closed, "closed"),
+        ] {
+            let pr = PrInfo {
+                number: 1,
+                url: "u".to_string(),
+                state,
+            };
+            let out = strip_ansi(&render_tree(1, Some(""), &issue, None, Some(&pr)));
+            assert!(
+                out.contains(&format!("pr: #1 ({label})")),
+                "missing label {label} in: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn payload_includes_nullable_workspace_and_pr() {
+        let issue = minimal_issue();
+        let payload = build_payload(Some(""), &issue, None, None);
+        assert!(payload.get("workspace").unwrap().is_null());
+        assert!(payload.get("pr").unwrap().is_null());
+        assert_eq!(payload["fetch"], json!(""));
+        assert_eq!(payload["issue"]["number"], 231);
+    }
+
+    #[test]
+    fn payload_populates_workspace_and_pr() {
+        let issue = minimal_issue();
+        let ws = WorkspaceRef {
+            name: "i231".to_string(),
+            path: std::path::PathBuf::from("/tmp/kolohelios-i231"),
+        };
+        let pr = PrInfo {
+            number: 234,
+            url: "https://github.com/o/r/pull/234".to_string(),
+            state: PrState::Merged,
+        };
+        let payload = build_payload(None, &issue, Some(&ws), Some(&pr));
+        assert_eq!(payload["workspace"]["name"], "i231");
+        assert_eq!(payload["workspace"]["path"], "/tmp/kolohelios-i231");
+        assert_eq!(payload["pr"]["number"], 234);
+        assert_eq!(payload["pr"]["state"], "MERGED");
+        assert_eq!(payload["pr"]["url"], "https://github.com/o/r/pull/234");
     }
 }
