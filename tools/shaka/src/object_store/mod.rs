@@ -21,6 +21,9 @@ use clap::Subcommand;
 pub enum ObjectStoreCommand {
     /// One-time bootstrap: create the kolohelios bucket and bucket-scoped
     /// access keys. Idempotent — reports and exits 0 if the bucket exists.
+    ///
+    /// Credentials are written to a 0600 file (default:
+    /// `$XDG_CONFIG_HOME/shaka/<bucket>-credentials.env`) — never to stdout.
     Init {
         /// Linode Object Storage cluster (region) to create the bucket in
         #[arg(long, default_value = "us-sea-1")]
@@ -29,6 +32,12 @@ pub enum ObjectStoreCommand {
         /// shared monorepo bucket)
         #[arg(long, default_value = "kolohelios")]
         bucket: String,
+        /// Path to write the bucket-scoped credentials to. Defaults to
+        /// `$XDG_CONFIG_HOME/shaka/<bucket>-credentials.env` (or
+        /// `~/.config/shaka/<bucket>-credentials.env` if XDG is unset).
+        /// Created with mode 0600.
+        #[arg(long, value_name = "PATH")]
+        output: Option<std::path::PathBuf>,
     },
     /// Show bucket health and namespace status in one shot
     Status {
@@ -91,7 +100,11 @@ pub enum TfstateCommand {
 
 pub fn run(cmd: ObjectStoreCommand) {
     match cmd {
-        ObjectStoreCommand::Init { cluster, bucket } => init::run(&cluster, &bucket),
+        ObjectStoreCommand::Init {
+            cluster,
+            bucket,
+            output,
+        } => init::run(&cluster, &bucket, output),
         ObjectStoreCommand::Status { bucket, cluster } => status::run(&bucket, &cluster),
         ObjectStoreCommand::Ns { command } => match command {
             NsCommand::List => ns::list(),
