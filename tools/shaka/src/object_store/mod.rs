@@ -7,6 +7,7 @@
 //! adjacent to the project that owns it; shaka aggregates the declarations
 //! into a registry and audits the live bucket against it.
 
+pub mod client;
 pub mod init;
 pub mod ns;
 pub mod registry;
