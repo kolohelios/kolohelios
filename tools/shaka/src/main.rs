@@ -6,6 +6,7 @@ mod domain;
 mod gh;
 mod issue;
 mod jj;
+mod object_store;
 mod preflight;
 mod project;
 mod repo;
@@ -43,6 +44,13 @@ enum Commands {
     Issue {
         #[command(subcommand)]
         command: issue::IssueCommand,
+    },
+    /// Manage the shared kolohelios Linode Object Storage bucket and its
+    /// namespace registry (Terraform remote state, future caches/assets)
+    #[command(name = "object-store")]
+    ObjectStore {
+        #[command(subcommand)]
+        command: object_store::ObjectStoreCommand,
     },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
@@ -86,6 +94,7 @@ fn main() {
         Commands::Commit { command } => commit::run(command),
         Commands::Domain { command } => domain::run(command),
         Commands::Issue { command } => issue::run(command),
+        Commands::ObjectStore { command } => object_store::run(command),
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
