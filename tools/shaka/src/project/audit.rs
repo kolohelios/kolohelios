@@ -54,12 +54,28 @@ pub struct Coverage {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AuditOverride {
+    pub rule: String,
+    pub severity: Severity,
+    #[allow(dead_code)]
+    pub justification: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProjectAuditConfig {
+    #[serde(default)]
+    pub overrides: Vec<AuditOverride>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ProjectMeta {
     #[allow(dead_code)]
     pub name: String,
     pub kind: ProjectKind,
     #[serde(default)]
     pub coverage: Option<Coverage>,
+    #[serde(default)]
+    pub audit: Option<ProjectAuditConfig>,
 }
 
 pub trait Rule {
@@ -308,13 +324,31 @@ fn audit_project(
         }
     };
 
+    let overrides: &[AuditOverride] = meta
+        .audit
+        .as_ref()
+        .map(|a| a.overrides.as_slice())
+        .unwrap_or(&[]);
+
+    let effective = match effective_severities(severities, overrides, rules) {
+        Ok(map) => map,
+        Err(unknown) => {
+            println!(
+                "  {RED}{BOLD}FAIL{RESET}  {display} ({DIM}unknown rule(s) in audit.overrides: {}{RESET})",
+                unknown.join(", ")
+            );
+            *failures += unknown.len();
+            return;
+        }
+    };
+
     let mut project_failures: Vec<(String, String)> = Vec::new();
     let mut applied = 0usize;
     for rule in rules {
         if !rule.applies(&meta) {
             continue;
         }
-        if severities.get(rule.name()) == Some(&Severity::Off) {
+        if effective.get(rule.name()) == Some(&Severity::Off) {
             continue;
         }
         applied += 1;
@@ -393,6 +427,29 @@ fn load_audit_config() -> Result<HashMap<String, Severity>, String> {
         }
     }
     Ok(map)
+}
+
+fn effective_severities(
+    base: &HashMap<String, Severity>,
+    overrides: &[AuditOverride],
+    rules: &[Box<dyn Rule>],
+) -> Result<HashMap<String, Severity>, Vec<String>> {
+    let registry: HashSet<&str> = rules.iter().map(|r| r.name()).collect();
+    let mut unknown: Vec<String> = overrides
+        .iter()
+        .filter(|ov| !registry.contains(ov.rule.as_str()))
+        .map(|ov| ov.rule.clone())
+        .collect();
+    unknown.sort();
+    unknown.dedup();
+    if !unknown.is_empty() {
+        return Err(unknown);
+    }
+    let mut effective = base.clone();
+    for ov in overrides {
+        effective.insert(ov.rule.clone(), ov.severity);
+    }
+    Ok(effective)
 }
 
 fn validate_severities(
@@ -497,6 +554,7 @@ mod tests {
                 line: CoverageThreshold { fail: 30 },
                 branch: CoverageThreshold { fail: 20 },
             }),
+            audit: None,
         }
     }
 
@@ -505,6 +563,7 @@ mod tests {
             name: "demo".into(),
             kind: ProjectKind::Infra,
             coverage: None,
+            audit: None,
         }
     }
 
@@ -897,5 +956,60 @@ mod tests {
     fn validate_severities_passes_when_every_rule_has_a_severity() {
         validate_severities(&severities_all_fail(), &rules())
             .expect("all-fail map must satisfy parity check");
+    }
+
+    fn ov(rule: &str, severity: Severity) -> AuditOverride {
+        AuditOverride {
+            rule: rule.into(),
+            severity,
+            justification: "test".into(),
+        }
+    }
+
+    #[test]
+    fn effective_severities_no_overrides_returns_base() {
+        let base = severities_all_fail();
+        let got = effective_severities(&base, &[], &rules()).expect("clean parity");
+        assert_eq!(got, base);
+    }
+
+    #[test]
+    fn effective_severities_override_disables_rule() {
+        let base = severities_all_fail();
+        let overrides = [ov("rust-has-tests", Severity::Off)];
+        let got = effective_severities(&base, &overrides, &rules()).expect("clean parity");
+        assert_eq!(got["rust-has-tests"], Severity::Off);
+        assert_eq!(got["readme-present"], Severity::Fail);
+    }
+
+    #[test]
+    fn effective_severities_override_can_raise_off_to_fail() {
+        let mut base = severities_all_fail();
+        base.insert("rust-has-tests".into(), Severity::Off);
+        let overrides = [ov("rust-has-tests", Severity::Fail)];
+        let got = effective_severities(&base, &overrides, &rules()).expect("clean parity");
+        assert_eq!(got["rust-has-tests"], Severity::Fail);
+    }
+
+    #[test]
+    fn effective_severities_unknown_override_rule_errors() {
+        let base = severities_all_fail();
+        let overrides = [ov("not-a-real-rule", Severity::Off)];
+        match effective_severities(&base, &overrides, &rules()) {
+            Err(unknown) => {
+                assert_eq!(unknown, vec!["not-a-real-rule"]);
+            }
+            Ok(_) => panic!("expected Err"),
+        }
+    }
+
+    #[test]
+    fn effective_severities_dedups_unknown_names() {
+        let base = severities_all_fail();
+        let overrides = [ov("ghost-a", Severity::Off), ov("ghost-a", Severity::Fail)];
+        match effective_severities(&base, &overrides, &rules()) {
+            Err(unknown) => assert_eq!(unknown, vec!["ghost-a"]),
+            Ok(_) => panic!("expected Err"),
+        }
     }
 }
