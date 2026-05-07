@@ -48,6 +48,7 @@
           nil
           typos
           cargo-deny
+          cargo-machete
         ];
     in
     {
