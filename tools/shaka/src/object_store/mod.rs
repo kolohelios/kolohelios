@@ -35,6 +35,9 @@ pub enum ObjectStoreCommand {
         /// Bucket name
         #[arg(long, default_value = "kolohelios")]
         bucket: String,
+        /// Linode cluster (region) the bucket lives in
+        #[arg(long, default_value = "us-sea-1")]
+        cluster: String,
     },
     /// Namespace registry operations
     Ns {
@@ -89,7 +92,7 @@ pub enum TfstateCommand {
 pub fn run(cmd: ObjectStoreCommand) {
     match cmd {
         ObjectStoreCommand::Init { cluster, bucket } => init::run(&cluster, &bucket),
-        ObjectStoreCommand::Status { bucket } => status::run(&bucket),
+        ObjectStoreCommand::Status { bucket, cluster } => status::run(&bucket, &cluster),
         ObjectStoreCommand::Ns { command } => match command {
             NsCommand::List => ns::list(),
             NsCommand::Audit { bucket, cluster } => ns::audit(&bucket, &cluster),
