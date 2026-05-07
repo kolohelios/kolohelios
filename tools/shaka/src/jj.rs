@@ -302,6 +302,41 @@ pub fn repo_root() -> Result<PathBuf, JjError> {
     Ok(PathBuf::from(out.trim()))
 }
 
+/// Absolute path of the *default* (primary) workspace's working copy,
+/// regardless of which workspace this process is running inside.
+///
+/// Sibling workspaces have `.jj/repo` as a *file* whose contents point to
+/// the default workspace's `.jj/repo` directory; the primary's working
+/// copy is the grandparent of that path. Callers that need to read repo-
+/// wide state stored at the primary (e.g. `.shaka/workspaces/*.json`)
+/// should use this rather than [`repo_root`].
+pub fn primary_workspace_root() -> Result<PathBuf, JjError> {
+    let cur = repo_root()?;
+    let repo_marker = cur.join(".jj").join("repo");
+    let metadata = std::fs::metadata(&repo_marker).map_err(|e| JjError {
+        message: format!("stat {}: {e}", repo_marker.display()),
+    })?;
+    if metadata.is_dir() {
+        return Ok(cur);
+    }
+    let content = std::fs::read_to_string(&repo_marker).map_err(|e| JjError {
+        message: format!("read {}: {e}", repo_marker.display()),
+    })?;
+    primary_root_from_repo_marker(content.trim()).ok_or_else(|| JjError {
+        message: format!(
+            "could not derive primary workspace root from .jj/repo target {}",
+            content.trim()
+        ),
+    })
+}
+
+fn primary_root_from_repo_marker(target: &str) -> Option<PathBuf> {
+    Path::new(target)
+        .parent()
+        .and_then(|p| p.parent())
+        .map(PathBuf::from)
+}
+
 /// Information about a single jj workspace, surfaced from `jj workspace
 /// list`.
 #[derive(Debug, PartialEq, Eq)]
@@ -435,6 +470,17 @@ mod tests {
     #[test]
     fn slugify_basic() {
         assert_eq!(slugify("Add Commit Lint", 50), "add-commit-lint");
+    }
+
+    #[test]
+    fn primary_root_from_marker() {
+        let got = primary_root_from_repo_marker("/Users/me/code/kolohelios/.jj/repo");
+        assert_eq!(got, Some(PathBuf::from("/Users/me/code/kolohelios")));
+    }
+
+    #[test]
+    fn primary_root_from_marker_too_short() {
+        assert_eq!(primary_root_from_repo_marker("/"), None);
     }
 
     #[test]

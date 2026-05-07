@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 
+use crate::jj;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 #[derive(Subcommand)]
@@ -57,6 +58,37 @@ pub fn run(cmd: WorkspaceCommand) {
         WorkspaceCommand::Status { json } => status::run(json),
         WorkspaceCommand::Cleanup { dry_run } => cleanup::run(dry_run),
     }
+}
+
+/// A workspace linked to a specific GitHub issue.
+pub struct WorkspaceRef {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+/// Find the workspace whose persisted issue link points at issue `n`. Skips
+/// the default workspace and any workspace without a link file (legacy
+/// workspaces created before the link was persisted, or ad-hoc named ones).
+///
+/// Uses [`jj::primary_workspace_root`] so this works identically whether
+/// the caller is in the primary tree or a sibling — `.shaka/workspaces/`
+/// only exists at the primary.
+pub fn find_for_issue(n: u64) -> Option<WorkspaceRef> {
+    let primary = jj::primary_workspace_root().ok()?;
+    let workspaces = jj::workspaces().ok()?;
+    for ws in workspaces {
+        if ws.name == "default" {
+            continue;
+        }
+        let link = issue_link::read(&primary, &ws.name).ok().flatten();
+        if link.map(|l| l.issue) == Some(n) {
+            return Some(WorkspaceRef {
+                name: ws.name.clone(),
+                path: workspace_path(&primary, &ws.name),
+            });
+        }
+    }
+    None
 }
 
 /// Path where a workspace directory lives, by convention:
