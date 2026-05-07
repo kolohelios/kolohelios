@@ -11,6 +11,7 @@ pub mod client;
 pub mod init;
 pub mod ns;
 pub mod registry;
+pub mod s3;
 pub mod status;
 pub mod tfstate;
 
@@ -57,6 +58,9 @@ pub enum NsCommand {
         /// Bucket name
         #[arg(long, default_value = "kolohelios")]
         bucket: String,
+        /// Linode cluster (region) the bucket lives in
+        #[arg(long, default_value = "us-sea-1")]
+        cluster: String,
     },
 }
 
@@ -88,7 +92,7 @@ pub fn run(cmd: ObjectStoreCommand) {
         ObjectStoreCommand::Status { bucket } => status::run(&bucket),
         ObjectStoreCommand::Ns { command } => match command {
             NsCommand::List => ns::list(),
-            NsCommand::Audit { bucket } => ns::audit(&bucket),
+            NsCommand::Audit { bucket, cluster } => ns::audit(&bucket, &cluster),
         },
         ObjectStoreCommand::Tfstate { command } => match command {
             TfstateCommand::Emit { module, force } => tfstate::emit(&module, force),
