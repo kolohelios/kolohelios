@@ -89,6 +89,11 @@
               # linting embedded `run:` scripts.
               pkgs.actionlint
               pkgs.shellcheck
+              # awscli2 powers `shaka object-store ns audit` (list bucket
+              # prefixes via the S3-compatible API on Linode Object
+              # Storage). Audits skip-gracefully when AWS creds are
+              # absent so CI without secrets still passes preflight.
+              pkgs.awscli2
             ]
             ++ (workflowPackages pkgs)
             # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks
