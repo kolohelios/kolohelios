@@ -3,6 +3,7 @@ mod bump_locks;
 mod pr;
 mod rebase_open_prs;
 pub mod send;
+mod ship;
 mod status;
 mod sync;
 
@@ -47,6 +48,26 @@ pub enum RepoCommand {
         bookmark: Option<String>,
 
         /// Print the commands that would run without executing them
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Run the opinionated ship workflow: rebase on main@origin, lint
+    /// commits, self-review the diff, run preflight, push, and ensure a PR.
+    ///
+    /// Halts on the first failure. Errors from `commit lint` (non-conformant
+    /// commits) hard-stop — fix via `jj describe` and rerun. The push step
+    /// updates an existing PR's head ref automatically; PR title/body are
+    /// not re-synced.
+    Ship {
+        /// Bookmark name (auto-detected from the current change if omitted)
+        #[arg(long)]
+        bookmark: Option<String>,
+
+        /// Skip the preflight step (use when you've already run it locally)
+        #[arg(long)]
+        skip_preflight: bool,
+
+        /// Print the steps that would run without executing them
         #[arg(long)]
         dry_run: bool,
     },
@@ -99,6 +120,11 @@ pub fn run(cmd: RepoCommand) {
             dry_run,
         } => send::run(bookmark, no_pr, dry_run),
         RepoCommand::Pr { bookmark, dry_run } => pr::run(bookmark, dry_run),
+        RepoCommand::Ship {
+            bookmark,
+            skip_preflight,
+            dry_run,
+        } => ship::run(bookmark, skip_preflight, dry_run),
         RepoCommand::Status { json } => status::run(json),
         RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
         RepoCommand::BumpLocks { input, pr_branch } => bump_locks::run(input, pr_branch),
