@@ -9,6 +9,7 @@
 
 pub mod init;
 pub mod ns;
+pub mod registry;
 pub mod status;
 pub mod tfstate;
 
