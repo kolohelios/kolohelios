@@ -1,0 +1,4 @@
+flake-check:
+    nix flake check
+
+validate: flake-check
