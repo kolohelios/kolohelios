@@ -1,0 +1,4 @@
+tofu-validate:
+    tofu validate
+
+validate: tofu-validate

@@ -148,3 +148,42 @@ fn path_pinned_kolohelios_nix_fails_audit() {
         "stdout: {stdout}"
     );
 }
+
+#[test]
+fn missing_justfile_fails_audit() {
+    let staged = Staged::new(&["missing-justfile"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("validate-recipe-meaningful"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("missing justfile"), "stdout: {stdout}");
+}
+
+#[test]
+fn missing_validate_recipe_fails_audit() {
+    let staged = Staged::new(&["missing-validate-recipe"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("validate-recipe-meaningful"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("no `validate` recipe"), "stdout: {stdout}");
+}
+
+#[test]
+fn placeholder_validate_recipe_fails_audit() {
+    let staged = Staged::new(&["placeholder-validate-recipe"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("validate-recipe-meaningful"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("placeholder"), "stdout: {stdout}");
+}

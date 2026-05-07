@@ -90,6 +90,7 @@ struct RustHasTests;
 struct RustCoverageThresholdNonzero;
 struct RustLicenseDual;
 struct KoloheliosNixViaFlakehub;
+struct ValidateRecipeMeaningful;
 
 const REQUIRED_RUST_LICENSE: &str = r#"license = "MIT OR Apache-2.0""#;
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
@@ -209,6 +210,101 @@ impl Rule for KoloheliosNixViaFlakehub {
     }
 }
 
+impl Rule for ValidateRecipeMeaningful {
+    fn name(&self) -> &'static str {
+        "validate-recipe-meaningful"
+    }
+    fn applies(&self, _meta: &ProjectMeta) -> bool {
+        true
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let justfile = project_dir.join("justfile");
+        let contents = match std::fs::read_to_string(&justfile) {
+            Ok(c) => c,
+            Err(_) => return RuleResult::Fail("missing justfile at project root".into()),
+        };
+        check_validate_recipe(&contents)
+    }
+}
+
+// `shaka preflight` runs each project's `just validate` recipe as the per-
+// project quality gate. A project whose `validate` is empty or runs only
+// placeholders (`@true`, `:`) silently passes CI without exercising any
+// real check. This rule guards against that drift independent of
+// `generate-justfiles --check`, which only enforces template-equality.
+fn check_validate_recipe(contents: &str) -> RuleResult {
+    let lines: Vec<&str> = contents.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        if let Some(deps_str) = recipe_header_deps(lines[i], "validate") {
+            let has_deps = deps_str.split_whitespace().next().is_some();
+            let mut real_body = false;
+            let mut j = i + 1;
+            while j < lines.len() {
+                let next = lines[j];
+                if next.is_empty() {
+                    j += 1;
+                    continue;
+                }
+                if !next.starts_with(' ') && !next.starts_with('\t') {
+                    break;
+                }
+                if !is_placeholder_body_line(next.trim_start()) {
+                    real_body = true;
+                }
+                j += 1;
+            }
+            return if has_deps || real_body {
+                RuleResult::Pass
+            } else {
+                RuleResult::Fail(
+                    "`validate` recipe has no dependencies and no non-placeholder body".into(),
+                )
+            };
+        }
+        i += 1;
+    }
+    RuleResult::Fail("no `validate` recipe found in justfile".into())
+}
+
+// Returns the dep list (everything after the recipe header's `:`) if `line`
+// is a recipe header for `name`. Rejects variable assignments (`name := ...`)
+// and indented lines.
+fn recipe_header_deps<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+    if line.starts_with(' ') || line.starts_with('\t') {
+        return None;
+    }
+    let rest = line.strip_prefix(name)?;
+    let first = rest.chars().next()?;
+    if first == ':' {
+        if rest[1..].starts_with('=') {
+            return None;
+        }
+        return Some(&rest[1..]);
+    }
+    if !first.is_whitespace() {
+        return None;
+    }
+    let idx = rest.find(':')?;
+    if rest[idx + 1..].starts_with('=') {
+        return None;
+    }
+    Some(&rest[idx + 1..])
+}
+
+// Body lines that don't count as real work: blank, lone comments, and
+// shell no-ops (`true`, `:`, with optional `@` modifier).
+fn is_placeholder_body_line(stripped: &str) -> bool {
+    let body = stripped.strip_prefix('@').unwrap_or(stripped).trim();
+    if body.is_empty() {
+        return true;
+    }
+    if body.starts_with('#') {
+        return true;
+    }
+    matches!(body, "true" | ":")
+}
+
 // Parses an inline `kolohelios-nix.url = "<url>";` declaration, accepting
 // both the in-block form (inside `inputs = { ... }`) and the top-level
 // `inputs.kolohelios-nix.url = "..."` form. Returns the URL if found,
@@ -251,6 +347,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustCoverageThresholdNonzero),
         Box::new(RustLicenseDual),
         Box::new(KoloheliosNixViaFlakehub),
+        Box::new(ValidateRecipeMeaningful),
     ]
 }
 
@@ -897,6 +994,145 @@ mod tests {
         .unwrap();
         assert_eq!(
             KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn validate_recipe_passes_when_validate_has_deps() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("justfile"),
+            "test:\n    cargo test\n\nvalidate: test\n",
+        )
+        .unwrap();
+        assert_eq!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn validate_recipe_passes_when_validate_has_real_body() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "validate:\n    cargo test\n").unwrap();
+        assert_eq!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn validate_recipe_fails_when_justfile_missing() {
+        let tmp = TempDir::new().unwrap();
+        match ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("missing justfile"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_recipe_fails_when_recipe_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "test:\n    cargo test\n").unwrap();
+        match ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("no `validate` recipe"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_recipe_fails_for_at_true_only_body() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "validate:\n    @true\n").unwrap();
+        match ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("placeholder"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_recipe_fails_for_colon_only_body() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "validate:\n    :\n").unwrap();
+        assert!(matches!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn validate_recipe_fails_for_empty_body_no_deps() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "validate:\n").unwrap();
+        assert!(matches!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn validate_recipe_fails_when_only_comment_body() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("justfile"),
+            "validate:\n    # nothing real to do\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn validate_recipe_ignores_recipe_named_validates() {
+        // `validates:` must not be matched as a `validate` header.
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "validates:\n    cargo test\n").unwrap();
+        assert!(matches!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn validate_recipe_ignores_variable_assignment() {
+        // `validate := ...` is a variable, not a recipe.
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("justfile"),
+            "validate := \"never\"\n\ntest:\n    cargo test\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn validate_recipe_handles_validate_with_params() {
+        // `validate ARGS:` is a recipe header with parameters.
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("justfile"),
+            "validate args=\"\":\n    cargo test {{args}}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn validate_recipe_recognizes_real_recipe_after_blank_lines() {
+        // Blank lines inside the recipe body don't terminate it.
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("justfile"), "validate:\n\n    cargo test\n").unwrap();
+        assert_eq!(
+            ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
             RuleResult::Pass
         );
     }
