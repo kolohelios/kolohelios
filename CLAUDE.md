@@ -6,8 +6,8 @@ preferences live in `~/.claude/CLAUDE.md`.
 
 ## Tenets
 
-A few principles shape how we work in this repo. Reach back to them when
-scoping or sequencing.
+A few principles shape how work happens in this repo. Reach back to
+them when scoping or sequencing.
 
 - **Solo developer for the foreseeable future.** Keep processes
   lightweight. Don't suggest contributing guides, multi-developer review
@@ -15,13 +15,14 @@ scoping or sequencing.
   prefer issue comments over docs.
 - **Devboxes are ephemeral.** Local devboxes (baremetal mac, cloud VM)
   are ephemeral workspaces, not durable infrastructure. Durable
-  artifacts are: the code repo, flake caches, deployed services. Config
-  changes live in version control. Don't propose stateful devbox
-  patterns; the cost to rebuild a devbox should stay close to zero.
+  artifacts are: the code repo, flake caches, deployed services.
+  Configuration changes live in version control. Don't propose stateful
+  devbox patterns; the cost to rebuild a devbox should stay close to
+  zero.
 - **Test the simpler hypothesis before architecting a replacement.**
   When a task is framed as "replace X to avoid Y," ask first whether X
   is still load-bearing. Especially true for CI cleanup steps, caching
-  workarounds, retry loops, and other defensively-added plumbing. The
+  workarounds, retry loops, and other defensively added plumbing. The
   cheapest experiment is to remove and see, before designing the
   replacement.
 
@@ -36,9 +37,9 @@ project. Project-local docs and configuration live alongside the project.
 | `packages/`  | Shared libraries                                     |
 | `projects/`  | Standalone projects that don't fit another slot      |
 | `services/`  | Long-running services (reserved; not yet populated)  |
-| `tools/`     | Developer tooling (e.g. `tools/shaka`)               |
-| `infra/`     | Infrastructure as code (e.g. `infra/devbox`)         |
-| `nix/`       | Shared nix infrastructure (e.g. `nix/kolohelios-nix`) |
+| `tools/`     | Developer tooling (for example, `tools/shaka`)       |
+| `infra/`     | Infrastructure as code (for example, `infra/devbox`) |
+| `nix/`       | Shared nix infrastructure (for example, `nix/kolohelios-nix`) |
 
 Every project has a `project.cue` declaring its `name` and `kind` (validated
 against `tools/shaka/schema/project.cue`). Per-project `justfile`s are
@@ -62,8 +63,8 @@ hand. CI fails on drift.
   input.
 - **`just`** as the command runner for **per-project** recipes (`build`,
   `test`, `fmt-check`, `lint`, `validate`). There is no cross-project root
-  justfile — for repo-wide validation, run `shaka preflight` directly.
-- **`shaka`** (Rust CLI in `tools/shaka`) is the build/repo Swiss army knife:
+  `justfile` — for repo-wide validation, run `shaka preflight` directly.
+- **`shaka`** (Rust command-line tool in `tools/shaka`) is the build/repo Swiss army knife:
   - `shaka preflight` — runs every CI check locally; CI runs the same command,
     so local and CI cannot drift. `--since <ref>` scopes checks to changed
     paths.
@@ -74,7 +75,7 @@ hand. CI fails on drift.
     the schema.
   - `shaka commit lint -r <revset>` — enforces conventional commit format,
     title length, body wrap, and atomicity (warns on cross-project commits).
-  - `shaka repo sync|send|pr|audit` — jj/PR workflow helpers.
+  - `shaka repo sync|send|pr|audit` — `jj`/PR workflow helpers.
 
 The single CI gate is `shaka preflight`. It runs in two phases:
 
@@ -84,9 +85,9 @@ The single CI gate is `shaka preflight`. It runs in two phases:
    are per-project, covered below.)
 2. **Per-project checks** — for each project whose files changed
    (or all, with no `--since`), enters the project's flake (`nix develop
-   . --command`) and runs `just validate`. Per-project quality gates (fmt,
-   lint, test, coverage, `nix flake check`, etc.) live in the generated
-   `justfile`'s `validate` recipe.
+   . --command`) and runs `just validate`. Per-project quality gates
+   (`fmt`, lint, test, coverage, `nix flake check`, etc.) live in the
+   generated `justfile`'s `validate` recipe.
 
 If you need a new per-project check, extend the appropriate template in
 `tools/shaka/src/project/generate_justfiles.rs` so the generated
@@ -94,8 +95,8 @@ If you need a new per-project check, extend the appropriate template in
 Either way, do **not** add a new GitHub Actions job.
 
 The exception is automation that responds to repo events rather than
-gating PRs — e.g. `auto-rebase-prs.yaml` rebases open PRs on `push:
-main`. These can't live in `shaka preflight` because they don't gate
+gating PRs — for example, `auto-rebase-prs.yaml` rebases open PRs on
+`push: main`. These can't live in `shaka preflight` because they don't gate
 the current change set. Two things to remember when adding one:
 
 - **`permissions: id-token: write`** is required on the job if it
@@ -118,16 +119,16 @@ tools/shaka/bin/shaka <subcommand>
 ```
 
 The wrapper always re-enters `nix develop ./tools/shaka` (unless already
-inside, detected via the `IN_SHAKA_DEVSHELL` marker) so shaka inherits all
-its runtime dependencies (cue, jj, git, just, jq, cargo-llvm-cov on Linux,
-etc.) regardless of how it was invoked. It then runs an incremental `cargo
-build` (free when no source has changed) and exec's the resulting debug
-binary. Don't reach for `cargo run` or `nix run ./tools/shaka` — the
-wrapper subsumes both.
+inside, detected via the `IN_SHAKA_DEVSHELL` marker) so `shaka` inherits
+all its runtime dependencies (`cue`, `jj`, `git`, `just`, `jq`,
+`cargo-llvm-cov` on Linux, etc.) regardless of how it was invoked. It
+then runs an incremental `cargo build` (free when no source has changed)
+and exec's the resulting debug binary. Don't reach for `cargo run` or
+`nix run ./tools/shaka` — the wrapper subsumes both.
 
 ## Version control
 
-- **Jujutsu (`jj`)** for all VCS operations — never `git` for working-copy
+- **`Jujutsu` (`jj`)** for all VCS operations — never `git` for working-copy
   changes. The repo is colocated, so `git` reads work, but mutations should go
   through `jj`.
 - **Conventional commits**, enforced by `shaka commit lint`:
@@ -155,7 +156,7 @@ wrapper subsumes both.
 - **If the change closes an issue, include `Closes #<N>` in the commit
   body.** GitHub auto-links and auto-closes on merge. Sub-agents don't
   have the `/ship` skill that bakes this in — include it explicitly in
-  any sub-agent brief. (#146 will eventually have `shaka commit lint`
+  any sub-agent brief. (#146 tracks teaching `shaka commit lint` to
   catch this automatically.)
 
 ### Auto-rebase on `main` movement
@@ -168,22 +169,23 @@ status on the PR head describing the conflicting paths, and the
 workflow run goes red.
 
 - **Opt out with the `do-not-rebase` label.** Apply it to a PR you
-  don't want the bot touching (e.g. one you're actively rebasing
-  yourself).
+  don't want the bot touching (for example, one you're actively
+  rebasing yourself).
 - **`auto-rebase` is informational, not a required check.** It only
   appears on a PR after `main` has moved — making it required would
-  block every freshly-opened PR. Its job is to flag conflicts the
+  block every freshly opened PR. Its job is to flag conflicts the
   author needs to resolve, not to gate merge.
 - **After a bot rebase, run `jj git fetch` locally.** The bookmark
-  tracks the change_id, so jj reconciles automatically: the local
+  tracks the `change_id`, so `jj` reconciles automatically: the local
   bookmark moves to the rebased commit and your `@` (if it was on the
   bookmark) follows. To resolve a conflict the bot couldn't, run
   `jj rebase --branch <bookmark> -d main@origin` then
   `jj git push --bookmark <bookmark>`.
 - **The bot authenticates as the `kolohelios-bot` GitHub App** —
-  required so post-rebase pushes re-trigger the PR's normal CI (which
-  pushes via `GITHUB_TOKEN` do not). App settings, secret/variable
-  names, and rotation steps live in `.github/auto-rebase-app.md`.
+  required so post-rebase pushes re-trigger the normal CI for the PR
+  (which pushes via `GITHUB_TOKEN` do not). App settings,
+  secret/variable names, and rotation steps live in
+  `.github/auto-rebase-app.md`.
 - See also #147 (`shaka repo rebase-wip`), the local-side companion
   for branches you're actively iterating on.
 
@@ -210,12 +212,12 @@ discovery is safe.
 
 The workflow authenticates as the `kolohelios-bot` GitHub App (same
 secret/variable as `auto-rebase-prs.yaml`) so the post-bump push
-re-triggers the PR's normal CI — pushes via the default
+re-triggers the normal CI for the PR — pushes via the default
 `GITHUB_TOKEN` do not.
 
-### Working with jj
+### Working with `jj`
 
-A few jj behaviors trip up agents whose mental model comes from git. Read
+A few `jj` behaviors trip up agents whose mental model comes from git. Read
 this before scripting against `jj`:
 
 - **Change IDs come in two lengths.** Templates emit the 32-char form by
@@ -225,11 +227,11 @@ this before scripting against `jj`:
 - **Empty `@` auto-abandons.** `jj new <ref>` from an empty `@` switches
   `@` and abandons the empty change. To move `@` without creating a new
   change, use `jj edit <rev>`.
-- **Bookmarks track change_id, not commit_id.** `jj describe @` rewrites
-  the commit but the bookmark moves with the change — you rarely need to
-  re-set a bookmark after editing.
+- **Bookmarks track `change_id`, not `commit_id`.** `jj describe @`
+  rewrites the commit but the bookmark moves with the change — you
+  rarely need to re-set a bookmark after editing.
 - **`jj restore <path>` resolves paths relative to the repo root**, not
-  the cwd. Pass absolute paths from automation.
+  the `cwd`. Pass absolute paths from automation.
 - **Useful revsets**: `main@origin..@` (commits ahead of remote main),
   `main@origin..@ ~ empty()` (same, excluding empty), `@-` (parent),
   `roots(...)`, `heads(...)`.
@@ -251,9 +253,10 @@ numbers; use `gh issue view <n>` to read them.
 
 ## Secrets
 
-**1Password** is the canonical secret store for local development (`op` CLI),
-CI (GitHub Actions integration), and infrastructure. Never commit secrets,
-never propose `.env` files checked into the repo.
+**1Password** is the canonical secret store for local development
+(`op` command-line tool), CI (GitHub Actions integration), and
+infrastructure. Never commit secrets, never propose `.env` files checked
+into the repo.
 
 ## Adding a new project
 
@@ -283,7 +286,7 @@ hand for now — `project new` only ships the rust template:
 
 **Every issue gets its own `shaka workspace` — and the primary tree is
 off-limits for issue work.** Before your first `Edit` or `Write` in
-this repo, verify cwd ends in `kolohelios-i<N>/` (a workspace), not
+this repo, verify `cwd` ends in `kolohelios-i<N>/` (a workspace), not
 bare `kolohelios/` (the primary tree). If you're in primary, **stop
 and create the workspace first** — don't edit-now-reshuffle-later.
 
@@ -310,12 +313,12 @@ Shape:
    storage is shared.
 2. Run `claude` inside each workspace, or spawn sub-agents pointed at
    each workspace's path. Each session bookmarks, commits, and pushes
-   independently. Concurrent jj operations are serialized via the repo
+   independently. Concurrent `jj` operations are serialized via the repo
    lock — light contention at worst.
 3. As PRs land, rebase the remaining branches on the new `main@origin`.
    Until #147 (`shaka repo rebase-wip`) lands, this is manual:
    `jj rebase --branch <bookmark> -d main@origin` per branch, then
-   `jj git push --bookmark <name>` (jj allows the non-fast-forward
+   `jj git push --bookmark <name>` (`jj` allows the non-fast-forward
    "move sideways" without `--force` for rebased branches).
 4. `shaka workspace status` shows a per-workspace summary at any time.
 5. `shaka workspace cleanup` forgets workspaces whose PRs have merged
@@ -346,40 +349,43 @@ restate two rules that `/start` and `/ship` would otherwise enforce:
 - **Don't add CI jobs to `.github/workflows/main.yaml`** for new validation
   steps — extend `shaka preflight` so CI and local stay in lockstep.
 - **Don't add Claude Code attribution** to commits, code, or docs.
-- **Don't run mutating `git` commands.** The repo is jj-colocated; `git
-  stash`, `git stash pop`, `git checkout`, `git reset`, `git commit`,
-  `git rebase`, `git merge` all desync the working copy from jj's view.
-  Read-only `git` (`status`, `log`, `diff`) is fine. To test "what does
-  main look like without my changes," use `jj new main@origin` (the
-  original change is preserved and reachable via `jj log` / `jj edit`);
-  to inspect a previous state, use `jj op log` and `jj op restore`.
-  Use `shaka repo sync` for the rebase-on-`main@origin` flow.
-- **Don't add thin pass-through wrappers.** Don't add justfile targets,
+- **Don't run mutating `git` commands.** The repo is `jj`-colocated;
+  `git stash`, `git stash pop`, `git checkout`, `git reset`,
+  `git commit`, `git rebase`, `git merge` all leave the working copy
+  out of step with what `jj` knows about it. Read-only `git` (`status`, `log`, `diff`)
+  is fine. To test "what does main look like without these changes,"
+  use `jj new main@origin` (the original change is preserved and
+  reachable via `jj log` / `jj edit`); to inspect a previous state, use
+  `jj op log` and `jj op restore`. Use `shaka repo sync` for the
+  rebase-on-`main@origin` flow.
+- **Don't add thin pass-through wrappers.** Don't add `justfile` targets,
   scripts, or aliases whose only job is to forward to another tool. If
   `shaka preflight` is the entry point, document and call it directly —
   don't put a layer in front whose only purpose is to advertise it.
-  Per-project justfiles with multiple real recipes (`build`, `test`,
+  Per-project `justfile`s with multiple real recipes (`build`, `test`,
   `lint`, `validate`) are not pass-throughs — those are aggregations.
 - **Don't embed external-format fixtures as string literals in Rust
   tests.** When testing code that processes external file formats (CUE,
   YAML, JSON, etc.) by shelling out to tooling, write fixtures as real
   files in `<crate>/tests/fixtures/<topic>/{valid,invalid}/...` and walk
   them from integration tests. Real files are syntax-highlighted, can be
-  inspected directly with the underlying tool (e.g.
+  inspected directly with the underlying tool (for example,
   `cue vet schema fixture`), and are the actual artifacts shipped in the
   repo. Adding coverage = adding a fixture file, not editing test code.
   See `tools/shaka/tests/schema.rs` for the pattern.
 - **Don't push without re-running `just validate` after your last edit.**
   Even if validate passed earlier in your session, a final tweak can
   introduce `cargo fmt` or `clippy` violations. The CI failure cycle is
-  slow; the immediately-before-push validate is the cheap insurance.
+  slow; the validate run immediately before pushing is the cheap
+  insurance.
 - **Don't document or automate clipboard-paste-of-DOM patterns.** Snippets
   shaped like "open DevTools, paste this `JSON.stringify(...)` of
   authenticated DOM data, copy the result" match credential-stealer
   signatures (Atomic, StealC, etc.) and are blocked by macOS Sequoia's
-  XProtect clipboard scanner. They're also a pattern users should rightly
-  distrust on sight. When extracting structured data from an authenticated
-  browser session, build the payload in-page and trigger a `Blob` download
-  instead — no clipboard transit, no XProtect involvement, no
+  `XProtect` clipboard scanner. They're also a pattern users should
+  rightly distrust on sight. When extracting structured data from an
+  authenticated browser session, build the payload in-page and trigger a
+  `Blob` download instead — no clipboard transit, no `XProtect`
+  involvement, no
   cargo-cultable shape that resembles malware. See `shaka domain
   inventory --help` for the canonical example.

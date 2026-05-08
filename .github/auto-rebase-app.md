@@ -1,6 +1,6 @@
-# kolohelios-bot GitHub App
+# `kolohelios-bot` GitHub App
 
-The **kolohelios-bot** GitHub App backs repo automation that needs to
+The **`kolohelios-bot`** GitHub App backs repo automation that needs to
 push or open PRs and have the resulting CI re-trigger normally. The
 App's settings, secrets, and install scope are recorded here so they can
 be reproduced (after rotation, recreation, or migration to another
@@ -18,10 +18,10 @@ Current consumers:
 Pushes authenticated via the workflow's default `GITHUB_TOKEN` **do not
 re-trigger CI** on the branch they push to. Both consumers need this:
 auto-rebase force-pushes onto open PRs and the bump workflow pushes
-fresher locks onto its own PR, and in either case we want the PR's
-normal CI to re-run against the new tip — otherwise the PR shows green
-checks against stale state. A GitHub App token is a separate identity,
-so its pushes are treated as ordinary contributor pushes and CI runs.
+fresher locks onto its own PR, and in either case the normal CI for the
+PR must re-run against the new tip — otherwise the PR shows green checks
+against stale state. A GitHub App token is a separate identity, so its
+pushes are treated as ordinary contributor pushes and CI runs.
 
 The App also keeps bot commits' `committer` field as
 `kolohelios-bot[bot]` rather than `github-actions[bot]`, which makes the
@@ -42,10 +42,10 @@ if the App needs to be recreated.
 
 ### Identifying and authorizing users
 
-All off — we authenticate as the App, not on behalf of users.
+All off — the bot authenticates as the App, not on behalf of users.
 
 - Callback URL: blank
-- Request user authorization (OAuth) during installation: **off**
+- Request user authorization (`OAuth`) during installation: **off**
 - Enable Device Flow: **off**
 
 ### Post installation
@@ -57,9 +57,9 @@ All off — we authenticate as the App, not on behalf of users.
 
 - Active: **off**
 
-We don't subscribe to App events; the trigger is `push: main` in the
-workflow itself. Leaving Webhook → Active off avoids GitHub asking for a
-Webhook URL.
+No App events subscribed; the trigger is `push: main` in the workflow
+itself. Leaving Webhook → Active off avoids GitHub asking for a Webhook
+URL.
 
 ### Permissions
 
@@ -72,15 +72,15 @@ Webhook URL.
 | Pull requests | Read & write | List open PRs against main; open the daily `bot/bump-kolohelios-nix` PR |
 | Metadata | Read | Mandatory for all Apps |
 
-Everything else: **No access**.
+Everything else: **no access**.
 
 > **Changing permissions later requires installation acceptance.** Adding
 > or widening a permission on the App's settings page mints a new
 > "review request" on the installation
-> (https://github.com/settings/installations → kolohelios-bot). Until you
-> click through and accept, freshly-minted installation tokens still
+> (https://github.com/settings/installations → `kolohelios-bot`). Until
+> you click through and accept, freshly-minted installation tokens still
 > carry the *old* scope and any workflow that depends on the new
-> permission will fail with `Resource not accessible by integration`.
+> permission fails with `Resource not accessible by integration`.
 
 **Organization permissions:** all **No access**.
 **Account permissions:** all **No access**.
@@ -122,4 +122,4 @@ author needs to resolve, but doesn't itself gate merge.
 Private keys can be re-generated from the App's settings page at any
 time. After regenerating, update the `KOLOHELIOS_BOT_APP_PRIVATE_KEY`
 secret in repo settings and revoke the old key. Workflow runs in flight
-will fail on token mint after revocation; new runs use the new key.
+fail on token mint after revocation; new runs use the new key.
