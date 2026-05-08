@@ -73,8 +73,12 @@ pub fn fetch() -> Result<(), JjError> {
     run_streaming(&["git", "fetch"])
 }
 
-pub fn rebase_onto(dest: &str) -> Result<(), JjError> {
-    run_streaming(&["rebase", "-d", dest])
+/// Rebase the whole "branch" containing `branch` onto `dest`
+/// (`jj rebase -b <branch> -d <dest>`). For an in-flight PR refresh, pass
+/// `branch = "@"` so the entire stack of described commits ahead of base
+/// moves with the working copy, not just `@` itself.
+pub fn rebase_branch_onto(branch: &str, dest: &str) -> Result<(), JjError> {
+    run_streaming(&["rebase", "-b", branch, "-d", dest])
 }
 
 /// Description of the current change (`@`).
