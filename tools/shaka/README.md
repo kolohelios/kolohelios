@@ -8,7 +8,16 @@ management, and the single CI gate (`shaka preflight`).
 
 ## Running
 
-`shaka` is not on `$PATH` globally. Always invoke it via the wrapper:
+Inside any project's devshell (`direnv` / `nix develop`), `shaka` is
+on `$PATH` and resolves from any `cwd`:
+
+```
+shaka <subcommand>
+```
+
+The shim ships from `kolohelios-nix.lib.workflowPackages`. For
+cold-start invocations (outside any devshell), call the wrapper
+directly from the repo root:
 
 ```
 tools/shaka/bin/shaka <subcommand>
@@ -35,7 +44,7 @@ changed) and exec's the debug binary.
 - `workspace new|list|forget|status|cleanup` — `jj` workspace management
   for parallel work.
 
-See `tools/shaka/bin/shaka <subcommand> --help` for full options.
+See `shaka <subcommand> --help` for full options.
 
 ## Development
 

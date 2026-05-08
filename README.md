@@ -33,10 +33,14 @@ just <recipe>      # build, test, lint, validate, ...
 To run validation across the whole repo (the same command CI runs):
 
 ```sh
-tools/shaka/bin/shaka preflight
+shaka preflight
 # or, scoped to changes since a ref:
-tools/shaka/bin/shaka preflight --since main@origin
+shaka preflight --since main@origin
 ```
+
+`shaka` is on `$PATH` inside any project's devshell (via a shim in
+`kolohelios-nix.lib.workflowPackages`); from outside a devshell, the
+wrapper at `tools/shaka/bin/shaka` is the cold-start escape hatch.
 
 ## Build system
 

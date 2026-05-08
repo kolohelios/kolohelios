@@ -90,5 +90,5 @@ the preceding modules without rewiring.
 ## Development
 
 This project lives in the kolohelios monorepo. Run validation with
-`just validate` from inside the project's nix devshell, or
-`tools/shaka/bin/shaka preflight` from the repo root.
+`just validate` from inside the project's nix devshell, or `shaka
+preflight` from any `cwd` inside one.
