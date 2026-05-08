@@ -44,3 +44,50 @@ nix develop . --command just validate
 ```
 
 runs the same fmt/clippy/test/coverage/flake checks CI runs for this project.
+
+## Error handling
+
+Shaka uses [`snafu`](https://docs.rs/snafu) for all per-module error
+types. New subcommands and modules should follow the same pattern rather
+than rolling a hand-written struct + `Display` + `From<io::Error>` impls
+(the form every existing error used before #252).
+
+A new error type looks like:
+
+```rust
+use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum MyError {
+    #[snafu(display("failed to run foo: {source}"))]
+    Spawn { source: std::io::Error },
+
+    #[snafu(display("foo {command}: {stderr}"))]
+    FooCommand { command: String, stderr: String },
+
+    #[snafu(display("failed to parse JSON from {context}: {source}"))]
+    JsonParse {
+        context: String,
+        source: serde_json::Error,
+    },
+}
+```
+
+Conventions:
+
+- One variant per *user-distinguishable* failure mode, not per call site.
+  Two call sites that produce identical user messages collapse into one
+  variant.
+- Wrap underlying errors with `source: SomeError` rather than baking them
+  into a `format!` string. `std::error::Error::source()` then walks the
+  cause chain — see
+  `object_store::registry::tests::parse_project_error_exposes_serde_source`
+  for the canonical test.
+- Use `.context(SomeSnafu { ... })` for eager arguments,
+  `.with_context(|_| SomeSnafu { ... })` when the context selector
+  contains a `format!` call (so the allocation only happens on the error
+  path).
+- Mark the enum `#[snafu(visibility(pub(crate)))]` so cross-module callers
+  can construct the context selectors when they shell out via the same
+  helper but need to fail with the wrapped error type.
