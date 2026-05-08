@@ -19,6 +19,11 @@ lint:
 deny:
     cargo deny check
 
+# Macro-only deps can register as false positives — allowlist via
+# `package.metadata.cargo-machete.ignored` in the offending Cargo.toml.
+machete:
+    cargo machete
+
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -42,4 +47,4 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint deny test coverage nix-fmt-check flake-check whitespace-check
+validate: fmt-check lint deny machete test coverage nix-fmt-check flake-check whitespace-check
