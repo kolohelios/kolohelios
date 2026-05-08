@@ -1,45 +1,70 @@
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[derive(Debug)]
-pub struct JjError {
-    pub message: String,
-}
+use snafu::{OptionExt, ResultExt, Snafu};
 
-impl fmt::Display for JjError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
+#[derive(Debug, Snafu)]
+pub enum JjError {
+    #[snafu(display("failed to run jj: {source}"))]
+    Spawn { source: std::io::Error },
 
-impl From<std::io::Error> for JjError {
-    fn from(e: std::io::Error) -> Self {
-        JjError {
-            message: format!("failed to run jj: {e}"),
-        }
-    }
+    #[snafu(display("jj {command}: {stderr}"))]
+    JjCommand { command: String, stderr: String },
+
+    #[snafu(display("jj {command} exited with status {status}"))]
+    StreamingExit {
+        command: String,
+        status: std::process::ExitStatus,
+    },
+
+    #[snafu(display("revset {revset:?} matched no revisions"))]
+    RevsetEmpty { revset: String },
+
+    #[snafu(display("revset {revset:?} matched multiple revisions"))]
+    RevsetMultiple { revset: String },
+
+    #[snafu(display("stat {path}: {source}"))]
+    Stat {
+        path: String,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("read {path}: {source}"))]
+    Read {
+        path: String,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("could not derive primary workspace root from .jj/repo target {target}"))]
+    PrimaryRootDerive { target: String },
+
+    #[snafu(display("workspace path is not valid UTF-8: {path}"))]
+    WorkspacePathInvalidUtf8 { path: String },
 }
 
 /// Run `jj` with the given args, returning stdout on success.
 pub fn run(args: &[&str]) -> Result<String, JjError> {
-    let output = Command::new("jj").args(args).output()?;
+    let output = Command::new("jj").args(args).output().context(SpawnSnafu)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(JjError {
-            message: format!("jj {}: {}", args.join(" "), stderr.trim()),
-        });
+        return JjCommandSnafu {
+            command: args.join(" "),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// Run `jj` and stream stdout/stderr to the parent's stdio.
 pub fn run_streaming(args: &[&str]) -> Result<(), JjError> {
-    let status = Command::new("jj").args(args).status()?;
+    let status = Command::new("jj").args(args).status().context(SpawnSnafu)?;
     if !status.success() {
-        return Err(JjError {
-            message: format!("jj {} exited with status {status}", args.join(" ")),
-        });
+        return StreamingExitSnafu {
+            command: args.join(" "),
+            status,
+        }
+        .fail();
     }
     Ok(())
 }
@@ -69,13 +94,9 @@ pub fn commit_id_of(revset: &str) -> Result<String, JjError> {
         "--no-graph",
     ])?;
     let mut ids = out.lines().map(str::trim).filter(|l| !l.is_empty());
-    let first = ids.next().ok_or_else(|| JjError {
-        message: format!("revset {revset:?} matched no revisions"),
-    })?;
+    let first = ids.next().context(RevsetEmptySnafu { revset })?;
     if ids.next().is_some() {
-        return Err(JjError {
-            message: format!("revset {revset:?} matched multiple revisions"),
-        });
+        return RevsetMultipleSnafu { revset }.fail();
     }
     Ok(first.to_string())
 }
@@ -313,20 +334,17 @@ pub fn repo_root() -> Result<PathBuf, JjError> {
 pub fn primary_workspace_root() -> Result<PathBuf, JjError> {
     let cur = repo_root()?;
     let repo_marker = cur.join(".jj").join("repo");
-    let metadata = std::fs::metadata(&repo_marker).map_err(|e| JjError {
-        message: format!("stat {}: {e}", repo_marker.display()),
+    let metadata = std::fs::metadata(&repo_marker).context(StatSnafu {
+        path: repo_marker.display().to_string(),
     })?;
     if metadata.is_dir() {
         return Ok(cur);
     }
-    let content = std::fs::read_to_string(&repo_marker).map_err(|e| JjError {
-        message: format!("read {}: {e}", repo_marker.display()),
+    let content = std::fs::read_to_string(&repo_marker).context(ReadSnafu {
+        path: repo_marker.display().to_string(),
     })?;
-    primary_root_from_repo_marker(content.trim()).ok_or_else(|| JjError {
-        message: format!(
-            "could not derive primary workspace root from .jj/repo target {}",
-            content.trim()
-        ),
+    primary_root_from_repo_marker(content.trim()).context(PrimaryRootDeriveSnafu {
+        target: content.trim().to_string(),
     })
 }
 
@@ -384,8 +402,8 @@ pub fn workspace_add(name: &str, path: &Path) -> Result<(), JjError> {
         "add",
         "--name",
         name,
-        path.to_str().ok_or_else(|| JjError {
-            message: format!("workspace path is not valid UTF-8: {}", path.display()),
+        path.to_str().context(WorkspacePathInvalidUtf8Snafu {
+            path: path.display().to_string(),
         })?,
     ])
 }
