@@ -225,7 +225,7 @@ fn check_branch_protection(repo: &str) -> Vec<Check> {
     let data = match gh::api_get(&format!("/repos/{repo}/branches/main/protection")) {
         Ok(v) => v,
         Err(e) => {
-            let msg = e.message.to_string();
+            let msg = e.to_string();
             if msg.contains("404") || msg.contains("not protected") || msg.contains("Not Found") {
                 return vec![Check::fail("Branch protection", "not enabled on main")];
             }

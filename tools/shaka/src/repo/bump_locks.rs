@@ -116,8 +116,8 @@ fn publish_pr(input: &str, branch: &str, updated: &[PathBuf]) -> Result<(), Stri
     git(&["commit", "-m", &title])?;
     git(&["push", "--force-with-lease", "origin", branch])?;
 
-    let repo = gh::detect_repo_or_env().map_err(|e| e.message)?;
-    if let Some(pr) = gh::pr_for_head(&repo, branch).map_err(|e| e.message)? {
+    let repo = gh::detect_repo_or_env().map_err(|e| e.to_string())?;
+    if let Some(pr) = gh::pr_for_head(&repo, branch).map_err(|e| e.to_string())? {
         if pr.state == PrState::Open {
             println!("{GREEN}{BOLD}updated existing PR:{RESET} {}", pr.url);
             return Ok(());
@@ -125,7 +125,7 @@ fn publish_pr(input: &str, branch: &str, updated: &[PathBuf]) -> Result<(), Stri
     }
 
     let body = format_pr_body(input, updated);
-    let url = gh::pr_create(&repo, &title, &body, branch).map_err(|e| e.message)?;
+    let url = gh::pr_create(&repo, &title, &body, branch).map_err(|e| e.to_string())?;
     println!("{GREEN}{BOLD}created PR:{RESET} {url}");
     Ok(())
 }
