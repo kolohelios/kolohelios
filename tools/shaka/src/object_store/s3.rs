@@ -7,28 +7,22 @@
 //! run in CI without secrets configured.
 
 use std::collections::BTreeSet;
-use std::fmt;
 use std::process::Command;
 
 use serde_json::Value;
+use snafu::{ResultExt, Snafu};
 
-#[derive(Debug)]
-pub struct S3Error {
-    pub message: String,
-}
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum S3Error {
+    #[snafu(display("failed to run aws: {source}"))]
+    Spawn { source: std::io::Error },
 
-impl fmt::Display for S3Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
+    #[snafu(display("aws s3api list-objects-v2: {stderr}"))]
+    ListObjects { stderr: String },
 
-impl From<std::io::Error> for S3Error {
-    fn from(e: std::io::Error) -> Self {
-        S3Error {
-            message: format!("failed to run aws: {e}"),
-        }
-    }
+    #[snafu(display("failed to parse aws s3api JSON: {source}"))]
+    JsonParse { source: serde_json::Error },
 }
 
 /// True iff both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set.
@@ -83,13 +77,17 @@ fn list_prefixes(bucket: &str, cluster: &str, prefix: &str) -> Result<BTreeSet<S
         args.push("--prefix");
         args.push(prefix);
     }
-    let output = Command::new("aws").args(&args).output()?;
+    let output = Command::new("aws")
+        .args(&args)
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(S3Error {
-            message: format!("aws s3api list-objects-v2: {}", stderr.trim()),
-        });
+        return ListObjectsSnafu {
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -97,9 +95,7 @@ fn list_prefixes(bucket: &str, cluster: &str, prefix: &str) -> Result<BTreeSet<S
         return Ok(BTreeSet::new());
     }
 
-    let parsed: Value = serde_json::from_str(&stdout).map_err(|e| S3Error {
-        message: format!("failed to parse aws s3api JSON: {e}"),
-    })?;
+    let parsed: Value = serde_json::from_str(&stdout).context(JsonParseSnafu)?;
 
     let mut prefixes = BTreeSet::new();
     if let Some(arr) = parsed["CommonPrefixes"].as_array() {

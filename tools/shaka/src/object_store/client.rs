@@ -5,37 +5,48 @@
 //! `LINODE_TOKEN`. Following shaka's existing pattern (`gh.rs`, `jj.rs`)
 //! we shell out to `curl` rather than pull in `reqwest` and its TLS deps.
 
-use std::fmt;
 use std::process::Command;
 
 use serde_json::{json, Value};
+use snafu::{OptionExt, ResultExt, Snafu};
 
 const API_BASE: &str = "https://api.linode.com/v4";
 
-#[derive(Debug)]
-pub struct LinodeError {
-    pub message: String,
-}
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum LinodeError {
+    #[snafu(display("failed to run curl: {source}"))]
+    Spawn { source: std::io::Error },
 
-impl fmt::Display for LinodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
+    #[snafu(display("LINODE_TOKEN is not set in the environment"))]
+    TokenMissing,
 
-impl From<std::io::Error> for LinodeError {
-    fn from(e: std::io::Error) -> Self {
-        LinodeError {
-            message: format!("failed to run curl: {e}"),
-        }
-    }
+    #[snafu(display("curl {method} {endpoint}: {stderr}"))]
+    CurlCommand {
+        method: String,
+        endpoint: String,
+        stderr: String,
+    },
+
+    #[snafu(display("could not parse HTTP status from curl output: {output:?}"))]
+    StatusParse { output: String },
+
+    #[snafu(display("failed to parse JSON from {method} {endpoint}: {source}"))]
+    JsonParse {
+        method: String,
+        endpoint: String,
+        source: serde_json::Error,
+    },
+
+    #[snafu(display("{message}"))]
+    Schema { message: String },
 }
 
 /// Read the Linode personal access token from `LINODE_TOKEN`.
 pub fn token_from_env() -> Result<String, LinodeError> {
-    std::env::var("LINODE_TOKEN").map_err(|_| LinodeError {
-        message: "LINODE_TOKEN is not set in the environment".into(),
-    })
+    std::env::var("LINODE_TOKEN")
+        .ok()
+        .context(TokenMissingSnafu)
 }
 
 #[derive(Debug)]
@@ -94,13 +105,19 @@ fn request(
     }
     args.push(url);
 
-    let output = Command::new("curl").args(&args).output()?;
+    let output = Command::new("curl")
+        .args(&args)
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(LinodeError {
-            message: format!("curl {method} {endpoint}: {}", stderr.trim()),
-        });
+        return CurlCommandSnafu {
+            method: method.to_string(),
+            endpoint: endpoint.to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -108,14 +125,19 @@ fn request(
         Some((b, s)) => (b, s),
         None => ("", stdout.as_ref()),
     };
-    let status: u16 = status_part.trim().parse().map_err(|_| LinodeError {
-        message: format!("could not parse HTTP status from curl output: {stdout:?}"),
-    })?;
+    let status: u16 = status_part
+        .trim()
+        .parse()
+        .ok()
+        .with_context(|| StatusParseSnafu {
+            output: stdout.to_string(),
+        })?;
     let body_json = if body_part.trim().is_empty() {
         Value::Null
     } else {
-        serde_json::from_str(body_part).map_err(|e| LinodeError {
-            message: format!("failed to parse JSON from {method} {endpoint}: {e}"),
+        serde_json::from_str(body_part).with_context(|_| JsonParseSnafu {
+            method: method.to_string(),
+            endpoint: endpoint.to_string(),
         })?
     };
     Ok(HttpResponse {
@@ -140,7 +162,7 @@ pub fn get_bucket(token: &str, cluster: &str, label: &str) -> Result<Option<Valu
         return Ok(None);
     }
     if !resp.ok() {
-        return Err(LinodeError {
+        return SchemaSnafu {
             message: format!(
                 "GET {endpoint} returned HTTP {} ({})",
                 resp.status,
@@ -149,7 +171,8 @@ pub fn get_bucket(token: &str, cluster: &str, label: &str) -> Result<Option<Valu
                     .map(|e| e.to_string())
                     .unwrap_or_else(|| "no error body".into())
             ),
-        });
+        }
+        .fail();
     }
     Ok(Some(resp.body))
 }
@@ -164,12 +187,13 @@ pub fn create_bucket(token: &str, cluster: &str, label: &str) -> Result<Value, L
     });
     let resp = post(token, "/object-storage/buckets", Some(&body))?;
     if !resp.ok() {
-        return Err(LinodeError {
+        return SchemaSnafu {
             message: format!(
                 "POST /object-storage/buckets returned HTTP {} ({})",
                 resp.status, resp.body
             ),
-        });
+        }
+        .fail();
     }
     Ok(resp.body)
 }
@@ -193,26 +217,26 @@ pub fn create_bucket_key(
     });
     let resp = post(token, "/object-storage/keys", Some(&body))?;
     if !resp.ok() {
-        return Err(LinodeError {
+        return SchemaSnafu {
             message: format!(
                 "POST /object-storage/keys returned HTTP {} ({})",
                 resp.status, resp.body
             ),
-        });
+        }
+        .fail();
     }
     let access_key = resp.body["access_key"]
         .as_str()
-        .ok_or_else(|| LinodeError {
-            message: "create_bucket_key response missing 'access_key'".into(),
+        .context(SchemaSnafu {
+            message: "create_bucket_key response missing 'access_key'",
         })?
         .to_string();
     let secret_key = resp.body["secret_key"]
         .as_str()
-        .ok_or_else(|| LinodeError {
+        .context(SchemaSnafu {
             message: "create_bucket_key response missing 'secret_key' \
                 (Linode only returns the secret on creation — \
-                deletion via the Linode console is required to retry)"
-                .into(),
+                deletion via the Linode console is required to retry)",
         })?
         .to_string();
     Ok(BucketKey {

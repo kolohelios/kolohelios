@@ -170,8 +170,27 @@ pub fn validate_uniqueness(entries: &[Entry]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error as _;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn parse_project_error_exposes_serde_source() {
+        // Demonstrates that snafu's #[snafu(source)] field threads the
+        // underlying serde_json::Error through std::error::Error::source(),
+        // so callers can downcast / walk the chain instead of grepping
+        // a flattened format! string.
+        let err: RegistryError = serde_json::from_str::<ProjectFile>("not json")
+            .with_context(|_| ParseProjectSnafu {
+                file: "fixture.cue".to_string(),
+            })
+            .unwrap_err();
+        let source = err.source().expect("source should be present");
+        assert!(
+            source.downcast_ref::<serde_json::Error>().is_some(),
+            "source should downcast to serde_json::Error, got {source:?}"
+        );
+    }
 
     fn ns(kind: &str, name: &str) -> Namespace {
         Namespace {
