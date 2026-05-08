@@ -26,6 +26,9 @@ fmt-check:
 lint:
     cargo clippy --all-targets -- -D warnings
 
+doc-check:
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+
 deny:
     cargo deny check
 
@@ -57,7 +60,7 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint deny machete test coverage nix-fmt-check flake-check whitespace-check
+validate: fmt-check lint doc-check deny machete test coverage nix-fmt-check flake-check whitespace-check
 "#;
 
 const NIX_LIB_TEMPLATE: &str = r#"nix-fmt-check:
@@ -335,8 +338,15 @@ mod tests {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
         assert!(RUST_TEMPLATE.contains(
-            "validate: fmt-check lint deny machete test coverage nix-fmt-check flake-check whitespace-check"
+            "validate: fmt-check lint doc-check deny machete test coverage nix-fmt-check flake-check whitespace-check"
         ));
+    }
+
+    #[test]
+    fn rust_template_includes_doc_check_recipe() {
+        assert!(RUST_TEMPLATE.contains("doc-check:"));
+        assert!(RUST_TEMPLATE.contains(r#"RUSTDOCFLAGS="-D warnings""#));
+        assert!(RUST_TEMPLATE.contains("cargo doc --no-deps --document-private-items"));
     }
 
     #[test]
