@@ -1,6 +1,6 @@
 mod audit;
 mod bump_locks;
-mod describe;
+pub mod describe;
 mod pr;
 mod rebase_open_prs;
 pub mod send;

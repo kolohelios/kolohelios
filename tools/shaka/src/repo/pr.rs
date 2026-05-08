@@ -1,6 +1,7 @@
 use crate::gh;
 use crate::jj;
-use crate::repo::send::{resolve_bookmark, split_message};
+use crate::repo::describe;
+use crate::repo::send::resolve_bookmark;
 use crate::term::{BOLD, GREEN, RED, RESET};
 
 pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
@@ -30,7 +31,15 @@ pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
         },
     };
 
-    let (title, body) = split_message(trimmed);
+    let synthesized = match describe::for_current_branch() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} {e}");
+            std::process::exit(1);
+        }
+    };
+    let title = synthesized.title.as_str();
+    let body = synthesized.body.as_str();
 
     if dry_run {
         println!("would run: jj bookmark set {bookmark} -r @");
