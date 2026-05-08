@@ -41,6 +41,15 @@
         ];
       };
 
+      # NixOS module — imported by `infra/devbox` to apply this user's
+      # home-manager profile to the `jon` account on the devbox.
+      nixosModules.home = {
+        imports = [
+          home-manager.nixosModules.home-manager
+          ./modules/linux.nix
+        ];
+      };
+
       devShells = forEachSupportedSystem (
         { pkgs, ... }:
         {
