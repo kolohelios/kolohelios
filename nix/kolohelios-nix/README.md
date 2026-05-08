@@ -10,8 +10,8 @@ shares one nixpkgs revision and project closures hit the cache together.
 - `lib.forEachSupportedSystem` — helper that maps a function over every
   supported system, providing a system-specific `pkgs`.
 - `lib.workflowPackages` — the workflow-tool list (jujutsu, git, just, jq,
-  cue, nixfmt-rfc-style, nil, typos) that every project's devShell wants;
-  consumers spread it and add project-specific tools on top.
+  cue, nixfmt-rfc-style, nil, typos, vale) that every project's devShell
+  wants; consumers spread it and add project-specific tools on top.
 - `formatter` — `nixfmt-rfc-style` per system, used by `nix fmt`.
 
 ## Usage from a consumer flake

@@ -49,6 +49,7 @@
           typos
           cargo-deny
           cargo-machete
+          vale
         ];
     in
     {
