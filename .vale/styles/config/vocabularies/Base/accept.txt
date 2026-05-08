@@ -79,3 +79,10 @@ re-checks
 [Nn]amespace
 [Nn]amespaces
 architecting
+[Zz]sh
+[Zz]shrc
+[Nn]vm
+[Ll]mstudio
+[Zz]ellij
+[Kk]eybind
+[Kk]eybinds
