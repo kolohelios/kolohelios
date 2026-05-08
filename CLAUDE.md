@@ -112,7 +112,19 @@ the current change set. Two things to remember when adding one:
 
 ### Running `shaka`
 
-`shaka` is **not** on `$PATH` globally. Always invoke it via the wrapper:
+Inside any project's devshell (the common case via `direnv` or
+`nix develop`), `shaka` is on `$PATH` and resolves from any `cwd`:
+
+```
+shaka <subcommand>
+```
+
+That comes from a tiny shim in `kolohelios-nix.lib.workflowPackages`
+that walks up from `cwd` to find the canonical wrapper at
+`tools/shaka/bin/shaka` and exec's it.
+
+Outside a devshell (cold-start scripts), invoke the wrapper directly
+from the repo root:
 
 ```
 tools/shaka/bin/shaka <subcommand>
@@ -263,7 +275,7 @@ into the repo.
 For rust projects, run:
 
 ```
-tools/shaka/bin/shaka project new --name <name> --slot <slot>
+shaka project new --name <name> --slot <slot>
 ```
 
 `<slot>` is one of `apps`, `packages`, `projects`, `tools`. The command

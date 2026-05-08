@@ -1,6 +1,6 @@
 ---
 description: Start working on a GitHub issue — create workspace, read, bookmark, and plan
-allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(shaka workspace new:*), Bash(tools/shaka/bin/shaka issue brief:*), Bash(jj *), Read, Glob, Grep
+allowed-tools: Bash(shaka repo sync), Bash(shaka repo status:*), Bash(shaka workspace new:*), Bash(shaka issue brief:*), Bash(jj *), Read, Glob, Grep
 argument-hint: <issue-number>
 ---
 
@@ -24,7 +24,7 @@ explicitly confirms it's fine to continue.
 Fetch the issue body and any comments in one shot:
 
 ```
-tools/shaka/bin/shaka issue brief $1
+shaka issue brief $1
 ```
 
 This runs `jj git fetch` (so the next step's workspace parents on the
@@ -49,7 +49,7 @@ the primary tree clean for sync, audit, and cross-cutting reads, and it
 means the user's WIP elsewhere is undisturbed.
 
 ```
-tools/shaka/bin/shaka workspace new --issue $1
+shaka workspace new --issue $1
 ```
 
 This creates a sibling working copy at `../kolohelios-i$1` parented on the
