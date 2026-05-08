@@ -1,5 +1,6 @@
 mod audit;
 mod bump_locks;
+mod describe;
 mod pr;
 mod rebase_open_prs;
 pub mod send;
@@ -77,6 +78,18 @@ pub enum RepoCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Synthesize a PR title and body from commits in main@origin..@
+    ///
+    /// Title is the tip commit's title verbatim. Body concatenates each
+    /// commit's "why" paragraph (the body up to any trailer footer like
+    /// `Closes #N` or `Co-authored-by:`) in chronological order, joined
+    /// by blank lines. Per project convention, no test plan section.
+    Describe {
+        /// Emit JSON (`{"title": "...", "body": "..."}`) instead of
+        /// human-readable text
+        #[arg(long)]
+        json: bool,
+    },
     /// Rebase every open PR whose base is `main` onto the current main@origin
     ///
     /// Intended to run from CI on `push: main`. PRs labeled `do-not-rebase`
@@ -126,6 +139,7 @@ pub fn run(cmd: RepoCommand) {
             dry_run,
         } => ship::run(bookmark, skip_preflight, dry_run),
         RepoCommand::Status { json } => status::run(json),
+        RepoCommand::Describe { json } => describe::run(json),
         RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
         RepoCommand::BumpLocks { input, pr_branch } => bump_locks::run(input, pr_branch),
     }
