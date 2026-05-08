@@ -12,10 +12,13 @@ pub struct Description {
 /// Synthesize a PR title and body from the commits in `main@origin..@`.
 ///
 /// Title is the tip commit's title verbatim. Body concatenates each
-/// commit's "why" — the body up to (but not including) any trailer
-/// footer like `Closes #N` or `Co-authored-by:` — joined with blank-line
-/// separators in chronological order. Returns `None` if `commits` is
-/// empty.
+/// commit's "why" — the body up to (but not including) any non-closing
+/// trailer footer like `Co-authored-by:` or `Signed-off-by:` — joined
+/// with blank-line separators in chronological order. Issue-closing
+/// keywords (`Closes #N`, `Fixes #N`, `Resolves #N`, `Refs #N`) are
+/// preserved so GitHub auto-links the PR to the issue and populates
+/// `closedByPullRequestsReferences` for `shaka workspace cleanup`.
+/// Returns `None` if `commits` is empty.
 pub fn build(commits: &[CommitMessage]) -> Option<Description> {
     let tip = commits.last()?;
     let title = tip.title.clone();
@@ -46,21 +49,13 @@ fn extract_why(body: &str) -> String {
     kept.join("\n")
 }
 
+// `Closes #N` / `Fixes #N` / `Resolves #N` are deliberately *not* stripped:
+// GitHub uses the PR body keyword to populate `closedByPullRequestsReferences`
+// on the closed issue, which `shaka workspace cleanup` depends on to find
+// merged-PR workspaces. Only non-closing trailers are stripped.
 fn is_footer_line(line: &str) -> bool {
     let trimmed = line.trim();
     let lower = trimmed.to_ascii_lowercase();
-    const ISSUE_PREFIXES: &[&str] = &[
-        "closes #",
-        "close #",
-        "fixes #",
-        "fix #",
-        "resolves #",
-        "resolve #",
-        "refs #",
-    ];
-    if ISSUE_PREFIXES.iter().any(|p| lower.starts_with(p)) {
-        return true;
-    }
     const TRAILER_PREFIXES: &[&str] = &[
         "co-authored-by:",
         "signed-off-by:",
@@ -188,15 +183,21 @@ mod tests {
     }
 
     #[test]
-    fn extract_why_strips_closes_footer() {
+    fn extract_why_preserves_closing_keywords() {
         let body = "First paragraph.\n\nSecond paragraph.\n\nCloses #67";
-        assert_eq!(extract_why(body), "First paragraph.\n\nSecond paragraph.");
+        assert_eq!(extract_why(body), body);
     }
 
     #[test]
-    fn extract_why_strips_multiple_trailer_lines() {
+    fn extract_why_preserves_all_close_variants() {
+        let body = "Why.\n\nCloses #1\nFixes #2\nResolves #3\nRefs #4";
+        assert_eq!(extract_why(body), body);
+    }
+
+    #[test]
+    fn extract_why_strips_only_non_closing_trailers() {
         let body = "Why.\n\nCloses #1\nCo-authored-by: someone <a@b.c>\nSigned-off-by: x";
-        assert_eq!(extract_why(body), "Why.");
+        assert_eq!(extract_why(body), "Why.\n\nCloses #1");
     }
 
     #[test]
@@ -218,9 +219,18 @@ mod tests {
 
     #[test]
     fn footer_detection_case_insensitive() {
-        assert!(is_footer_line("CLOSES #5"));
-        assert!(is_footer_line("Closes #5"));
-        assert!(is_footer_line("co-authored-by: someone"));
+        assert!(is_footer_line("CO-AUTHORED-BY: someone"));
+        assert!(is_footer_line("Co-Authored-By: someone"));
+        assert!(is_footer_line("signed-off-by: x"));
+    }
+
+    #[test]
+    fn footer_detection_rejects_closing_keywords() {
+        assert!(!is_footer_line("Closes #5"));
+        assert!(!is_footer_line("CLOSES #5"));
+        assert!(!is_footer_line("Fixes #5"));
+        assert!(!is_footer_line("Resolves #5"));
+        assert!(!is_footer_line("Refs #5"));
     }
 
     #[test]
@@ -237,9 +247,9 @@ mod tests {
     }
 
     #[test]
-    fn from_message_strips_footers() {
-        let got = from_message("feat: x\n\nthe why\n\nCloses #1");
+    fn from_message_preserves_closing_keywords_strips_trailers() {
+        let got = from_message("feat: x\n\nthe why\n\nCloses #1\nCo-authored-by: someone <a@b.c>");
         assert_eq!(got.title, "feat: x");
-        assert_eq!(got.body, "the why");
+        assert_eq!(got.body, "the why\n\nCloses #1");
     }
 }
