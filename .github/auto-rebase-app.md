@@ -1,20 +1,29 @@
 # kolohelios-bot GitHub App
 
-The `auto-rebase-prs.yaml` workflow authenticates as the **kolohelios-bot**
-GitHub App. The App's settings, secrets, and install scope are recorded
-here so they can be reproduced (after rotation, recreation, or migration to
-another account).
+The **kolohelios-bot** GitHub App backs repo automation that needs to
+push or open PRs and have the resulting CI re-trigger normally. The
+App's settings, secrets, and install scope are recorded here so they can
+be reproduced (after rotation, recreation, or migration to another
+account).
+
+Current consumers:
+
+- `auto-rebase-prs.yaml` — force-pushes rebased PR branches and posts
+  the `auto-rebase` commit status when `main` moves.
+- `bump-kolohelios-nix.yaml` — pushes the `bot/bump-kolohelios-nix`
+  branch and opens (or updates) the lockstep daily bump PR.
 
 ## Why a GitHub App, not `GITHUB_TOKEN`
 
 Pushes authenticated via the workflow's default `GITHUB_TOKEN` **do not
-re-trigger CI** on the branch they push to. After auto-rebase force-pushes
-a PR branch, we want the PR's normal CI to re-run against the new tip —
-otherwise the PR shows green checks against stale state. A GitHub App
-token is a separate identity, so its pushes are treated as ordinary
-contributor pushes and CI runs.
+re-trigger CI** on the branch they push to. Both consumers need this:
+auto-rebase force-pushes onto open PRs and the bump workflow pushes
+fresher locks onto its own PR, and in either case we want the PR's
+normal CI to re-run against the new tip — otherwise the PR shows green
+checks against stale state. A GitHub App token is a separate identity,
+so its pushes are treated as ordinary contributor pushes and CI runs.
 
-The App also keeps the rebase commits' `committer` field as
+The App also keeps bot commits' `committer` field as
 `kolohelios-bot[bot]` rather than `github-actions[bot]`, which makes the
 provenance obvious in `git log`.
 
@@ -58,12 +67,20 @@ Webhook URL.
 
 | Permission | Access | Why |
 | --- | --- | --- |
-| Contents | Read & write | Force-push rebased branches |
+| Contents | Read & write | Force-push rebased branches and bump-lock branches |
 | Commit statuses | Read & write | Post the `auto-rebase` status |
-| Pull requests | Read | List open PRs against main |
+| Pull requests | Read & write | List open PRs against main; open the daily `bot/bump-kolohelios-nix` PR |
 | Metadata | Read | Mandatory for all Apps |
 
 Everything else: **No access**.
+
+> **Changing permissions later requires installation acceptance.** Adding
+> or widening a permission on the App's settings page mints a new
+> "review request" on the installation
+> (https://github.com/settings/installations → kolohelios-bot). Until you
+> click through and accept, freshly-minted installation tokens still
+> carry the *old* scope and any workflow that depends on the new
+> permission will fail with `Resource not accessible by integration`.
 
 **Organization permissions:** all **No access**.
 **Account permissions:** all **No access**.
@@ -88,7 +105,8 @@ populate two repo-level entries:
 | Secret | `KOLOHELIOS_BOT_APP_PRIVATE_KEY` | The full `.pem` contents downloaded from "Generate a private key" — including `-----BEGIN/END PRIVATE KEY-----` lines |
 
 Both are referenced as `${{ vars.KOLOHELIOS_BOT_APP_ID }}` and
-`${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}` in the workflow.
+`${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}` in the consuming
+workflows.
 
 ## Branch protection
 
