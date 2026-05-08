@@ -1,5 +1,6 @@
 use crate::gh;
 use crate::jj;
+use crate::repo::describe;
 use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
 
 pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
@@ -30,7 +31,15 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
         },
     };
 
-    let (title, body) = split_message(trimmed);
+    let synthesized = match describe::for_current_branch() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} {e}");
+            std::process::exit(1);
+        }
+    };
+    let title = synthesized.title.as_str();
+    let body = synthesized.body.as_str();
 
     if dry_run {
         println!("would run: jj bookmark set {bookmark} -r @");
@@ -105,33 +114,5 @@ pub fn resolve_bookmark(description: &str) -> Result<String, String> {
                 "could not derive bookmark from description; pass --bookmark".to_string()
             })
         }
-    }
-}
-
-/// Split a commit message into a PR title (first line) and body (the rest,
-/// with leading blank lines stripped).
-pub fn split_message(message: &str) -> (&str, &str) {
-    match message.split_once('\n') {
-        Some((title, rest)) => (title.trim(), rest.trim_start_matches('\n').trim_end()),
-        None => (message.trim(), ""),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::split_message;
-
-    #[test]
-    fn split_title_only() {
-        assert_eq!(split_message("feat: thing"), ("feat: thing", ""));
-    }
-
-    #[test]
-    fn split_title_and_body() {
-        let msg = "feat: thing\n\nlonger explanation\nspans lines\n";
-        assert_eq!(
-            split_message(msg),
-            ("feat: thing", "longer explanation\nspans lines"),
-        );
     }
 }

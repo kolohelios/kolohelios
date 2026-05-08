@@ -74,19 +74,54 @@ fn is_footer_line(line: &str) -> bool {
     TRAILER_PREFIXES.iter().any(|p| lower.starts_with(p))
 }
 
+/// Synthesize a description from the current branch (`main@origin..@`).
+///
+/// Falls back to `@`'s description alone when `main@origin` doesn't
+/// resolve or the range walk yields nothing — e.g. a freshly-initialised
+/// repo without an origin, or a workspace whose `@` doesn't yet have a
+/// content diff. Errors only if `@` itself has no description to read.
+pub fn for_current_branch() -> Result<Description, String> {
+    if let Ok(commits) = jj::commits_between("main@origin", "@") {
+        if !commits.is_empty() {
+            return Ok(build(&commits).expect("non-empty commits yield a description"));
+        }
+    }
+    let description = jj::current_description().map_err(|e| e.to_string())?;
+    let trimmed = description.trim();
+    if trimmed.is_empty() {
+        return Err("no commits to describe and @ has no description".to_string());
+    }
+    Ok(from_message(trimmed))
+}
+
+/// Build a `Description` from a single commit message, applying the
+/// same footer-stripping logic as the multi-commit path. Used as the
+/// fallback when `main@origin` doesn't resolve.
+fn from_message(message: &str) -> Description {
+    let cm = match message.split_once('\n') {
+        Some((title, rest)) => CommitMessage {
+            title: title.trim().to_string(),
+            body: rest.trim_matches('\n').to_string(),
+        },
+        None => CommitMessage {
+            title: message.trim().to_string(),
+            body: String::new(),
+        },
+    };
+    Description {
+        title: cm.title.clone(),
+        body: extract_why(&cm.body),
+    }
+}
+
 pub fn run(json: bool) {
-    let commits = match jj::commits_between("main@origin", "@") {
-        Ok(c) => c,
+    let description = match for_current_branch() {
+        Ok(d) => d,
         Err(e) => {
             eprintln!("{RED}{BOLD}error:{RESET} {e}");
             std::process::exit(1);
         }
     };
-    if commits.is_empty() {
-        eprintln!("{RED}{BOLD}error:{RESET} no non-empty commits in main@origin..@");
-        std::process::exit(1);
-    }
-    let description = build(&commits).expect("non-empty commits yield a description");
 
     if json {
         match serde_json::to_string_pretty(&description) {
@@ -192,5 +227,19 @@ mod tests {
     fn footer_detection_rejects_prose() {
         assert!(!is_footer_line("This closes the loop somehow."));
         assert!(!is_footer_line("issue #5 was the trigger"));
+    }
+
+    #[test]
+    fn from_message_title_only() {
+        let got = from_message("feat: solo");
+        assert_eq!(got.title, "feat: solo");
+        assert_eq!(got.body, "");
+    }
+
+    #[test]
+    fn from_message_strips_footers() {
+        let got = from_message("feat: x\n\nthe why\n\nCloses #1");
+        assert_eq!(got.title, "feat: x");
+        assert_eq!(got.body, "the why");
     }
 }
