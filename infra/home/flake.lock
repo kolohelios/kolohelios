@@ -1,20 +1,62 @@
 {
   "nodes": {
+    "home-manager": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1777851538,
+        "narHash": "sha256-Gp8qwTEYNoy2yvmErVGlvLOQvrtEECCAKbonW7VJef8=",
+        "owner": "nix-community",
+        "repo": "home-manager",
+        "rev": "cc09c0f9b7eaa95c2d9827338a5eb03d32505ca5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "ref": "release-25.11",
+        "repo": "home-manager",
+        "type": "github"
+      }
+    },
     "kolohelios-nix": {
       "inputs": {
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1778218036,
-        "narHash": "sha256-TNEcb5KDF1A8LKq/JO34pQGsY3Eb340HHm4V8s4Xrbg=",
-        "rev": "f487f9b67b28d84728cdb51a972c033865d5d5fa",
-        "revCount": 155,
+        "lastModified": 1778250926,
+        "narHash": "sha256-6rcfdbeo0SdMIoaXEtQ0u8qVZhrrIqr5g9xabyiE7us=",
+        "rev": "1be7f98e1749806505e31c16b46bbc884dd7fa0c",
+        "revCount": 160,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/kolohelios/kolohelios-nix/0.1.155%2Brev-f487f9b67b28d84728cdb51a972c033865d5d5fa/019e0610-f819-7a40-8138-ea6f4fac3eb8/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/kolohelios-nix/0.1.160%2Brev-1be7f98e1749806505e31c16b46bbc884dd7fa0c/019e0806-7e17-7dc2-b96a-cb4aa79373de/source.tar.gz"
       },
       "original": {
         "type": "tarball",
         "url": "https://flakehub.com/f/kolohelios/kolohelios-nix/%2A.tar.gz"
+      }
+    },
+    "nix-darwin": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1772129556,
+        "narHash": "sha256-Utk0zd8STPsUJPyjabhzPc5BpPodLTXrwkpXBHYnpeg=",
+        "owner": "LnL7",
+        "repo": "nix-darwin",
+        "rev": "ebec37af18215214173c98cf6356d0aca24a2585",
+        "type": "github"
+      },
+      "original": {
+        "owner": "LnL7",
+        "ref": "nix-darwin-25.11",
+        "repo": "nix-darwin",
+        "type": "github"
       }
     },
     "nixpkgs": {
@@ -33,7 +75,9 @@
     },
     "root": {
       "inputs": {
+        "home-manager": "home-manager",
         "kolohelios-nix": "kolohelios-nix",
+        "nix-darwin": "nix-darwin",
         "nixpkgs": [
           "kolohelios-nix",
           "nixpkgs"
