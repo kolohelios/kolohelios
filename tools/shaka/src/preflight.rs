@@ -24,6 +24,15 @@ const CHECKS: &[Check] = &[
         run: shaka_project_schema_check,
     },
     Check {
+        name: "shaka domain schema-check",
+        paths: &[
+            "tools/shaka/schema/domain.cue",
+            "tools/shaka/src/domain/**",
+            "infra/cloudflare-dns/domains/**",
+        ],
+        run: shaka_domain_schema_check,
+    },
+    Check {
         name: "shaka project generate-justfiles --check",
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/justfile"],
         run: shaka_project_generate_justfiles_check,
@@ -270,6 +279,10 @@ fn matches_parts(path: &[&str], pat: &[&str]) -> bool {
 
 fn shaka_project_schema_check() -> CheckResult {
     spawn_self(&["project", "schema-check"])
+}
+
+fn shaka_domain_schema_check() -> CheckResult {
+    spawn_self(&["domain", "schema-check"])
 }
 
 fn shaka_project_generate_justfiles_check() -> CheckResult {
