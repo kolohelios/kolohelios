@@ -16,13 +16,13 @@ use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 pub enum WorkspaceCommand {
     /// Create a new jj workspace as a sibling of the repo
     New {
-        /// Workspace name (slug). Directory will be ../<repo-basename>-<name>.
+        /// Workspace name (slug). Directory will be `../<repo-basename>-<name>`.
         /// Mutually exclusive with --issue.
         #[arg(conflicts_with = "issue")]
         name: Option<String>,
 
-        /// GitHub issue number. Derives name as i<N> and prints the issue title.
-        /// Mutually exclusive with <name>.
+        /// GitHub issue number. Derives name as `i<N>` and prints the issue title.
+        /// Mutually exclusive with `<name>`.
         #[arg(long, conflicts_with = "name")]
         issue: Option<u64>,
     },
