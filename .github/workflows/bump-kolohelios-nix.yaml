@@ -33,8 +33,10 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     # `id-token: write` lets DeterminateSystems/nix-installer-action mint
-    # an OIDC token for FlakeHub, which `nix develop ./tools/shaka` and
-    # `nix flake update kolohelios-nix` both need to fetch the private
+    # an OIDC token for FlakeHub. `nix run ./tools/shaka` substitutes the
+    # wrapped shaka closure from FlakeHub Cache (published by the
+    # `build-shaka` job in `main.yaml`); `nix flake update kolohelios-nix`
+    # called by shaka itself also needs the token to fetch the private
     # `kolohelios-nix` flake.
     permissions:
       id-token: write
@@ -54,23 +56,14 @@ jobs:
         with:
           determinate: true
           flakehub: true
-      - uses: actions/cache@v5
-        with:
-          path: |
-            tools/shaka/target/
-            ~/.cargo/registry/
-            ~/.cargo/git/
-          key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
       - name: Configure git identity
         run: |
           git config --global user.name 'kolohelios-bot[bot]'
           git config --global user.email '${{ vars.KOLOHELIOS_BOT_APP_ID }}+kolohelios-bot[bot]@users.noreply.github.com'
       - name: Bump kolohelios-nix and open or update PR
         run: |
-          nix develop ./tools/shaka --command \
-            tools/shaka/bin/shaka repo bump-locks \
-              --input kolohelios-nix \
-              --pr-branch bot/bump-kolohelios-nix
+          nix run ./tools/shaka -- repo bump-locks \
+            --input kolohelios-nix \
+            --pr-branch bot/bump-kolohelios-nix
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

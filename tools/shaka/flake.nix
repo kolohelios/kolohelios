@@ -64,6 +64,28 @@
               pkgs.jujutsu
               pkgs.git
             ];
+            # Bake shaka's runtime deps onto the wrapped binary's PATH so
+            # `nix run ./tools/shaka -- <subcmd>` works without a dev shell
+            # — that's how non-preflight CI workflows (auto-rebase,
+            # kolohelios-nix bump) skip the heavy Rust toolchain fetch.
+            # Set deliberately to the everyday subset; less-common shaka
+            # subcommands (object-store, preflight) still want the dev
+            # shell, which carries awscli2/tofu/actionlint/vale/typos.
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            postFixup = ''
+              wrapProgram $out/bin/shaka \
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath [
+                    pkgs.jujutsu
+                    pkgs.git
+                    pkgs.gh
+                    pkgs.nix
+                    pkgs.cue
+                    pkgs.just
+                    pkgs.jq
+                  ]
+                }
+            '';
           };
         }
       );
