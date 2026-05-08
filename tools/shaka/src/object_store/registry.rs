@@ -6,11 +6,11 @@
 //! keeps the demand adjacent to the project that needs it without losing
 //! global protection.
 
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Deserialize;
+use snafu::{ResultExt, Snafu};
 
 use crate::project::schema_check;
 
@@ -34,15 +34,26 @@ pub struct Entry {
     pub namespace: Namespace,
 }
 
-#[derive(Debug)]
-pub struct RegistryError {
-    pub message: String,
-}
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum RegistryError {
+    #[snafu(display("could not write schema: {source}"))]
+    WriteSchema { source: std::io::Error },
 
-impl fmt::Display for RegistryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
+    #[snafu(display("failed to run cue export {file}: {source}"))]
+    SpawnCueExport {
+        file: String,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("cue export {file}: {stderr}"))]
+    CueExport { file: String, stderr: String },
+
+    #[snafu(display("failed to parse {file} as JSON: {source}"))]
+    ParseProject {
+        file: String,
+        source: serde_json::Error,
+    },
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -60,9 +71,7 @@ struct ObjectStorageBlock {
 /// Walk every project.cue under `root` and collect declared namespaces.
 /// Returns entries sorted by `(kind, name, project)` for stable output.
 pub fn collect(root: &Path) -> Result<Vec<Entry>, RegistryError> {
-    let schema_path = schema_check::write_schema().map_err(|e| RegistryError {
-        message: format!("could not write schema: {e}"),
-    })?;
+    let schema_path = schema_check::write_schema().context(WriteSchemaSnafu)?;
     let mut entries = Vec::new();
     for project_dir in schema_check::discover(root) {
         let project_file = project_dir.join("project.cue");
@@ -99,21 +108,23 @@ fn read_project(schema: &Path, file: &Path) -> Result<ProjectFile, RegistryError
         .arg(schema)
         .arg(file)
         .output()
-        .map_err(|e| RegistryError {
-            message: format!("failed to run cue export {}: {e}", file.display()),
+        .with_context(|_| SpawnCueExportSnafu {
+            file: file.display().to_string(),
         })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(RegistryError {
-            message: format!("cue export {}: {}", file.display(), stderr.trim()),
-        });
+        return CueExportSnafu {
+            file: file.display().to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.trim().is_empty() {
         return Ok(ProjectFile::default());
     }
-    serde_json::from_str(&stdout).map_err(|e| RegistryError {
-        message: format!("failed to parse {} as JSON: {e}", file.display()),
+    serde_json::from_str(&stdout).with_context(|_| ParseProjectSnafu {
+        file: file.display().to_string(),
     })
 }
 
