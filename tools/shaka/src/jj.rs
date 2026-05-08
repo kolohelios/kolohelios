@@ -115,6 +115,51 @@ pub fn ahead_count(base: &str) -> Result<usize, JjError> {
     Ok(out.lines().filter(|l| !l.trim().is_empty()).count())
 }
 
+/// Title and body of a single commit. The body has been split off from
+/// the first line and trimmed of leading/trailing blank lines; an empty
+/// body is the empty string.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CommitMessage {
+    pub title: String,
+    pub body: String,
+}
+
+/// Walk non-empty commits in `from..to`, oldest-first. Each entry's
+/// description is split into a title (first line) and body (everything
+/// after the first newline, with surrounding blank lines trimmed).
+pub fn commits_between(from: &str, to: &str) -> Result<Vec<CommitMessage>, JjError> {
+    const RECORD_END: &str = "\x1e\x1f";
+    let template = format!(r#"description ++ "{RECORD_END}\n""#);
+    let revset = format!("{from}..{to} ~ empty()");
+    let out = run(&[
+        "log",
+        "-r",
+        &revset,
+        "--reversed",
+        "-T",
+        &template,
+        "--no-graph",
+    ])?;
+    Ok(parse_commits_between(&out, RECORD_END))
+}
+
+fn parse_commits_between(out: &str, terminator: &str) -> Vec<CommitMessage> {
+    out.split(terminator)
+        .map(|chunk| chunk.trim_start_matches('\n'))
+        .filter(|chunk| !chunk.trim().is_empty())
+        .map(|chunk| match chunk.split_once('\n') {
+            Some((t, rest)) => CommitMessage {
+                title: t.trim_end().to_string(),
+                body: rest.trim_matches('\n').to_string(),
+            },
+            None => CommitMessage {
+                title: chunk.trim_end().to_string(),
+                body: String::new(),
+            },
+        })
+        .collect()
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct DirtyCounts {
     pub added: usize,
@@ -633,5 +678,59 @@ mod tests {
     fn parse_changed_paths_skips_blank_and_unknown() {
         let out = "\n? mystery\nM real.rs\n";
         assert_eq!(parse_changed_paths(out), vec!["real.rs"]);
+    }
+
+    const TERM: &str = "\x1e\x1f";
+
+    #[test]
+    fn parse_commits_between_single() {
+        let out = format!("feat: thing\n\nbody\n{TERM}\n");
+        let got = parse_commits_between(&out, TERM);
+        assert_eq!(
+            got,
+            vec![CommitMessage {
+                title: "feat: thing".to_string(),
+                body: "body".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_commits_between_title_only() {
+        let out = format!("feat: solo\n{TERM}\n");
+        let got = parse_commits_between(&out, TERM);
+        assert_eq!(
+            got,
+            vec![CommitMessage {
+                title: "feat: solo".to_string(),
+                body: String::new(),
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_commits_between_multiple_oldest_first() {
+        let out = format!(
+            "feat: a\n\nwhy a\n{TERM}\nfix: b\n\nwhy b\nspans lines\n{TERM}\n"
+        );
+        let got = parse_commits_between(&out, TERM);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].title, "feat: a");
+        assert_eq!(got[0].body, "why a");
+        assert_eq!(got[1].title, "fix: b");
+        assert_eq!(got[1].body, "why b\nspans lines");
+    }
+
+    #[test]
+    fn parse_commits_between_empty() {
+        assert!(parse_commits_between("", TERM).is_empty());
+        assert!(parse_commits_between("\n", TERM).is_empty());
+    }
+
+    #[test]
+    fn parse_commits_between_preserves_blank_lines_in_body() {
+        let out = format!("feat: x\n\npara 1\n\npara 2\n{TERM}\n");
+        let got = parse_commits_between(&out, TERM);
+        assert_eq!(got[0].body, "para 1\n\npara 2");
     }
 }
