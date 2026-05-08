@@ -34,11 +34,37 @@
           }
         );
 
+      # Tiny `shaka` on PATH that walks up from cwd looking for the
+      # canonical wrapper at `tools/shaka/bin/shaka` and exec's it.
+      # Without this, the documented invocation only works from the repo
+      # root — agents in a subdirectory or jj workspace hit `no such file
+      # or directory`. Walking up (rather than asking git/jj) handles jj
+      # workspaces uniformly, since those have no colocated `.git`.
+      shakaShim =
+        pkgs:
+        pkgs.writeShellApplication {
+          name = "shaka";
+          text = ''
+            dir="$PWD"
+            while [[ "$dir" != "/" ]]; do
+              wrapper="$dir/tools/shaka/bin/shaka"
+              if [[ -x "$wrapper" ]]; then
+                exec "$wrapper" "$@"
+              fi
+              dir="$(dirname "$dir")"
+            done
+            echo "shaka: no tools/shaka/bin/shaka found above $PWD" >&2
+            echo "(this shim expects a kolohelios checkout)" >&2
+            exit 1
+          '';
+        };
+
       # Workflow tools every project's devShell wants. Consumers compose
       # their own packages by spreading this list and adding project-specific
       # tools on top.
       workflowPackages =
-        pkgs: with pkgs; [
+        pkgs:
+        (with pkgs; [
           jujutsu
           git
           just
@@ -50,7 +76,8 @@
           cargo-deny
           cargo-machete
           vale
-        ];
+        ])
+        ++ [ (shakaShim pkgs) ];
     in
     {
       lib = {
