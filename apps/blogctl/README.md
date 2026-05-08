@@ -1,8 +1,8 @@
-# blogctl
+# `blogctl`
 
-CLI for managing Markdown blog post drafts across a linear workflow.
-Drafts live in a private workdir outside this repo (passed via
-`--workdir`); `blogctl` itself ships only as tooling.
+Command-line tool for managing Markdown blog post drafts across a linear
+workflow. Drafts live in a private `workdir` outside this repo (passed
+via `--workdir`); `blogctl` itself ships only as tooling.
 
 ## Workflow stages
 
@@ -15,7 +15,7 @@ Stage is encoded in two places that must agree: the directory the file
 sits in, and the `status:` field in its frontmatter. `blogctl` fails
 loudly on any mismatch.
 
-## Workdir layout
+## `workdir` layout
 
 ```
 <workdir>/
@@ -32,7 +32,7 @@ loudly on any mismatch.
 
 `init` writes the stage directories, `.blog-os.toml`, and a generated
 `README.md`. Prompt files (loaded by future OpenRouter integration) live
-at the workdir root next to the config; refresh the README from
+at the `workdir` root next to the `config`; refresh the README from
 `blogctl`'s baked-in template via `blogctl readme regenerate`.
 
 ## Commands
@@ -84,11 +84,11 @@ source of truth.
 - `post::Post::parse`/`render` — only place that touches YAML.
 
 OpenRouter calls, prompt loading, historical-consistency checks, and
-Todoist import are deliberately out of this slice; they slot in alongside
-the modules above without rewiring.
+`Todoist` import are deliberately out of this slice; they slot in alongside
+the preceding modules without rewiring.
 
 ## Development
 
 This project lives in the kolohelios monorepo. Run validation with
-`just validate` from inside the project's nix dev shell, or
+`just validate` from inside the project's nix devshell, or
 `tools/shaka/bin/shaka preflight` from the repo root.

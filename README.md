@@ -15,14 +15,14 @@ project. Every project has its own `flake.nix` — there is no root flake.
 | `packages/`  | Shared libraries                                     |
 | `projects/`  | Standalone projects that don't fit another slot      |
 | `services/`  | Long-running services (reserved; not yet populated)  |
-| `tools/`     | Developer tooling (e.g. `tools/shaka`)               |
-| `infra/`     | Infrastructure as code (e.g. `infra/devbox`)         |
-| `nix/`       | Shared nix infrastructure (e.g. `nix/kolohelios-nix`) |
+| `tools/`     | Developer tooling (for example, `tools/shaka`)       |
+| `infra/`     | Infrastructure as code (for example, `infra/devbox`) |
+| `nix/`       | Shared nix infrastructure (for example, `nix/kolohelios-nix`) |
 
 ## Getting started
 
 Prerequisites: [Nix](https://nixos.org/) with flakes enabled, and
-[direnv](https://direnv.net/) for automatic environment loading.
+[`direnv`](https://direnv.net/) for automatic environment loading.
 
 ```sh
 # Each project has its own dev shell. cd into it; direnv loads the flake.
@@ -46,15 +46,15 @@ tools/shaka/bin/shaka preflight --since main@origin
 - **`just`** as the per-project task runner. Per-project `justfile`s are
   generated from `project.cue` by `shaka project generate-justfiles` —
   don't hand-edit them; CI fails on drift.
-- **`shaka`** ([`tools/shaka`](tools/shaka)) is the build/repo CLI:
+- **`shaka`** ([`tools/shaka`](tools/shaka)) is the build/repo command-line tool:
   - `shaka preflight` — runs every CI check locally; CI runs the same
     command, so local and CI cannot drift.
   - `shaka project schema-check|lint|generate-justfiles` — project
     metadata tooling.
   - `shaka commit lint` — conventional-commit and atomicity enforcement.
   - `shaka whitespace check|fix` — cross-language hygiene.
-  - `shaka repo sync|send|status` — jj/PR workflow helpers.
-  - `shaka workspace` — sibling jj working copies for parallel sessions.
+  - `shaka repo sync|send|status` — `jj`/PR workflow helpers.
+  - `shaka workspace` — sibling `jj` working copies for parallel sessions.
 
 ## Tenets
 
@@ -63,9 +63,9 @@ tools/shaka/bin/shaka preflight --since main@origin
   artifacts are the code repo, the FlakeHub-published flakes, and the
   deployed services. Configuration changes live in version control.
 - **Secrets live in 1Password.** Canonical for local development (`op`
-  CLI), CI (GitHub Actions integration), and infrastructure. Never
-  committed to the repo.
-- **Version control via [Jujutsu](https://github.com/jj-vcs/jj) (`jj`)**
+  command-line tool), CI (GitHub Actions integration), and infrastructure.
+  Never committed to the repo.
+- **Version control via [`Jujutsu`](https://github.com/jj-vcs/jj) (`jj`)**
   on a colocated git repo. Conventional commits (`<type>(<scope>):
   <subject>`, max 70 chars), enforced by `shaka commit lint`. Atomic,
   vertical commits — one logical change per commit.

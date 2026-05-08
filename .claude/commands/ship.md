@@ -3,9 +3,9 @@ description: Ship the current change — rebase, lint commits, self-review, pref
 allowed-tools: Bash(shaka *), Bash(jj *), Bash(gh pr *), Bash(gh issue view:*), Read, Edit, Glob, Grep
 ---
 
-Ship the current jj change as a PR. Walk the user through each step, surface
-any failures, and stop for input when something needs human judgment. Do not
-silently push past errors.
+Ship the current `jj` change as a PR. Walk the user through each step,
+surface any failures, and stop for input when something needs human
+judgment. Do not silently push past errors.
 
 ## Workflow
 
@@ -15,13 +15,13 @@ Run `shaka repo status --json` to get a structured view of the working copy
 (`bookmarks`, `change_id`, `parent.is_main_origin`, `dirty`, `ahead`, `pr`,
 `last_fetch`). Use this — not `jj st` parsing — to drive decisions throughout
 the workflow. Re-run after `repo sync` and `repo send` to confirm state
-transitions (e.g. parent advanced to a new `main@origin` commit, `pr` populated
-after push).
+transitions (for example, parent advanced to a new `main@origin` commit,
+`pr` populated after push).
 
 ### 1. Rebase on main@origin
 
 Run `shaka repo sync` (it does `jj git fetch` + rebase onto `main@origin`). If
-it errors with conflicts, stop and report — the user resolves conflicts.
+it errors with conflicts, stop, and report — the user resolves conflicts.
 
 ### 2. Lint commits
 
@@ -38,8 +38,8 @@ If `shaka commit lint` reports errors, fix them and re-run before continuing:
 - Cross-project commit → `jj split -r <change>` to break it apart
 - Title too long or body unwrapped → `jj describe -r <change>` to rewrite
 
-Treat warnings (e.g. cross-project) as a checkpoint: surface them to the user
-and ask whether to split before continuing. Don't auto-split.
+Treat warnings (for example, cross-project) as a checkpoint: surface them
+to the user and ask whether to split before continuing. Don't auto-split.
 
 ### 3. Self-review the diff
 
@@ -51,14 +51,14 @@ Run `jj diff -r 'main..@'` and read the full output. Look for:
 - Style or naming inconsistencies with surrounding code
 - Secrets, tokens, or local paths that shouldn't be committed
 
-Report findings to the user. If anything looks wrong, stop and let the user
+Report findings to the user. If anything looks wrong, stop, and let the user
 decide whether to fix before shipping.
 
 ### 4. Run preflight
 
 Run `shaka preflight --since origin/main` to scope checks to changed paths
-(`--since` takes a git ref, not a jj revset).
-This is the same gate CI runs, so passing here means CI will pass.
+(`--since` takes a git ref, not a `jj` revset).
+This is the same gate CI runs, so passing here means CI passes too.
 
 If preflight fails, stop. Do not push a known-broken change. Help the user
 diagnose the failure.

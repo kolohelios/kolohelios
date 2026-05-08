@@ -12,12 +12,12 @@ for confirmation before writing code.
 
 ### 0. Start from a clean conversation
 
-If this conversation already contains unrelated prior context, stop and ask
-the user to run `/clear` and then re-invoke `/start $1` in a fresh
-conversation. Picking up a new issue with a polluted context risks carrying
-assumptions, file reads, or plans from earlier work into the new task. Don't
-proceed unless the conversation is fresh or the user explicitly confirms it's
-fine to continue.
+If this conversation already contains unrelated prior context, stop, and
+ask the user to run `/clear` and then re-invoke `/start $1` in a fresh
+conversation. Picking up a new issue with a polluted context risks
+carrying assumptions, file reads, or plans from earlier work into the
+new task. Don't proceed unless the conversation is fresh or the user
+explicitly confirms it's fine to continue.
 
 ### 1. Read the issue
 
@@ -66,13 +66,13 @@ Derive a bookmark from the issue title in the form
   `ci`, `build`). If the title has no prefix, infer from content and the
   issue's labels.
 - `<short-description>` is kebab-case, drops filler words, and is scoped
-  to the project where applicable (e.g. `feat/shaka-commit-lint`,
+  to the project where applicable (for example, `feat/shaka-commit-lint`,
   `feat/skills-start-issue`).
 
-Don't ask for confirmation on the name — we always work from issues, so
-the issue number is the load-bearing identifier and the bookmark name
-adds no signal worth a round-trip. Create it directly from the new
-workspace path (`/Users/jedwards/code/kolohelios-i$1`):
+Don't ask for confirmation on the name — issues are the canonical entry
+point, so the issue number is the load-bearing identifier and the
+bookmark name adds no signal worth a round-trip. Create it directly from
+the new workspace path (`/Users/jedwards/code/kolohelios-i$1`):
 
 ```
 jj bookmark create <name> -r @
@@ -80,10 +80,10 @@ jj bookmark create <name> -r @
 
 ### 4. Plan and confirm
 
-Outline an implementation approach in the response — files to touch,
+Outline an implementation approach in the response — files to modify,
 sequencing of commits (one logical change per commit, per project
-conventions), edge cases or open questions. Stop and wait for the user to
-confirm or redirect before writing any code.
+conventions), edge cases or open questions. Stop, and wait for the user
+to confirm or redirect before writing any code.
 
 ## Conventions
 

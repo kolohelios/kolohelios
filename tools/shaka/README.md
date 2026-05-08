@@ -1,10 +1,10 @@
-# shaka
+# `shaka`
 
 Build and repository tooling for the kolohelios monorepo. `shaka` is a Rust
-CLI that consolidates the workflows that would otherwise live as a
-collection of shell scripts: project metadata validation, justfile
-generation, commit linting, jj/PR helpers, jj workspace management, and the
-single CI gate (`shaka preflight`).
+command-line tool that consolidates the workflows that would otherwise
+live as a collection of shell scripts: project metadata validation,
+`justfile` generation, commit linting, `jj`/PR helpers, `jj` workspace
+management, and the single CI gate (`shaka preflight`).
 
 ## Running
 
@@ -14,10 +14,10 @@ single CI gate (`shaka preflight`).
 tools/shaka/bin/shaka <subcommand>
 ```
 
-The wrapper enters this project's nix devshell so shaka inherits its runtime
-dependencies (cue, jj, git, just, jq, cargo-llvm-cov on Linux), then runs an
-incremental `cargo build` (no-op when nothing has changed) and exec's the
-debug binary.
+The wrapper enters this project's nix devshell so `shaka` inherits its
+runtime dependencies (`cue`, `jj`, `git`, `just`, `jq`, `cargo-llvm-cov`
+on Linux), then runs an incremental `cargo build` (no-op when nothing has
+changed) and exec's the debug binary.
 
 ## Subcommands
 
@@ -31,9 +31,9 @@ debug binary.
   presence, coverage threshold sanity).
 - `commit lint -r <revset>` — enforces conventional commit format, title
   length, body wrap, and atomicity.
-- `repo sync|send|pr|audit|status` — jj/PR workflow helpers.
-- `workspace new|list|forget|status|cleanup` — jj workspace management for
-  parallel work.
+- `repo sync|send|pr|audit|status` — `jj`/PR workflow helpers.
+- `workspace new|list|forget|status|cleanup` — `jj` workspace management
+  for parallel work.
 
 See `tools/shaka/bin/shaka <subcommand> --help` for full options.
 
@@ -47,9 +47,9 @@ runs the same fmt/clippy/test/coverage/flake checks CI runs for this project.
 
 ## Error handling
 
-Shaka uses [`snafu`](https://docs.rs/snafu) for all per-module error
+`shaka` uses [`snafu`](https://docs.rs/snafu) for all per-module error
 types. New subcommands and modules should follow the same pattern rather
-than rolling a hand-written struct + `Display` + `From<io::Error>` impls
+than rolling a hand-written struct + `Display` + `From<io::Error>` `impl`s
 (the form every existing error used before #252).
 
 A new error type looks like:
@@ -88,6 +88,6 @@ Conventions:
   `.with_context(|_| SomeSnafu { ... })` when the context selector
   contains a `format!` call (so the allocation only happens on the error
   path).
-- Mark the enum `#[snafu(visibility(pub(crate)))]` so cross-module callers
+- Mark the `enum` `#[snafu(visibility(pub(crate)))]` so cross-module callers
   can construct the context selectors when they shell out via the same
   helper but need to fail with the wrapped error type.
