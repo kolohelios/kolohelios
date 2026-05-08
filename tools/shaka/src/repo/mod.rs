@@ -1,4 +1,5 @@
 mod audit;
+mod bump;
 mod bump_locks;
 pub mod describe;
 mod pr;
@@ -24,6 +25,22 @@ pub enum RepoCommand {
     },
     /// Fetch from origin and rebase the current change onto main@origin
     Sync {
+        /// Print the commands that would run without executing them
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Refresh an in-flight PR's bookmark onto the latest main@origin
+    ///
+    /// Fetches, rebases the whole stack rooted at the bookmark onto
+    /// `main@origin`, force-pushes the bookmark, and prints the PR url
+    /// (if one exists). The bookmark is auto-detected as the unique
+    /// bookmark in `main@origin..@`; pass `--bookmark` to disambiguate
+    /// or override.
+    Bump {
+        /// Bookmark to refresh (auto-detected from main@origin..@ if omitted)
+        #[arg(long)]
+        bookmark: Option<String>,
+
         /// Print the commands that would run without executing them
         #[arg(long)]
         dry_run: bool,
@@ -127,6 +144,7 @@ pub fn run(cmd: RepoCommand) {
     match cmd {
         RepoCommand::Audit { repo, fix } => audit::run(repo, fix),
         RepoCommand::Sync { dry_run } => sync::run(dry_run),
+        RepoCommand::Bump { bookmark, dry_run } => bump::run(bookmark, dry_run),
         RepoCommand::Send {
             bookmark,
             no_pr,
