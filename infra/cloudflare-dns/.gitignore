@@ -1,0 +1,14 @@
+# Terraform / OpenTofu local state and plan artifacts
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Concrete tfvars are sensitive; only the .example is committed.
+terraform/terraform.tfvars
+
+# Nix build outputs (`nix build` symlinks).
+result
+result-*
