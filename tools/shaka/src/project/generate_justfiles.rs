@@ -82,7 +82,7 @@ validate: nix-fmt-check flake-check whitespace-check
 // same outputs whenever infra files change, which is a strict superset of
 // the eval check; local equivalence is `nix build` on the relevant flake
 // output rather than `just validate`.
-const INFRA_TEMPLATE: &str = r#"tofu-validate:
+const INFRA_TEMPLATE_WITH_TF: &str = r#"tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
 
 nix-fmt-check:
@@ -98,6 +98,19 @@ plan:
 
 apply:
     cd terraform && tofu apply
+"#;
+
+// Infra projects without a `terraform/` directory (nix-only infra such
+// as `infra/home`). The tofu recipes are omitted because they would
+// fail on a missing directory; carrying an empty `terraform/` placeholder
+// would be worse than this branch.
+const INFRA_TEMPLATE_NO_TF: &str = r#"nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: nix-fmt-check whitespace-check
 "#;
 
 #[derive(Deserialize)]
@@ -121,7 +134,7 @@ pub fn run(check: bool) {
     let projects = discover_projects(Path::new("."));
     for project in &projects {
         match read_meta(&schema_path, project) {
-            Ok(meta) => match template_for(&meta.kind) {
+            Ok(meta) => match template_for(&meta.kind, project) {
                 Some(body) => items.push((project.join("justfile"), render(body))),
                 None => {
                     eprintln!(
@@ -149,10 +162,14 @@ pub fn run(check: bool) {
     }
 }
 
-fn template_for(kind: &str) -> Option<&'static str> {
+fn template_for(kind: &str, project_dir: &Path) -> Option<&'static str> {
     match kind {
         "rust" => Some(RUST_TEMPLATE),
-        "infra" => Some(INFRA_TEMPLATE),
+        "infra" => Some(if project_dir.join("terraform").is_dir() {
+            INFRA_TEMPLATE_WITH_TF
+        } else {
+            INFRA_TEMPLATE_NO_TF
+        }),
         "nix-lib" => Some(NIX_LIB_TEMPLATE),
         _ => None,
     }
@@ -268,25 +285,49 @@ fn write_schema() -> std::io::Result<PathBuf> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn template_for_rust_returns_rust_template() {
-        assert_eq!(template_for("rust"), Some(RUST_TEMPLATE));
+    fn tmp_project(name: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("shaka-tpl-{name}-"))
+            .tempdir()
+            .expect("tempdir")
     }
 
     #[test]
-    fn template_for_infra_returns_infra_template() {
-        assert_eq!(template_for("infra"), Some(INFRA_TEMPLATE));
+    fn template_for_rust_returns_rust_template() {
+        let dir = tmp_project("rust");
+        assert_eq!(template_for("rust", dir.path()), Some(RUST_TEMPLATE));
+    }
+
+    #[test]
+    fn template_for_infra_with_terraform_dir_returns_with_tf_template() {
+        let dir = tmp_project("infra-tf");
+        std::fs::create_dir(dir.path().join("terraform")).unwrap();
+        assert_eq!(
+            template_for("infra", dir.path()),
+            Some(INFRA_TEMPLATE_WITH_TF)
+        );
+    }
+
+    #[test]
+    fn template_for_infra_without_terraform_dir_returns_no_tf_template() {
+        let dir = tmp_project("infra-notf");
+        assert_eq!(
+            template_for("infra", dir.path()),
+            Some(INFRA_TEMPLATE_NO_TF)
+        );
     }
 
     #[test]
     fn template_for_nix_lib_returns_nix_lib_template() {
-        assert_eq!(template_for("nix-lib"), Some(NIX_LIB_TEMPLATE));
+        let dir = tmp_project("nix-lib");
+        assert_eq!(template_for("nix-lib", dir.path()), Some(NIX_LIB_TEMPLATE));
     }
 
     #[test]
     fn template_for_unknown_kind_returns_none() {
-        assert!(template_for("python").is_none());
-        assert!(template_for("").is_none());
+        let dir = tmp_project("unknown");
+        assert!(template_for("python", dir.path()).is_none());
+        assert!(template_for("", dir.path()).is_none());
     }
 
     #[test]
@@ -298,7 +339,12 @@ mod tests {
 
     #[test]
     fn all_templates_run_whitespace_check() {
-        for tpl in [RUST_TEMPLATE, NIX_LIB_TEMPLATE, INFRA_TEMPLATE] {
+        for tpl in [
+            RUST_TEMPLATE,
+            NIX_LIB_TEMPLATE,
+            INFRA_TEMPLATE_WITH_TF,
+            INFRA_TEMPLATE_NO_TF,
+        ] {
             assert!(tpl.contains("whitespace-check:"));
             assert!(tpl.contains("../../tools/shaka/bin/shaka whitespace check"));
             assert!(
@@ -310,7 +356,12 @@ mod tests {
 
     #[test]
     fn all_templates_run_nix_fmt_check() {
-        for tpl in [RUST_TEMPLATE, NIX_LIB_TEMPLATE, INFRA_TEMPLATE] {
+        for tpl in [
+            RUST_TEMPLATE,
+            NIX_LIB_TEMPLATE,
+            INFRA_TEMPLATE_WITH_TF,
+            INFRA_TEMPLATE_NO_TF,
+        ] {
             assert!(tpl.contains("nix-fmt-check:"));
             assert!(tpl.contains("nix fmt -- --check"));
             assert!(tpl.contains("nix-fmt-check"));
@@ -318,12 +369,14 @@ mod tests {
     }
 
     #[test]
-    fn infra_template_omits_flake_check() {
+    fn infra_templates_omit_flake_check() {
         // See #170: infra `nix flake check` pulls a NixOS closure that
         // exceeds GitHub runner disk; `Build Linode image` covers the
         // eval check via full `nix build`.
-        assert!(!INFRA_TEMPLATE.contains("flake-check"));
-        assert!(!INFRA_TEMPLATE.contains("nix flake check"));
+        for tpl in [INFRA_TEMPLATE_WITH_TF, INFRA_TEMPLATE_NO_TF] {
+            assert!(!tpl.contains("flake-check"));
+            assert!(!tpl.contains("nix flake check"));
+        }
     }
 
     #[test]
@@ -378,16 +431,28 @@ mod tests {
     }
 
     #[test]
-    fn infra_template_uses_tofu() {
-        assert!(INFRA_TEMPLATE.contains("tofu validate"));
-        assert!(INFRA_TEMPLATE.contains("tofu plan"));
-        assert!(INFRA_TEMPLATE.contains("tofu apply"));
-        assert!(!INFRA_TEMPLATE.contains("terraform validate"));
-        assert!(!INFRA_TEMPLATE.contains("terraform plan"));
+    fn infra_with_tf_template_uses_tofu() {
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("tofu validate"));
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("tofu plan"));
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("tofu apply"));
+        assert!(!INFRA_TEMPLATE_WITH_TF.contains("terraform validate"));
+        assert!(!INFRA_TEMPLATE_WITH_TF.contains("terraform plan"));
     }
 
     #[test]
-    fn infra_template_validate_omits_flake_check() {
-        assert!(INFRA_TEMPLATE.contains("validate: tofu-validate nix-fmt-check whitespace-check\n"));
+    fn infra_with_tf_template_validate_chain() {
+        assert!(INFRA_TEMPLATE_WITH_TF
+            .contains("validate: tofu-validate nix-fmt-check whitespace-check\n"));
+    }
+
+    #[test]
+    fn infra_no_tf_template_omits_tofu() {
+        assert!(!INFRA_TEMPLATE_NO_TF.contains("tofu"));
+        assert!(!INFRA_TEMPLATE_NO_TF.contains("terraform"));
+    }
+
+    #[test]
+    fn infra_no_tf_template_validate_chain() {
+        assert!(INFRA_TEMPLATE_NO_TF.contains("validate: nix-fmt-check whitespace-check\n"));
     }
 }
