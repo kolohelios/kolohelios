@@ -51,6 +51,15 @@ const CHECKS: &[Check] = &[
         paths: &[".github/workflows/**"],
         run: actionlint_check,
     },
+    Check {
+        // Whole-repo scan like `typos`: vale is fast enough that
+        // scoping by changed paths isn't worth the complexity, and a
+        // change to `.vale.ini` or vendored styles needs to re-lint
+        // every markdown file.
+        name: "vale",
+        paths: &[],
+        run: vale_check,
+    },
 ];
 
 pub fn run(keep_going: bool, since: Option<String>) {
@@ -273,6 +282,58 @@ fn shaka_project_audit() -> CheckResult {
 
 fn typos_check() -> CheckResult {
     run_command(&mut Command::new("typos"))
+}
+
+fn vale_check() -> CheckResult {
+    // Walk only tracked files via `jj file list`, not the filesystem,
+    // so vale doesn't lint markdown buried in `target/`, `.terraform/`,
+    // or other gitignored build artifacts. Vale itself doesn't respect
+    // `.gitignore`. Same workspace-correctness concerns as
+    // `actionlint_check`. See issue #210.
+    let tracked = match crate::jj::file_list("@", &[".".to_string()]) {
+        Ok(paths) => paths,
+        Err(e) => {
+            return CheckResult::Fail {
+                detail: format!("could not list tracked files: {e}"),
+            };
+        }
+    };
+    let md_files: Vec<String> = tracked.into_iter().filter(|p| p.ends_with(".md")).collect();
+    if md_files.is_empty() {
+        return CheckResult::Pass;
+    }
+
+    // Two passes so suggestions print but don't gate. Vale's
+    // `--minAlertLevel` controls both display and exit code, so to honor
+    // "show suggestions, fail on warnings" we display once at suggestion
+    // level (with `--no-exit` so it always returns 0) and then re-run
+    // silently at warning level for the gate.
+    let display = Command::new("vale")
+        .args(["--no-exit", "--minAlertLevel=suggestion"])
+        .args(&md_files)
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status();
+    if let Err(e) = display {
+        return CheckResult::Fail {
+            detail: format!("failed to spawn vale (display pass): {e}"),
+        };
+    }
+    let gate = Command::new("vale")
+        .args(["--minAlertLevel=warning"])
+        .args(&md_files)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match gate {
+        Ok(s) if s.success() => CheckResult::Pass,
+        Ok(s) => CheckResult::Fail {
+            detail: format!("exit code {}", s.code().unwrap_or(-1)),
+        },
+        Err(e) => CheckResult::Fail {
+            detail: format!("failed to spawn vale (gate pass): {e}"),
+        },
+    }
 }
 
 fn actionlint_check() -> CheckResult {
