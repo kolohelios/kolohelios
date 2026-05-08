@@ -710,9 +710,7 @@ mod tests {
 
     #[test]
     fn parse_commits_between_multiple_oldest_first() {
-        let out = format!(
-            "feat: a\n\nwhy a\n{TERM}\nfix: b\n\nwhy b\nspans lines\n{TERM}\n"
-        );
+        let out = format!("feat: a\n\nwhy a\n{TERM}\nfix: b\n\nwhy b\nspans lines\n{TERM}\n");
         let got = parse_commits_between(&out, TERM);
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].title, "feat: a");
