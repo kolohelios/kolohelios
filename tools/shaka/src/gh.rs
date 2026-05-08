@@ -1,38 +1,44 @@
-use std::fmt;
 use std::process::Command;
 
 use serde_json::Value;
+use snafu::{OptionExt, ResultExt, Snafu};
 
-#[derive(Debug)]
-pub struct GhError {
-    pub message: String,
-}
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum GhError {
+    #[snafu(display("failed to run command: {source}"))]
+    Spawn { source: std::io::Error },
 
-impl fmt::Display for GhError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
+    #[snafu(display("{command}: {stderr}"))]
+    GhCommand { command: String, stderr: String },
 
-impl From<std::io::Error> for GhError {
-    fn from(e: std::io::Error) -> Self {
-        GhError {
-            message: format!("failed to run command: {e}"),
-        }
-    }
+    #[snafu(display("{context}: {source}"))]
+    JsonParse {
+        context: String,
+        source: serde_json::Error,
+    },
+
+    #[snafu(display("failed to serialize JSON: {source}"))]
+    JsonSerialize { source: serde_json::Error },
+
+    #[snafu(display("{message}"))]
+    Schema { message: String },
 }
 
 /// Run `gh api <endpoint>` and return parsed JSON.
 pub fn api_get(endpoint: &str) -> Result<Value, GhError> {
     let output = Command::new("gh")
         .args(["api", endpoint, "-H", "Accept: application/vnd.github+json"])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh api {endpoint}: {stderr}"),
-        });
+        return GhCommandSnafu {
+            command: format!("gh api {endpoint}"),
+            stderr: stderr.to_string(),
+        }
+        .fail();
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
@@ -40,8 +46,8 @@ pub fn api_get(endpoint: &str) -> Result<Value, GhError> {
         return Ok(Value::Null);
     }
 
-    serde_json::from_str(&body).map_err(|e| GhError {
-        message: format!("failed to parse JSON from gh api {endpoint}: {e}"),
+    serde_json::from_str(&body).context(JsonParseSnafu {
+        context: format!("failed to parse JSON from gh api {endpoint}"),
     })
 }
 
@@ -56,7 +62,8 @@ pub fn api_get_status(endpoint: &str) -> Result<i32, GhError> {
             "Accept: application/vnd.github+json",
             "--include",
         ])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // First line is the HTTP status line, e.g. "HTTP/2.0 204 No Content"
@@ -69,9 +76,10 @@ pub fn api_get_status(endpoint: &str) -> Result<i32, GhError> {
         }
     }
 
-    Err(GhError {
+    SchemaSnafu {
         message: format!("could not parse status from gh api {endpoint}"),
-    })
+    }
+    .fail()
 }
 
 /// Run `gh api -X PATCH <endpoint>` with a JSON body on stdin.
@@ -90,9 +98,7 @@ pub fn api_put(endpoint: &str, body: &Value) -> Result<Value, GhError> {
 }
 
 fn api_write(method: &str, endpoint: &str, body: &Value) -> Result<Value, GhError> {
-    let body_str = serde_json::to_string(body).map_err(|e| GhError {
-        message: format!("failed to serialize JSON: {e}"),
-    })?;
+    let body_str = serde_json::to_string(body).context(JsonSerializeSnafu)?;
 
     let output = Command::new("gh")
         .args([
@@ -115,13 +121,16 @@ fn api_write(method: &str, endpoint: &str, body: &Value) -> Result<Value, GhErro
                 stdin.write_all(body_str.as_bytes())?;
             }
             child.wait_with_output()
-        })?;
+        })
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh api -X {method} {endpoint}: {stderr}"),
-        });
+        return GhCommandSnafu {
+            command: format!("gh api -X {method} {endpoint}"),
+            stderr: stderr.to_string(),
+        }
+        .fail();
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -129,8 +138,8 @@ fn api_write(method: &str, endpoint: &str, body: &Value) -> Result<Value, GhErro
         return Ok(Value::Null);
     }
 
-    serde_json::from_str(&stdout).map_err(|e| GhError {
-        message: format!("failed to parse JSON: {e}"),
+    serde_json::from_str(&stdout).context(JsonParseSnafu {
+        context: "failed to parse JSON".to_string(),
     })
 }
 
@@ -159,12 +168,12 @@ pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
     let Some(first) = result.as_array().and_then(|arr| arr.first()) else {
         return Ok(None);
     };
-    let number = first["number"].as_u64().ok_or_else(|| GhError {
+    let number = first["number"].as_u64().with_context(|| SchemaSnafu {
         message: format!("PR for head {head} missing 'number' field"),
     })?;
     let url = first["html_url"]
         .as_str()
-        .ok_or_else(|| GhError {
+        .with_context(|| SchemaSnafu {
             message: format!("PR for head {head} missing 'html_url' field"),
         })?
         .to_string();
@@ -202,21 +211,24 @@ pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
             "--json",
             "state,closedByPullRequestsReferences",
         ])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh issue view {n}: {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: format!("gh issue view {n}"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
     if body.trim().is_empty() {
         return Ok(None);
     }
-    let parsed: Value = serde_json::from_str(&body).map_err(|e| GhError {
-        message: format!("failed to parse JSON from gh issue view {n}: {e}"),
+    let parsed: Value = serde_json::from_str(&body).context(JsonParseSnafu {
+        context: format!("failed to parse JSON from gh issue view {n}"),
     })?;
 
     if parsed["state"].as_str() != Some("CLOSED") {
@@ -230,12 +242,12 @@ pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
         return Ok(None);
     };
 
-    let number = first["number"].as_u64().ok_or_else(|| GhError {
+    let number = first["number"].as_u64().with_context(|| SchemaSnafu {
         message: format!("closing PR for issue #{n} missing 'number' field"),
     })?;
     let url = first["url"]
         .as_str()
-        .ok_or_else(|| GhError {
+        .with_context(|| SchemaSnafu {
             message: format!("closing PR for issue #{n} missing 'url' field"),
         })?
         .to_string();
@@ -270,13 +282,16 @@ pub fn pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError> {
             "--json",
             "number,state,url",
         ])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh pr list (search Closes #{n}): {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: format!("gh pr list (search Closes #{n})"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
@@ -284,18 +299,18 @@ pub fn pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError> {
 }
 
 pub(crate) fn parse_pr_for_issue(body: &str) -> Result<Option<PrInfo>, GhError> {
-    let value: Value = serde_json::from_str(body).map_err(|e| GhError {
-        message: format!("failed to parse gh pr list JSON: {e}"),
+    let value: Value = serde_json::from_str(body).context(JsonParseSnafu {
+        context: "failed to parse gh pr list JSON".to_string(),
     })?;
     let Some(first) = value.as_array().and_then(|a| a.first()) else {
         return Ok(None);
     };
-    let number = first["number"].as_u64().ok_or_else(|| GhError {
-        message: "PR missing 'number' field".into(),
+    let number = first["number"].as_u64().context(SchemaSnafu {
+        message: "PR missing 'number' field",
     })?;
     let url = first["url"]
         .as_str()
-        .ok_or_else(|| GhError {
+        .with_context(|| SchemaSnafu {
             message: format!("PR #{number} missing 'url' field"),
         })?
         .to_string();
@@ -306,9 +321,10 @@ pub(crate) fn parse_pr_for_issue(body: &str) -> Result<Option<PrInfo>, GhError> 
         Some("MERGED") => PrState::Merged,
         Some("CLOSED") => PrState::Closed,
         other => {
-            return Err(GhError {
+            return SchemaSnafu {
                 message: format!("PR #{number} has unexpected state {other:?}"),
-            });
+            }
+            .fail();
         }
     };
     Ok(Some(PrInfo { number, url, state }))
@@ -323,12 +339,15 @@ pub fn pr_create(repo: &str, title: &str, body: &str, head: &str) -> Result<Stri
         .args([
             "pr", "create", "--repo", repo, "--title", title, "--body", body, "--head", head,
         ])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh pr create: {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: "gh pr create".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(url)
@@ -349,13 +368,16 @@ pub fn issue_title(n: u64) -> Result<String, GhError> {
             "--jq",
             ".title",
         ])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh issue view {n}: {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: format!("gh issue view {n}"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -387,13 +409,16 @@ pub fn list_open_prs_against(base: &str) -> Result<Vec<OpenPr>, GhError> {
             "--json",
             "number,headRefName,headRefOid,url,labels",
         ])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh pr list: {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: "gh pr list".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
@@ -401,33 +426,33 @@ pub fn list_open_prs_against(base: &str) -> Result<Vec<OpenPr>, GhError> {
 }
 
 pub(crate) fn parse_open_prs(body: &str) -> Result<Vec<OpenPr>, GhError> {
-    let value: Value = serde_json::from_str(body).map_err(|e| GhError {
-        message: format!("failed to parse gh pr list JSON: {e}"),
+    let value: Value = serde_json::from_str(body).context(JsonParseSnafu {
+        context: "failed to parse gh pr list JSON".to_string(),
     })?;
-    let arr = value.as_array().ok_or_else(|| GhError {
-        message: "gh pr list did not return an array".into(),
+    let arr = value.as_array().context(SchemaSnafu {
+        message: "gh pr list did not return an array",
     })?;
 
     arr.iter()
         .map(|v| {
-            let number = v["number"].as_u64().ok_or_else(|| GhError {
-                message: "PR missing 'number'".into(),
+            let number = v["number"].as_u64().context(SchemaSnafu {
+                message: "PR missing 'number'",
             })?;
             let head_ref = v["headRefName"]
                 .as_str()
-                .ok_or_else(|| GhError {
+                .with_context(|| SchemaSnafu {
                     message: format!("PR #{number} missing 'headRefName'"),
                 })?
                 .to_string();
             let head_sha = v["headRefOid"]
                 .as_str()
-                .ok_or_else(|| GhError {
+                .with_context(|| SchemaSnafu {
                     message: format!("PR #{number} missing 'headRefOid'"),
                 })?
                 .to_string();
             let url = v["url"]
                 .as_str()
-                .ok_or_else(|| GhError {
+                .with_context(|| SchemaSnafu {
                     message: format!("PR #{number} missing 'url'"),
                 })?
                 .to_string();
@@ -527,12 +552,17 @@ pub fn list_issues(
         args.push(m.to_string());
     }
 
-    let output = Command::new("gh").args(&args).output()?;
+    let output = Command::new("gh")
+        .args(&args)
+        .output()
+        .context(SpawnSnafu)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("gh issue list: {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: "gh issue list".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
@@ -540,21 +570,21 @@ pub fn list_issues(
 }
 
 pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError> {
-    let value: Value = serde_json::from_str(body).map_err(|e| GhError {
-        message: format!("failed to parse gh issue list JSON: {e}"),
+    let value: Value = serde_json::from_str(body).context(JsonParseSnafu {
+        context: "failed to parse gh issue list JSON".to_string(),
     })?;
-    let arr = value.as_array().ok_or_else(|| GhError {
-        message: "gh issue list did not return an array".into(),
+    let arr = value.as_array().context(SchemaSnafu {
+        message: "gh issue list did not return an array",
     })?;
 
     arr.iter()
         .map(|v| {
-            let number = v["number"].as_u64().ok_or_else(|| GhError {
-                message: "issue missing 'number'".into(),
+            let number = v["number"].as_u64().context(SchemaSnafu {
+                message: "issue missing 'number'",
             })?;
             let title = v["title"]
                 .as_str()
-                .ok_or_else(|| GhError {
+                .with_context(|| SchemaSnafu {
                     message: format!("issue #{number} missing 'title'"),
                 })?
                 .to_string();
@@ -562,9 +592,10 @@ pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError>
                 Some("OPEN") => IssueState::Open,
                 Some("CLOSED") => IssueState::Closed,
                 other => {
-                    return Err(GhError {
+                    return SchemaSnafu {
                         message: format!("issue #{number} has unexpected state {other:?}"),
-                    });
+                    }
+                    .fail();
                 }
             };
             let labels = v["labels"]
@@ -578,7 +609,7 @@ pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError>
                 .unwrap_or_default();
             let url = v["url"]
                 .as_str()
-                .ok_or_else(|| GhError {
+                .with_context(|| SchemaSnafu {
                     message: format!("issue #{number} missing 'url'"),
                 })?
                 .to_string();
@@ -616,13 +647,16 @@ pub fn detect_repo_or_env() -> Result<String, GhError> {
 pub fn detect_repo() -> Result<String, GhError> {
     let output = Command::new("jj")
         .args(["git", "remote", "list"])
-        .output()?;
+        .output()
+        .context(SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GhError {
-            message: format!("jj git remote list: {}", stderr.trim()),
-        });
+        return GhCommandSnafu {
+            command: "jj git remote list".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -639,11 +673,11 @@ pub fn detect_repo() -> Result<String, GhError> {
                 None
             }
         })
-        .ok_or_else(|| GhError {
-            message: "no jj git remote named 'origin' found".into(),
+        .context(SchemaSnafu {
+            message: "no jj git remote named 'origin' found",
         })?;
 
-    parse_repo_from_url(&url).ok_or_else(|| GhError {
+    parse_repo_from_url(&url).with_context(|| SchemaSnafu {
         message: format!("could not parse owner/repo from remote URL: {url}"),
     })
 }

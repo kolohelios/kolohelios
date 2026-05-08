@@ -78,6 +78,8 @@ pub fn run(repo_arg: Option<String>) {
 // `gh issue list` rather than the REST API directly, since the REST API
 // mixes PRs into the issues endpoint while the gh CLI filters them out.
 fn list_open_issues(repo: &str) -> Result<Vec<Value>, gh::GhError> {
+    use snafu::ResultExt;
+
     let output = Command::new("gh")
         .args([
             "issue",
@@ -91,18 +93,21 @@ fn list_open_issues(repo: &str) -> Result<Vec<Value>, gh::GhError> {
             "--json",
             "number,title,labels",
         ])
-        .output()?;
+        .output()
+        .context(gh::SpawnSnafu)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(gh::GhError {
-            message: format!("gh issue list: {}", stderr.trim()),
-        });
+        return gh::GhCommandSnafu {
+            command: "gh issue list".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
-    let parsed: Value = serde_json::from_str(&body).map_err(|e| gh::GhError {
-        message: format!("failed to parse JSON from gh issue list: {e}"),
+    let parsed: Value = serde_json::from_str(&body).context(gh::JsonParseSnafu {
+        context: "failed to parse JSON from gh issue list".to_string(),
     })?;
 
     Ok(parsed.as_array().cloned().unwrap_or_default())
