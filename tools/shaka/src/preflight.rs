@@ -20,7 +20,12 @@ struct Check {
 const CHECKS: &[Check] = &[
     Check {
         name: "shaka project schema-check",
-        paths: &["tools/shaka/**", "*/*/project.cue"],
+        // `**/project.cue` catches stray placements at any depth so the
+        // depth-2 invariant (enforced inside schema-check) fires on
+        // additions like `apps/project.cue` or `apps/foo/sub/project.cue`
+        // under `--since`. `*/*/project.cue` (canonical layout) is already
+        // covered by `**/project.cue` but kept for readability.
+        paths: &["tools/shaka/**", "*/*/project.cue", "**/project.cue"],
         run: shaka_project_schema_check,
     },
     Check {

@@ -30,7 +30,7 @@ machete:
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project.cue project.cue)
+    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
     fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
     measured=$(cargo llvm-cov --json --summary-only --branch)
