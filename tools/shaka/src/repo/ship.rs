@@ -1,10 +1,8 @@
 use crate::commit::{self, CommitCommand};
-use crate::gh;
 use crate::jj;
 use crate::preflight;
-use crate::repo::describe;
-use crate::repo::send::resolve_bookmark;
-use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
+use crate::repo::send::{self, resolve_bookmark};
+use crate::term::{BOLD, DIM, RED, RESET, YELLOW};
 
 const SHIP_REVSET: &str = "main@origin..@";
 
@@ -36,16 +34,6 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
         },
     };
 
-    let synthesized = match describe::for_current_branch() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} {e}");
-            std::process::exit(1);
-        }
-    };
-    let title = synthesized.title.as_str();
-    let body = synthesized.body.as_str();
-
     if dry_run {
         println!("would run: jj git fetch");
         println!("would run: jj rebase -b @ -d main@origin");
@@ -56,9 +44,7 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
         } else {
             println!("would run: shaka preflight");
         }
-        println!("would run: jj bookmark set {bookmark} -r @");
-        println!("would run: jj git push --allow-new --bookmark {bookmark}");
-        println!("would ensure PR exists for head {bookmark}");
+        send::run(Some(bookmark), false, true);
         return;
     }
 
@@ -106,37 +92,6 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
         preflight::run(false, None);
     }
 
-    println!("{BOLD}step 6/6: push and ensure PR{RESET}");
-    if let Err(e) = jj::set_bookmark(&bookmark) {
-        eprintln!("{RED}{BOLD}error:{RESET} {e}");
-        std::process::exit(1);
-    }
-    if let Err(e) = jj::push_bookmark(&bookmark) {
-        eprintln!("{RED}{BOLD}error:{RESET} {e}");
-        std::process::exit(1);
-    }
-
-    let repo = match gh::detect_repo() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("{YELLOW}{BOLD}warn:{RESET} could not detect repo: {e}");
-            println!("{GREEN}{BOLD}pushed{RESET} (skipping PR)");
-            return;
-        }
-    };
-
-    match gh::pr_for_head(&repo, &bookmark) {
-        Ok(Some(pr)) => println!("{GREEN}{BOLD}shipped{RESET} (PR: {})", pr.url),
-        Ok(None) => match gh::pr_create(&repo, title, body, &bookmark) {
-            Ok(url) => println!("{GREEN}{BOLD}shipped{RESET} ({url})"),
-            Err(e) => {
-                eprintln!("{RED}{BOLD}pr create failed:{RESET} {e}");
-                std::process::exit(1);
-            }
-        },
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} {e}");
-            std::process::exit(1);
-        }
-    }
+    println!("{BOLD}step 6/6: handing off to repo send{RESET}");
+    send::run(Some(bookmark), false, false);
 }
