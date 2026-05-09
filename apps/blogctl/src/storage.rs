@@ -129,6 +129,56 @@ pub struct PostHandle {
     pub metadata: PostMetadata,
 }
 
+/// A single Markdown file discovered by the audit walk. Either the
+/// frontmatter parsed cleanly or it didn't — `doctor` surfaces both
+/// shapes, so the audit refuses to fail-fast the way `list()` does.
+#[derive(Debug)]
+pub enum AuditedPost {
+    Parsed {
+        dir_stage: Stage,
+        path: PathBuf,
+        post: Post,
+    },
+    ParseFailed {
+        dir_stage: Stage,
+        path: PathBuf,
+        error: Error,
+    },
+}
+
+impl AuditedPost {
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Parsed { path, .. } | Self::ParseFailed { path, .. } => path,
+        }
+    }
+
+    pub fn dir_stage(&self) -> Stage {
+        match self {
+            Self::Parsed { dir_stage, .. } | Self::ParseFailed { dir_stage, .. } => *dir_stage,
+        }
+    }
+}
+
+/// Result of looking at `<workdir>/.blog-os.toml` without committing
+/// to "this workdir is initialized." Used by `doctor` to diagnose
+/// half-built or corrupted workdirs.
+#[derive(Debug)]
+pub enum ConfigStatus {
+    Ok(Config),
+    Missing,
+    Unparsable(Error),
+}
+
+/// A non-Markdown entry found inside a stage directory. The path is
+/// kept verbatim so callers can print it; `dir_stage` lets them say
+/// which stage the clutter is polluting.
+#[derive(Debug, Clone)]
+pub struct StrayEntry {
+    pub dir_stage: Stage,
+    pub path: PathBuf,
+}
+
 #[derive(Debug)]
 pub struct Repository {
     workdir: Workdir,
@@ -302,6 +352,114 @@ impl Repository {
             path: new_path,
             metadata: post.metadata,
         })
+    }
+
+    /// Read `.blog-os.toml` and report whether it's present, missing,
+    /// or unparsable. Unlike `read_config`, this never returns an
+    /// `Err` — `doctor` needs to inspect every variant.
+    pub fn audit_config(&self) -> ConfigStatus {
+        let path = self.workdir.config_path();
+        let raw = match fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return ConfigStatus::Missing,
+            Err(err) => return ConfigStatus::Unparsable(Error::io(&path, err)),
+        };
+        match toml::from_str::<Config>(&raw) {
+            Ok(cfg) => ConfigStatus::Ok(cfg),
+            Err(source) => ConfigStatus::Unparsable(Error::ConfigParse { path, source }),
+        }
+    }
+
+    /// Stage directories that the workdir layout demands but that
+    /// don't currently exist on disk. Files at the path (rather than
+    /// directories) also count as missing — the layout is broken.
+    pub fn missing_stage_dirs(&self) -> Vec<Stage> {
+        Stage::ALL
+            .iter()
+            .copied()
+            .filter(|s| !self.workdir.stage_dir(*s).is_dir())
+            .collect()
+    }
+
+    /// Walk every stage directory and parse each `.md` file. Unlike
+    /// `list()`, this never short-circuits on parse failure or stage
+    /// mismatch — the audit needs to enumerate problems, not stop at
+    /// the first one.
+    ///
+    /// Outer `Result` is reserved for unrecoverable IO (e.g. a stage
+    /// directory that exists but can't be read). Missing stage
+    /// directories are skipped silently and surfaced separately by
+    /// `missing_stage_dirs()`.
+    pub fn audit_posts(&self) -> Result<Vec<AuditedPost>> {
+        let mut out = Vec::new();
+        for &stage in Stage::ALL {
+            let dir = self.workdir.stage_dir(stage);
+            let entries = match fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => return Err(Error::io(&dir, err)),
+            };
+            for entry in entries {
+                let entry = entry.map_err(|e| Error::io(&dir, e))?;
+                let path = entry.path();
+                if !is_markdown(&path) {
+                    continue;
+                }
+                let raw = match fs::read_to_string(&path) {
+                    Ok(s) => s,
+                    Err(err) => {
+                        out.push(AuditedPost::ParseFailed {
+                            dir_stage: stage,
+                            path: path.clone(),
+                            error: Error::io(&path, err),
+                        });
+                        continue;
+                    }
+                };
+                match Post::parse(&path, &raw) {
+                    Ok(post) => out.push(AuditedPost::Parsed {
+                        dir_stage: stage,
+                        path,
+                        post,
+                    }),
+                    Err(error) => out.push(AuditedPost::ParseFailed {
+                        dir_stage: stage,
+                        path,
+                        error,
+                    }),
+                }
+            }
+        }
+        out.sort_by(|a, b| a.path().cmp(b.path()));
+        Ok(out)
+    }
+
+    /// Non-Markdown entries living inside any stage directory.
+    /// Captures both files (`.DS_Store`, stray drafts in other
+    /// formats) and subdirectories (which the layout never expects).
+    pub fn stray_entries(&self) -> Result<Vec<StrayEntry>> {
+        let mut out = Vec::new();
+        for &stage in Stage::ALL {
+            let dir = self.workdir.stage_dir(stage);
+            let entries = match fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => return Err(Error::io(&dir, err)),
+            };
+            for entry in entries {
+                let entry = entry.map_err(|e| Error::io(&dir, e))?;
+                let path = entry.path();
+                if path.is_file() && is_markdown(&path) {
+                    continue;
+                }
+                out.push(StrayEntry {
+                    dir_stage: stage,
+                    path,
+                });
+            }
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(out)
     }
 
     fn locate(&self, slug: &str) -> Result<Option<(Stage, PathBuf)>> {
@@ -558,5 +716,151 @@ mod tests {
             .relocate("same", Stage::Concept, datetime!(2026-05-04 0:00 UTC))
             .unwrap();
         assert_eq!(handle.stage, Stage::Concept);
+    }
+
+    #[test]
+    fn audit_config_returns_missing_when_no_config_file() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        assert!(matches!(repo.audit_config(), ConfigStatus::Missing));
+    }
+
+    #[test]
+    fn audit_config_returns_unparsable_for_garbage_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".blog-os.toml"), "this = is not = valid").unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        assert!(matches!(repo.audit_config(), ConfigStatus::Unparsable(_)));
+    }
+
+    #[test]
+    fn audit_config_returns_ok_for_freshly_initialized_workdir() {
+        let (_tmp, repo) = fresh_repo();
+        match repo.audit_config() {
+            ConfigStatus::Ok(cfg) => assert_eq!(cfg.version, Config::CURRENT_VERSION),
+            other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_stage_dirs_is_empty_after_init() {
+        let (_tmp, repo) = fresh_repo();
+        assert!(repo.missing_stage_dirs().is_empty());
+    }
+
+    #[test]
+    fn missing_stage_dirs_lists_every_absent_stage() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        // Only create two of the six.
+        fs::create_dir_all(tmp.path().join("concepts")).unwrap();
+        fs::create_dir_all(tmp.path().join("ideation")).unwrap();
+
+        let missing = repo.missing_stage_dirs();
+        assert!(!missing.contains(&Stage::Concept));
+        assert!(!missing.contains(&Stage::Ideation));
+        assert!(missing.contains(&Stage::Editing));
+        assert!(missing.contains(&Stage::FinalEditing));
+        assert!(missing.contains(&Stage::Published));
+        assert!(missing.contains(&Stage::Abandoned));
+    }
+
+    #[test]
+    fn missing_stage_dirs_treats_a_file_at_the_path_as_missing() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        // A regular file where the directory belongs.
+        fs::write(tmp.path().join("concepts"), "oops").unwrap();
+        assert!(repo.missing_stage_dirs().contains(&Stage::Concept));
+    }
+
+    #[test]
+    fn audit_posts_returns_empty_for_fresh_workdir() {
+        let (_tmp, repo) = fresh_repo();
+        assert!(repo.audit_posts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn audit_posts_surfaces_parse_failures_alongside_parsed_posts() {
+        let (tmp, repo) = fresh_repo();
+        // Healthy post in concepts/.
+        repo.create_post(&fixture_post("good", Stage::Concept))
+            .unwrap();
+        // Malformed post in ideation/ — no closing delimiter.
+        fs::write(tmp.path().join("ideation/broken.md"), "---\ntitle: X\n").unwrap();
+
+        let audited = repo.audit_posts().unwrap();
+        assert_eq!(audited.len(), 2);
+        let parsed = audited
+            .iter()
+            .filter(|a| matches!(a, AuditedPost::Parsed { .. }))
+            .count();
+        let failed = audited
+            .iter()
+            .filter(|a| matches!(a, AuditedPost::ParseFailed { .. }))
+            .count();
+        assert_eq!(parsed, 1);
+        assert_eq!(failed, 1);
+    }
+
+    #[test]
+    fn audit_posts_does_not_fail_on_stage_mismatch() {
+        // `list()` errors on stage mismatch; `audit_posts()` keeps walking
+        // so doctor can collect every problem in one pass.
+        let (tmp, repo) = fresh_repo();
+        let mismatched = fixture_post("miss", Stage::Editing);
+        fs::write(
+            tmp.path().join("concepts/miss.md"),
+            mismatched.render().unwrap(),
+        )
+        .unwrap();
+
+        let audited = repo.audit_posts().unwrap();
+        assert_eq!(audited.len(), 1);
+        match &audited[0] {
+            AuditedPost::Parsed {
+                dir_stage, post, ..
+            } => {
+                assert_eq!(*dir_stage, Stage::Concept);
+                assert_eq!(post.metadata.status, Stage::Editing);
+            }
+            other => panic!("expected Parsed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn audit_posts_skips_missing_stage_directories() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        // No stage directories exist at all.
+        assert!(repo.audit_posts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stray_entries_flags_non_markdown_files_in_stage_dirs() {
+        let (tmp, repo) = fresh_repo();
+        fs::write(tmp.path().join("concepts/.DS_Store"), "noise").unwrap();
+        fs::write(tmp.path().join("editing/notes.txt"), "stray").unwrap();
+        // A real markdown file should not show up as stray.
+        repo.create_post(&fixture_post("real", Stage::Concept))
+            .unwrap();
+
+        let stray = repo.stray_entries().unwrap();
+        assert_eq!(stray.len(), 2);
+        let paths: Vec<&Path> = stray.iter().map(|s| s.path.as_path()).collect();
+        assert!(paths.iter().any(|p| p.ends_with(".DS_Store")));
+        assert!(paths.iter().any(|p| p.ends_with("notes.txt")));
+    }
+
+    #[test]
+    fn stray_entries_flags_subdirectories_inside_stage_dirs() {
+        let (tmp, _repo) = fresh_repo();
+        fs::create_dir_all(tmp.path().join("concepts/archive")).unwrap();
+
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        let stray = repo.stray_entries().unwrap();
+        assert_eq!(stray.len(), 1);
+        assert!(stray[0].path.ends_with("archive"));
+        assert_eq!(stray[0].dir_stage, Stage::Concept);
     }
 }
