@@ -42,7 +42,7 @@ project. Project-local docs and configuration live alongside the project.
 | `nix/`       | Shared nix infrastructure (for example, `nix/kolohelios-nix`) |
 
 Every project has a `project.cue` declaring its `name` and `kind` (validated
-against `tools/shaka/schema/project.cue`). Per-project `justfile`s are
+against `tools/shaka/schema/project-schema.cue`). Per-project `justfile`s are
 **generated** by `shaka project generate-justfiles` — never edit them by
 hand. CI fails on drift.
 
@@ -287,7 +287,7 @@ result.
 For `infra` and `nix-lib` projects (and any non-rust kind), scaffold by
 hand for now — `project new` only ships the rust template:
 
-1. Create `<slot>/<name>/project.cue` matching `tools/shaka/schema/project.cue`.
+1. Create `<slot>/<name>/project.cue` matching `tools/shaka/schema/project-schema.cue`.
 2. Run `shaka project schema-check` to confirm the schema accepts it.
 3. Run `shaka project generate-justfiles` to produce the per-project `justfile`.
 4. Add the project's source files and flake inputs.

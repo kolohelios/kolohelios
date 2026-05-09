@@ -13,12 +13,21 @@ fn fixtures_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/audit")
 }
 
+// Fixture files named `<base>.fixture` get staged as `<base>` so the source
+// tree doesn't carry stray `project.cue` files (rejected by
+// `shaka project schema-check` per #95). The `.fixture` suffix is the only
+// convention; everything else copies verbatim.
 fn copy_dir(src: &Path, dst: &Path) {
     std::fs::create_dir_all(dst).unwrap();
     for entry in std::fs::read_dir(src).unwrap() {
         let entry = entry.unwrap();
         let from = entry.path();
-        let to = dst.join(entry.file_name());
+        let name = entry.file_name();
+        let staged_name = match name.to_str().and_then(|n| n.strip_suffix(".fixture")) {
+            Some(stripped) => std::ffi::OsString::from(stripped),
+            None => name,
+        };
+        let to = dst.join(staged_name);
         if from.is_dir() {
             copy_dir(&from, &to);
         } else {
