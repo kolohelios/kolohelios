@@ -16,14 +16,10 @@ terraform {
 # Source it via 1Password: see README.md.
 provider "cloudflare" {}
 
-data "cloudflare_accounts" "primary" {
-  name = var.cloudflare_account_name
-}
-
 # ── kolohelios.com ─────────────────────────────────────────────
 resource "cloudflare_zone" "kolohelios_com" {
   account = {
-    id = data.cloudflare_accounts.primary.result[0].id
+    id = var.cloudflare_account_id
   }
   name = "kolohelios.com"
   type = "full"
