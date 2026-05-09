@@ -38,6 +38,15 @@ const CHECKS: &[Check] = &[
         run: shaka_domain_schema_check,
     },
     Check {
+        name: "shaka token cloudflare schema-check",
+        paths: &[
+            "tools/shaka/schema/cloudflare-token.cue",
+            "tools/shaka/src/token/**",
+            "infra/cloudflare-tokens/tokens/**",
+        ],
+        run: shaka_token_cloudflare_schema_check,
+    },
+    Check {
         name: "shaka project generate-justfiles --check",
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/justfile"],
         run: shaka_project_generate_justfiles_check,
@@ -288,6 +297,10 @@ fn shaka_project_schema_check() -> CheckResult {
 
 fn shaka_domain_schema_check() -> CheckResult {
     spawn_self(&["domain", "schema-check"])
+}
+
+fn shaka_token_cloudflare_schema_check() -> CheckResult {
+    spawn_self(&["token", "cloudflare", "schema-check"])
 }
 
 fn shaka_project_generate_justfiles_check() -> CheckResult {
