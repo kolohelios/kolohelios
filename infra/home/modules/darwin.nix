@@ -11,6 +11,10 @@
     "flakes"
   ];
 
+  nix.linux-builder.enable = true;
+  # Required so non-root users can dispatch to the linux-builder VM.
+  nix.settings.trusted-users = [ "@admin" ];
+
   users.users.jedwards = {
     name = "jedwards";
     home = "/Users/jedwards";
