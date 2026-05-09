@@ -14,9 +14,11 @@ reads CUE registries directly).
 
 - `tokens/` — per-token CUE registry, one `#Token` instance per file.
   Validated against `tools/shaka/schema/cloudflare-token.cue`.
-- `terraform/main.tf` — Cloudflare and 1Password providers, account data
-  source, token resources.
-- `terraform/variables.tf` — `cloudflare_account_name` and
+- `terraform/main.tf` — Cloudflare and 1Password providers,
+  permission-group data sources, token resources.
+- `terraform/variables.tf` — `cloudflare_account_id` (literal, copied
+  from the dashboard URL — the meta-token's `User:API Tokens:Edit`
+  scope can't list accounts, so we don't look it up by name) and
   `onepassword_vault_id` (the canonical "Kolohelios Monorepo" vault,
   UUID `vedq2v6cmtkglnonkenrjneepa`).
 - `terraform/outputs.tf` — token metadata (IDs, expiry); never values.

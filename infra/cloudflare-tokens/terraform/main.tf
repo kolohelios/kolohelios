@@ -26,18 +26,18 @@ provider "cloudflare" {}
 # README.md.
 provider "onepassword" {}
 
-# ── Account / permission-group lookups ─────────────────────────────────
+# ── Permission-group lookups ──────────────────────────────────────────
 #
-# The CF account is referenced by name (provided via
-# `var.cloudflare_account_name`) so account IDs don't appear in version
-# control. Permission groups are looked up by API name and resolved to
-# opaque CF group IDs at plan time — this lets the per-token CUE
-# registry under `tokens/` declare permissions in human-readable form
-# without hardcoding IDs in TF.
-data "cloudflare_accounts" "primary" {
-  name = var.cloudflare_account_name
-}
-
+# Permission groups are looked up by API name and resolved to opaque CF
+# group IDs at plan time — this lets the per-token CUE registry under
+# `tokens/` declare permissions in human-readable form without
+# hardcoding IDs in TF.
+#
+# Account ID is passed literally via `var.cloudflare_account_id` rather
+# than looked up via `data "cloudflare_accounts"` (which the
+# `cloudflare-dns` project uses), because the bootstrap meta-token has
+# only `User:API Tokens:Edit` scope and can't list accounts. The
+# account ID is stable and not secret.
 data "cloudflare_api_token_permission_groups_list" "dns_write" {
   name = "DNS Write"
 }
@@ -51,7 +51,7 @@ data "cloudflare_api_token_permission_groups_list" "account_settings_read" {
 }
 
 locals {
-  account_id = data.cloudflare_accounts.primary.result[0].id
+  account_id = var.cloudflare_account_id
 }
 
 # ── dns-management ────────────────────────────────────────────────────
