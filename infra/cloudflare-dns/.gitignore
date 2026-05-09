@@ -6,8 +6,8 @@
 *.tfplan
 crash.log
 
-# Concrete tfvars are sensitive; only the .example is committed.
-terraform/terraform.tfvars
+# Project-local secret references (only `.env.example` is committed).
+.env
 
 # Nix build outputs (`nix build` symlinks).
 result
