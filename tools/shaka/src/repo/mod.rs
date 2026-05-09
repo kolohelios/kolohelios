@@ -45,7 +45,15 @@ pub enum RepoCommand {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Set a bookmark on the current change, push it, and open a PR
+    /// Fetch, rebase onto main@origin, push, and open a PR
+    ///
+    /// Always fetches and rebases the bookmark onto the latest
+    /// `main@origin` immediately before push so the PR opens on a
+    /// current base. If the rebase pulls in new ancestors (i.e.,
+    /// `main` moved during the work), re-runs `shaka preflight --since
+    /// origin/main` first — new commits can break our changes in ways
+    /// `jj` doesn't flag with conflict markers. If the rebase is a
+    /// no-op, preflight is skipped.
     Send {
         /// Bookmark name (auto-derived from the change description if omitted)
         #[arg(long)]

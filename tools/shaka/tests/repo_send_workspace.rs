@@ -126,6 +126,20 @@ fn dry_run_from_non_default_workspace() {
         stdout.contains(&format!("jj git push --allow-new --bookmark {bookmark}")),
         "expected push line in dry-run output; got: {stdout}",
     );
+    // Send always rebases on main@origin before pushing so the PR opens on a
+    // current base; the dry-run output must reflect that.
+    assert!(
+        stdout.contains("jj git fetch"),
+        "expected pre-push fetch in dry-run output; got: {stdout}",
+    );
+    assert!(
+        stdout.contains("jj rebase -b @ -d main@origin"),
+        "expected pre-push rebase in dry-run output; got: {stdout}",
+    );
+    assert!(
+        stdout.contains("shaka preflight --since origin/main"),
+        "expected conditional preflight in dry-run output; got: {stdout}",
+    );
 }
 
 /// Sending from inside a workspace without a description should fail with a
