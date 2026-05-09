@@ -25,3 +25,77 @@ provider "cloudflare" {}
 # The service account is scoped to the Kolohelios Monorepo vault — see
 # README.md.
 provider "onepassword" {}
+
+# ── Account / permission-group lookups ─────────────────────────────────
+#
+# The CF account is referenced by name (provided via
+# `var.cloudflare_account_name`) so account IDs don't appear in version
+# control. Permission groups are looked up by API name and resolved to
+# opaque CF group IDs at plan time — this lets the per-token CUE
+# registry under `tokens/` declare permissions in human-readable form
+# without hardcoding IDs in TF.
+data "cloudflare_accounts" "primary" {
+  name = var.cloudflare_account_name
+}
+
+data "cloudflare_api_token_permission_groups_list" "dns_write" {
+  name = "DNS Write"
+}
+
+data "cloudflare_api_token_permission_groups_list" "zone_write" {
+  name = "Zone Write"
+}
+
+data "cloudflare_api_token_permission_groups_list" "account_settings_read" {
+  name = "Account Settings Read"
+}
+
+locals {
+  account_id = data.cloudflare_accounts.primary.result[0].id
+}
+
+# ── dns-management ────────────────────────────────────────────────────
+#
+# Mirrors `tokens/dns-management.cue`. CUE → TF sync is manual until
+# #292 lands; resource name (`dns_management`) must match the CUE `name`
+# field with `-` rewritten to `_`.
+resource "cloudflare_api_token" "dns_management" {
+  name = "DNS Management (TF-managed)"
+
+  policies = [
+    {
+      effect = "allow"
+      permission_groups = [
+        { id = data.cloudflare_api_token_permission_groups_list.dns_write.result[0].id },
+        { id = data.cloudflare_api_token_permission_groups_list.zone_write.result[0].id },
+      ]
+      resources = jsonencode({
+        # All current and future zones in the account.
+        "com.cloudflare.api.account.zone.*" = "*"
+      })
+    },
+    {
+      effect = "allow"
+      permission_groups = [
+        { id = data.cloudflare_api_token_permission_groups_list.account_settings_read.result[0].id },
+      ]
+      resources = jsonencode({
+        "com.cloudflare.api.account.${local.account_id}" = "*"
+      })
+    },
+  ]
+
+  expires_on = "2026-08-07T00:00:00Z"
+}
+
+# 1Password item the consumer references. Category `password` is the
+# only first-class option in the TF provider that exposes a `password`
+# field — `api_credential` (the dashboard category) is not exposed.
+# Reference path: `op://<vault>/Cloudflare DNS Management Token/password`.
+resource "onepassword_item" "dns_management" {
+  vault    = var.onepassword_vault_id
+  title    = "Cloudflare DNS Management Token"
+  category = "password"
+  password = cloudflare_api_token.dns_management.value
+  tags     = ["cloudflare", "tf-managed", "dns"]
+}
