@@ -38,7 +38,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ vars.KOLOHELIOS_BOT_APP_ID }}
+          client-id: ${{ vars.KOLOHELIOS_BOT_CLIENT_ID }}
           private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v6
         with:
@@ -49,9 +49,13 @@ jobs:
           determinate: true
           flakehub: true
       - name: Configure git identity for rebase commits
+        # The numeric App ID (3591292) is part of GitHub's noreply email
+        # format `<app-id>+<bot-name>[bot]@users.noreply.github.com`,
+        # which is what makes commits attributable to the App. The Client
+        # ID (used above for token minting) doesn't fit this slot.
         run: |
           git config --global user.name 'kolohelios-bot[bot]'
-          git config --global user.email '${{ vars.KOLOHELIOS_BOT_APP_ID }}+kolohelios-bot[bot]@users.noreply.github.com'
+          git config --global user.email '3591292+kolohelios-bot[bot]@users.noreply.github.com'
       - name: Rebase open PRs
         run: nix run ./tools/shaka -- repo rebase-open-prs
         env:
