@@ -25,22 +25,22 @@ runs for this project (via `shaka preflight`).
 
 ## Provisioning
 
-The Cloudflare provider auto-detects `CLOUDFLARE_API_TOKEN` from the
-environment. Source it from 1Password rather than committing a
-`terraform.tfvars`:
+The DNS-management token consumed by this project is itself
+TF-managed, by `infra/cloudflare-tokens` (#289). That project must be
+applied first; its apply provisions the CF API token and writes it to
+1Password at `op://vedq2v6cmtkglnonkenrjneepa/Cloudflare DNS Management
+Token/password`.
+
+After `cloudflare-tokens` has been applied:
 
 ```
+cp .env.example .env       # `.env` is gitignored
 op run --env-file=.env -- just plan
+op run --env-file=.env -- just apply
 ```
 
-with a project-local `.env` (`gitignored`) containing 1Password references:
-
-```
-CLOUDFLARE_API_TOKEN="op://Personal/Cloudflare API Token/credential"
-TF_VAR_cloudflare_account_name="op://Personal/Cloudflare Account/name"
-```
-
-Then `op run --env-file=.env -- just apply` to apply.
+`.env.example` documents the full shape; the Cloudflare provider
+auto-detects `CLOUDFLARE_API_TOKEN` from the environment.
 
 ### Remote state
 
