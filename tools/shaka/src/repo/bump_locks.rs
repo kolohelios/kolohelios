@@ -13,7 +13,26 @@ enum BumpResult {
     Failed(String),
 }
 
-pub fn run(input: String, pr_branch: Option<String>) {
+pub fn run(input: String, pr_branch: Option<String>, repo: Option<String>) {
+    match repo {
+        Some(slug) => {
+            let Some(branch) = pr_branch else {
+                eprintln!(
+                    "{RED}{BOLD}--repo requires --pr-branch{RESET} \
+                     (remote bumps always open or update a PR)"
+                );
+                std::process::exit(2);
+            };
+            if let Err(e) = run_remote(&input, &branch, &slug) {
+                eprintln!("{RED}{BOLD}bump-locks failed:{RESET} {e}");
+                std::process::exit(1);
+            }
+        }
+        None => run_monorepo(input, pr_branch),
+    }
+}
+
+fn run_monorepo(input: String, pr_branch: Option<String>) {
     let projects = schema_check::discover(Path::new("."));
     if projects.is_empty() {
         println!("{YELLOW}no projects found{RESET}");
@@ -66,6 +85,83 @@ pub fn run(input: String, pr_branch: Option<String>) {
             std::process::exit(1);
         }
     }
+}
+
+fn run_remote(input: &str, branch: &str, slug: &str) -> Result<(), String> {
+    println!("{BOLD}bump-locks:{RESET} input `{input}` in remote `{slug}`");
+
+    let temp = tempfile::tempdir().map_err(|e| format!("failed to create temp dir: {e}"))?;
+    let work = temp.path().join("repo");
+
+    let work_str = work
+        .to_str()
+        .ok_or_else(|| "temp dir path is not valid UTF-8".to_string())?;
+    let output = Command::new("gh")
+        .args(["repo", "clone", slug, work_str, "--", "--depth", "1"])
+        .output()
+        .map_err(|e| format!("failed to spawn gh: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh repo clone {slug}: {}", stderr.trim()));
+    }
+
+    match bump_one(&work, input) {
+        BumpResult::Updated => {
+            println!("  {GREEN}{BOLD}updated{RESET}   {slug}");
+        }
+        BumpResult::Unchanged => {
+            println!("  {DIM}unchanged{RESET} {slug}");
+            println!("{DIM}no changes to publish{RESET}");
+            return Ok(());
+        }
+        BumpResult::Skipped => {
+            return Err(format!(
+                "remote {slug} does not declare `{input}` as a flake input \
+                 (checked root flake.nix)"
+            ));
+        }
+        BumpResult::Failed(msg) => {
+            return Err(format!("nix flake update failed: {msg}"));
+        }
+    }
+
+    git_in(&work, &["checkout", "-B", branch])?;
+    git_in(&work, &["add", "flake.lock"])?;
+    let title = format!("chore(deps): bump {input} flake input");
+    git_in(&work, &["commit", "-m", &title])?;
+    git_in(&work, &["push", "--force", "origin", branch])?;
+
+    if let Some(pr) = gh::pr_for_head(slug, branch).map_err(|e| e.to_string())? {
+        if pr.state == PrState::Open {
+            println!("{GREEN}{BOLD}updated existing PR:{RESET} {}", pr.url);
+            return Ok(());
+        }
+    }
+
+    let body = format_remote_pr_body(input);
+    let url = gh::pr_create(slug, &title, &body, branch).map_err(|e| e.to_string())?;
+    println!("{GREEN}{BOLD}created PR:{RESET} {url}");
+    Ok(())
+}
+
+fn git_in(work: &Path, args: &[&str]) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(work)
+        .output()
+        .map_err(|e| format!("failed to spawn git {}: {e}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {}: {}", args.join(" "), stderr.trim()));
+    }
+    Ok(())
+}
+
+fn format_remote_pr_body(input: &str) -> String {
+    format!(
+        "Automated bump of `{input}` flake input.\n\n\
+         No auto-merge. Review the lockfile diff and merge when CI is green.\n"
+    )
 }
 
 fn bump_one(project: &Path, input: &str) -> BumpResult {
@@ -220,6 +316,16 @@ mod tests {
         // `foo-bar.url` is not the `foo` input even though it starts with `foo`.
         let nix = "{\n  inputs.foo-bar.url = \"x\";\n}\n";
         assert!(!references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn remote_pr_body_is_terse_and_names_input() {
+        let body = format_remote_pr_body("blogctl");
+        assert!(body.contains("`blogctl`"));
+        assert!(body.contains("No auto-merge"));
+        // The remote case has only one flake by construction; the body
+        // should not list project paths the way the monorepo version does.
+        assert!(!body.contains("Updated `flake.lock` in:"));
     }
 
     #[test]

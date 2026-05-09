@@ -143,9 +143,18 @@ pub enum RepoCommand {
         input: String,
         /// If set, after bumping, switch to this branch, commit the changes,
         /// force-push, and open or update a PR. Requires GH_TOKEN with PR
-        /// write scope and a clean working copy on entry.
+        /// write scope and a clean working copy on entry. Required when
+        /// `--repo` is set.
         #[arg(long)]
         pr_branch: Option<String>,
+        /// If set, operate on the named remote repo (`<owner>/<slug>`)
+        /// instead of the current monorepo. Clones into a temp directory,
+        /// bumps the input in the root flake, and opens/updates a PR via
+        /// `--pr-branch` (which is required in this mode). The workflow
+        /// must set `GH_TOKEN` and pre-configure git identity + credential
+        /// helper (`gh auth setup-git`) before invoking shaka.
+        #[arg(long)]
+        repo: Option<String>,
     },
 }
 
@@ -168,6 +177,10 @@ pub fn run(cmd: RepoCommand) {
         RepoCommand::Status { json } => status::run(json),
         RepoCommand::Describe { json } => describe::run(json),
         RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
-        RepoCommand::BumpLocks { input, pr_branch } => bump_locks::run(input, pr_branch),
+        RepoCommand::BumpLocks {
+            input,
+            pr_branch,
+            repo,
+        } => bump_locks::run(input, pr_branch, repo),
     }
 }
