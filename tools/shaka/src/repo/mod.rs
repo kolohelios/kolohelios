@@ -2,6 +2,7 @@ mod audit;
 mod bump;
 mod bump_locks;
 pub mod describe;
+mod policy;
 mod pr;
 mod rebase_open_prs;
 pub mod send;
