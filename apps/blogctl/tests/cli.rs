@@ -273,3 +273,37 @@ fn new_rejects_unknown_theme_with_known_list() {
     assert!(err.contains("standard"), "stderr was: {err}");
     assert!(err.contains("parable"), "stderr was: {err}");
 }
+
+#[test]
+fn doctor_reports_clean_workdir_with_zero_exit() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+
+    let out = run(&["doctor", "--workdir", &wd]);
+    assert_success(&out, "doctor (clean)");
+    assert!(stdout(&out).contains("workdir healthy"));
+}
+
+#[test]
+fn doctor_reports_findings_with_nonzero_exit() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    // Plant several distinct findings: stray file, removed stage dir.
+    std::fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
+    std::fs::remove_dir_all(tmp.path().join("editing")).unwrap();
+
+    let out = run(&["doctor", "--workdir", &wd]);
+    assert!(!out.status.success(), "doctor should exit non-zero");
+    let combined = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(combined.contains("stray entry"), "got: {combined}");
+    assert!(
+        combined.contains("stage directory missing"),
+        "got: {combined}"
+    );
+    assert!(combined.contains("workdir unhealthy"), "got: {combined}");
+}

@@ -86,6 +86,11 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+
+    #[error(
+        "workdir unhealthy: {0} finding(s); run `blogctl fix` to repair the auto-correctable subset"
+    )]
+    WorkdirUnhealthy(usize),
 }
 
 impl Error {
