@@ -35,6 +35,7 @@ jobs:
       shaka: ${{ steps.filter.outputs.shaka }}
       image: ${{ steps.filter.outputs.image }}
       nix-lib: ${{ steps.filter.outputs.nix-lib }}
+      blogctl: ${{ steps.filter.outputs.blogctl }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -57,6 +58,8 @@ jobs:
               - 'infra/devbox/**'
             nix-lib:
               - 'nix/kolohelios-nix/**'
+            blogctl:
+              - 'apps/blogctl/**'
 
   # ── Single gate for branch protection ─────────────────────────
   # `shaka preflight` runs every validation check in one place. CI and
@@ -150,6 +153,29 @@ jobs:
           visibility: public
           rolling: true
 
+  build-blogctl:
+    name: Build blogctl
+    needs: [validate, changes]
+    if: needs.changes.outputs.blogctl == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - run: nix build ./apps/blogctl
+      - uses: DeterminateSystems/flakehub-push@main
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        with:
+          directory: apps/blogctl
+          name: kolohelios/blogctl
+          visibility: public
+          rolling: true
+
   build-nix-lib:
     name: Build kolohelios-nix
     needs: [validate, changes]
@@ -206,7 +232,7 @@ jobs:
   # new CI job must add itself to `gate.needs`.
   gate:
     name: Gate
-    needs: [changes, validate, build-shaka, build-nix-lib, build-image]
+    needs: [changes, validate, build-shaka, build-blogctl, build-nix-lib, build-image]
     if: always()
     runs-on: ubuntu-latest
     permissions:

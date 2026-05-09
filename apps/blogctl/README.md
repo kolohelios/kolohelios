@@ -87,6 +87,23 @@ OpenRouter calls, prompt loading, historical-consistency checks, and
 `Todoist` import are deliberately out of this slice; they slot in alongside
 the preceding modules without rewiring.
 
+## Consuming `blogctl`
+
+Published to FlakeHub as `kolohelios/blogctl` on every push to `main`
+that touches `apps/blogctl/**` (see `.github/workflows/main.yaml`'s
+`build-blogctl` job). Two ways to use it:
+
+- One-shot run:
+  ```
+  nix run https://flakehub.com/f/kolohelios/blogctl/*.tar.gz -- --help
+  ```
+- Pin as a flake input from another project:
+  ```nix
+  inputs.blogctl.url = "https://flakehub.com/f/kolohelios/blogctl/*.tar.gz";
+  # then in a devShell:
+  packages = [ blogctl.packages.${system}.default ];
+  ```
+
 ## Development
 
 This project lives in the kolohelios monorepo. Run validation with

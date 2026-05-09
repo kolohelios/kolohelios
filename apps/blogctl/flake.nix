@@ -46,6 +46,28 @@
         };
     in
     {
+      packages = forEachSupportedSystem (
+        { pkgs, ... }:
+        {
+          default = pkgs.rustPlatform.buildRustPackage {
+            pname = "blogctl";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+          };
+        }
+      );
+
+      apps = forEachSupportedSystem (
+        { system, ... }:
+        {
+          default = {
+            type = "app";
+            program = "${self.packages.${system}.default}/bin/blogctl";
+          };
+        }
+      );
+
       devShells = forEachSupportedSystem (
         { pkgs, ... }:
         {
