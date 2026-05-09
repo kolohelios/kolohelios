@@ -38,13 +38,19 @@ Create Token → Custom token`:
 - **TTL**: roughly one year out (rotation cadence).
 - **Client IP filtering**: optional.
 
-Store the resulting token in the **Kolohelios Monorepo** vault as a new
-*API Credential* item:
+Store the resulting token in the **Kolohelios Monorepo** vault as a
+new *Password* item:
 
 - Item title: `Cloudflare Meta Token`
-- Field name: `credential`
+- Store the token value in the `password` field.
 
-Reference path: `op://vedq2v6cmtkglnonkenrjneepa/Cloudflare Meta Token/credential`.
+Reference path: `op://vedq2v6cmtkglnonkenrjneepa/Cloudflare Meta Token/password`.
+
+The *Password* item type is used (rather than 1Password's *API
+Credential* type) because the TF `1password/onepassword` provider only
+manages `login`/`password`/`database`/`secure_note` categories — using
+*Password* uniformly across hand-stored and TF-provisioned items keeps
+references homogeneous (everything is `/password`).
 
 ### 2. Provision the 1Password Service Account
 
@@ -57,12 +63,12 @@ Service Account**:
 - **Token expiration**: 90 days (or longer if local applies dominate;
   CI applies move to a separate SA per #291).
 
-Store the SA token in the same vault as a new *API Credential* item:
+Store the SA token in the same vault as a new *Password* item:
 
 - Item title: `1Password Service Account`
-- Field name: `token`
+- Store the SA token in the `password` field.
 
-Reference path: `op://vedq2v6cmtkglnonkenrjneepa/1Password Service Account/token`.
+Reference path: `op://vedq2v6cmtkglnonkenrjneepa/1Password Service Account/password`.
 
 ### 3. Author `.env`
 
