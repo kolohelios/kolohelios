@@ -75,6 +75,16 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         workdir: PathBuf,
     },
+    /// Apply doctor's auto-correctable repairs. Skipped findings
+    /// remain non-zero so `fix` followed by `doctor` is a useful
+    /// idempotency check.
+    Fix {
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        /// Print the plan without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -111,6 +121,7 @@ pub fn dispatch(cmd: Command) -> Result<()> {
             ReadmeAction::Regenerate { workdir } => commands::readme::regenerate(workdir),
         },
         Command::Doctor { workdir } => commands::doctor::run(workdir),
+        Command::Fix { workdir, dry_run } => commands::fix::run(workdir, dry_run),
     }
 }
 
@@ -157,6 +168,8 @@ mod tests {
             vec!["blogctl", "demote", "hello", "--workdir", "/tmp/wd"],
             vec!["blogctl", "readme", "regenerate", "--workdir", "/tmp/wd"],
             vec!["blogctl", "doctor", "--workdir", "/tmp/wd"],
+            vec!["blogctl", "fix", "--workdir", "/tmp/wd"],
+            vec!["blogctl", "fix", "--workdir", "/tmp/wd", "--dry-run"],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }

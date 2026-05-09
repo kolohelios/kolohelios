@@ -1,5 +1,6 @@
 pub mod demote;
 pub mod doctor;
+pub mod fix;
 pub mod init;
 pub mod list;
 pub mod new;
