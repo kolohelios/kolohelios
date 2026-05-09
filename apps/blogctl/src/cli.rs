@@ -69,6 +69,12 @@ pub enum Command {
         #[command(subcommand)]
         action: ReadmeAction,
     },
+    /// Audit a workdir for layout, frontmatter, and config problems.
+    /// Exits non-zero if any finding is surfaced.
+    Doctor {
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -104,6 +110,7 @@ pub fn dispatch(cmd: Command) -> Result<()> {
         Command::Readme { action } => match action {
             ReadmeAction::Regenerate { workdir } => commands::readme::regenerate(workdir),
         },
+        Command::Doctor { workdir } => commands::doctor::run(workdir),
     }
 }
 
@@ -149,6 +156,7 @@ mod tests {
             vec!["blogctl", "promote", "hello", "--workdir", "/tmp/wd"],
             vec!["blogctl", "demote", "hello", "--workdir", "/tmp/wd"],
             vec!["blogctl", "readme", "regenerate", "--workdir", "/tmp/wd"],
+            vec!["blogctl", "doctor", "--workdir", "/tmp/wd"],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }
@@ -180,6 +188,7 @@ mod tests {
             vec!["blogctl", "new", "Hello"],
             vec!["blogctl", "list"],
             vec!["blogctl", "show", "hello"],
+            vec!["blogctl", "doctor"],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_err(), "{args:?}");
         }
