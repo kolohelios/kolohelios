@@ -46,6 +46,32 @@ changed) and exec's the debug binary.
 
 See `shaka <subcommand> --help` for full options.
 
+## Auditing other repositories
+
+`shaka repo audit` is a generic GitHub repo-settings auditor: any repo
+that wants to use it authors a `.shaka/repo.cue` describing its desired
+GitHub configuration (default branch, merge modes, branch protection
+status checks, `ruleset` rules, `Dependabot` toggle), and the command
+reports drift between the policy and the live repo. `--fix` PATCHes the
+divergent settings back to policy values. The schema lives at
+`tools/shaka/schema/repo-policy-schema.cue` in this repo; optional
+groups (`branchProtection`, `rulesets`, `security`, `issues`) can be
+omitted entirely to opt out of audit dimensions a particular repo
+doesn't enforce — typical for personal repos without branch protection.
+
+Outside the kolohelios devshell, run `shaka` directly from FlakeHub:
+
+```
+nix run https://flakehub.com/f/kolohelios/shaka/*.tar.gz -- repo audit
+```
+
+Run from anywhere inside the target repo's working copy; the loader
+walks upward looking for `.shaka/repo.cue`. The wrapped binary already
+ships `cue`, `jj`, `git`, and `gh` on its `PATH`, so external consumers
+don't need a devshell. Pass `--repo owner/name` if `jj git remote list`
+can't auto-detect the GitHub repo (for example, plain-git checkouts
+without a colocated `.jj`).
+
 ## Development
 
 ```
