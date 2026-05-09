@@ -76,6 +76,7 @@
           cargo-deny
           cargo-machete
           vale
+          _1password-cli
         ])
         ++ [ (shakaShim pkgs) ];
     in

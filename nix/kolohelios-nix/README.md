@@ -11,9 +11,10 @@ together.
 - `lib.forEachSupportedSystem` — helper that maps a function over every
   supported system, providing a system-specific `pkgs`.
 - `lib.workflowPackages` — the workflow-tool list (`jujutsu`, `git`,
-  `just`, `jq`, `cue`, `nixfmt-rfc-style`, `nil`, `typos`, `vale`) that
-  every project's devshell wants; consumers spread it and add
-  project-specific tools on top.
+  `just`, `jq`, `cue`, `nixfmt-rfc-style`, `nil`, `typos`, `cargo-deny`,
+  `cargo-machete`, `vale`, `_1password-cli`) that every project's
+  devshell wants; consumers spread it and add project-specific tools on
+  top.
 - `formatter` — `nixfmt-rfc-style` per system, used by `nix fmt`.
 
 ## Usage from a consumer flake
