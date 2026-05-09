@@ -56,8 +56,9 @@ decide whether to fix before shipping.
 
 ### 4. Run preflight
 
-Run `shaka preflight --since origin/main` to scope checks to changed paths
-(`--since` takes a git ref, not a `jj` revset).
+Run `shaka preflight --since main@origin` to scope checks to changed paths.
+The argument is shelled to `jj diff --from`, so it takes a `jj` revision
+(use `main@origin`, not git-style `origin/main`).
 This is the same gate CI runs, so passing here means CI passes too.
 
 If preflight fails, stop. Do not push a known-broken change. Help the user
