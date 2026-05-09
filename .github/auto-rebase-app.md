@@ -198,13 +198,11 @@ author needs to resolve, but doesn't itself gate merge.
 3. **Update the secret on every consumer repo** in lockstep — same
    key, every repo, single source of truth:
    ```sh
-   mapfile -t REPOS < <(
-     gh search code --owner kolohelios 'KOLOHELIOS_BOT_APP_ID' --extension yaml \
-       --json repository --jq '.[].repository.nameWithOwner' | sort -u
-   )
-   for repo in "${REPOS[@]}"; do
-     gh secret set KOLOHELIOS_BOT_APP_PRIVATE_KEY -R "$repo" < "$PEM"
-   done
+   gh search code --owner kolohelios 'KOLOHELIOS_BOT_APP_ID' --extension yaml \
+     --json repository --jq '.[].repository.nameWithOwner' | sort -u \
+   | while read -r repo; do
+       gh secret set KOLOHELIOS_BOT_APP_PRIVATE_KEY -R "$repo" < "$PEM"
+     done
    ```
 
 4. **Revoke the old key** on the App settings page. Workflow runs in
@@ -220,9 +218,8 @@ author needs to resolve, but doesn't itself gate merge.
 
 6. **Verify each consumer is healthy.** Trigger every
    `workflow_dispatch`-able workflow found by the discovery query;
-   non-dispatchable ones (for example, `auto-rebase-prs.yaml`, which
-   only fires on `push: main`) verify themselves the next time their
-   trigger fires:
+   any consumer without `workflow_dispatch:` skips here and verifies
+   itself the next time its actual trigger fires:
    ```sh
    gh search code --owner kolohelios 'KOLOHELIOS_BOT_APP_ID' --extension yaml \
      --json repository,path \
