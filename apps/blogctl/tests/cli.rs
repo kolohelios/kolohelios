@@ -288,6 +288,66 @@ fn doctor_reports_clean_workdir_with_zero_exit() {
 }
 
 #[test]
+fn fix_repairs_stage_mismatch_and_leaves_workdir_clean() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+    // Move the file from concepts/ to editing/ without rewriting
+    // frontmatter — that's a stage mismatch fix can repair.
+    let from = tmp.path().join("concepts/hello.md");
+    let to = tmp.path().join("editing/hello.md");
+    std::fs::rename(&from, &to).unwrap();
+
+    let fix_out = run(&["fix", "--workdir", &wd]);
+    assert_success(&fix_out, "fix");
+    assert!(
+        stdout(&fix_out).contains("fixed"),
+        "got: {}",
+        stdout(&fix_out)
+    );
+
+    // Doctor exits zero now.
+    assert_success(&run(&["doctor", "--workdir", &wd]), "doctor after fix");
+    let body = std::fs::read_to_string(&to).unwrap();
+    assert!(
+        body.contains("status: editing"),
+        "frontmatter was not rewritten: {body}"
+    );
+}
+
+#[test]
+fn fix_dry_run_makes_no_changes() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+    let from = tmp.path().join("concepts/hello.md");
+    let to = tmp.path().join("editing/hello.md");
+    std::fs::rename(&from, &to).unwrap();
+    let raw_before = std::fs::read_to_string(&to).unwrap();
+
+    let out = run(&["fix", "--workdir", &wd, "--dry-run"]);
+    assert_success(&out, "fix --dry-run");
+    let raw_after = std::fs::read_to_string(&to).unwrap();
+    assert_eq!(raw_before, raw_after, "dry-run modified the file");
+}
+
+#[test]
+fn fix_exits_nonzero_when_skipped_findings_remain() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    std::fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
+
+    let out = run(&["fix", "--workdir", &wd]);
+    assert!(!out.status.success(), "expected non-zero exit");
+    assert!(stdout(&out).contains("skipped"), "got: {}", stdout(&out));
+}
+
+#[test]
 fn doctor_reports_findings_with_nonzero_exit() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
