@@ -137,7 +137,7 @@ fn dry_run_from_non_default_workspace() {
         "expected pre-push rebase in dry-run output; got: {stdout}",
     );
     assert!(
-        stdout.contains("shaka preflight --since origin/main"),
+        stdout.contains("shaka preflight --since main@origin"),
         "expected conditional preflight in dry-run output; got: {stdout}",
     );
 }

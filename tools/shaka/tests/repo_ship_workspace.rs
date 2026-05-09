@@ -135,7 +135,7 @@ fn dry_run_from_non_default_workspace() {
     // the dry-run output should contain the fetch/rebase/preflight lines that
     // `repo send --dry-run` emits — confirming the delegation.
     assert!(
-        stdout.contains("shaka preflight --since origin/main"),
+        stdout.contains("shaka preflight --since main@origin"),
         "expected delegated conditional preflight preview; got: {stdout}",
     );
 }

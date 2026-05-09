@@ -51,7 +51,7 @@ pub enum RepoCommand {
     /// `main@origin` immediately before push so the PR opens on a
     /// current base. If the rebase pulls in new ancestors (i.e.,
     /// `main` moved during the work), re-runs `shaka preflight --since
-    /// origin/main` first — new commits can break our changes in ways
+    /// main@origin` first — new commits can break our changes in ways
     /// `jj` doesn't flag with conflict markers. If the rebase is a
     /// no-op, preflight is skipped.
     Send {

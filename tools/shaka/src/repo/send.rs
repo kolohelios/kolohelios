@@ -46,7 +46,7 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
         println!("would run: jj git fetch");
         println!("would run: jj rebase -b @ -d main@origin");
         println!(
-            "would run: shaka preflight --since origin/main {DIM}(only if rebase moved @){RESET}"
+            "would run: shaka preflight --since main@origin {DIM}(only if rebase moved @){RESET}"
         );
         println!("would run: jj bookmark set {bookmark} -r @");
         println!("would run: jj git push --allow-new --bookmark {bookmark}");
@@ -88,7 +88,7 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
         println!(
             "{BOLD}main@origin advanced — re-running preflight{RESET} {DIM}(rebase pulled in new ancestors){RESET}"
         );
-        preflight::run(false, Some("origin/main".to_string()));
+        preflight::run(false, Some("main@origin".to_string()));
     }
 
     println!("{BOLD}setting bookmark {bookmark}{RESET}");
