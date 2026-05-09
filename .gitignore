@@ -20,5 +20,6 @@ tfplan
 *.key
 .env
 
-# Shaka local state (e.g. workspace ↔ issue links — see tools/shaka/src/workspace/issue_link.rs)
-.shaka/
+# Shaka local state — workspace ↔ issue links (tools/shaka/src/workspace/issue_link.rs).
+# Tracked shaka configs (e.g. `.shaka/repo.cue`) live alongside in the same directory.
+.shaka/workspaces/
