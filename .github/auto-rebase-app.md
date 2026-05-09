@@ -12,12 +12,12 @@ moves, or bumping flake inputs daily. They live across every repo the
 App is installed on. To list the current set:
 
 ```sh
-gh search code --owner kolohelios 'KOLOHELIOS_BOT_APP_ID' --extension yaml \
+gh search code --owner kolohelios 'KOLOHELIOS_BOT_CLIENT_ID' --extension yaml \
   --json repository,path \
   --jq '.[] | "\(.repository.nameWithOwner): \(.path)"' | sort -u
 ```
 
-Every match needs the same `KOLOHELIOS_BOT_APP_ID` variable and
+Every match needs the same `KOLOHELIOS_BOT_CLIENT_ID` variable and
 `KOLOHELIOS_BOT_APP_PRIVATE_KEY` secret on its repo — see
 [Repo configuration](#repo-configuration). The discovery query is the
 single source of truth: don't keep a hand-maintained list.
@@ -122,22 +122,22 @@ the kolohelios account.
 
 | Kind | Name | Value |
 | --- | --- | --- |
-| Variable | `KOLOHELIOS_BOT_APP_ID` | The numeric App ID (top of the App's settings page; not sensitive) |
+| Variable | `KOLOHELIOS_BOT_CLIENT_ID` | The Client ID from the App settings page (`Iv23…`; not sensitive) |
 | Secret | `KOLOHELIOS_BOT_APP_PRIVATE_KEY` | Full `.pem` contents — including the `-----BEGIN/END PRIVATE KEY-----` lines |
 
-Both are referenced as `${{ vars.KOLOHELIOS_BOT_APP_ID }}` and
+Both are referenced as `${{ vars.KOLOHELIOS_BOT_CLIENT_ID }}` and
 `${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}` in the consuming
 workflows. The PEM is stored canonically in 1Password
 (`Kolohelios Monorepo` vault, id `vedq2v6cmtkglnonkenrjneepa`) as the
 document `kolohelios-bot GitHub App private key`.
 
 Concrete commands to wire a new consumer repo (replace `<repo>` and
-`<APP_ID>`; the App ID is the same number for every consumer repo,
-since they all share one App):
+`<CLIENT_ID>`; the Client ID is the same string for every consumer
+repo, since they all share one App):
 
 ```sh
-# Variable: the App ID is public, no secret handling needed.
-gh variable set KOLOHELIOS_BOT_APP_ID -R <repo> -b '<APP_ID>'
+# Variable: the Client ID is public, no secret handling needed.
+gh variable set KOLOHELIOS_BOT_CLIENT_ID -R <repo> -b '<CLIENT_ID>'
 
 # Secret: pipe the PEM straight from 1Password into the gh secret set.
 op document get 'kolohelios-bot GitHub App private key' \
@@ -198,7 +198,7 @@ author needs to resolve, but doesn't itself gate merge.
 3. **Update the secret on every consumer repo** in lockstep — same
    key, every repo, single source of truth:
    ```sh
-   gh search code --owner kolohelios 'KOLOHELIOS_BOT_APP_ID' --extension yaml \
+   gh search code --owner kolohelios 'KOLOHELIOS_BOT_CLIENT_ID' --extension yaml \
      --json repository --jq '.[].repository.nameWithOwner' | sort -u \
    | while read -r repo; do
        gh secret set KOLOHELIOS_BOT_APP_PRIVATE_KEY -R "$repo" < "$PEM"
@@ -221,7 +221,7 @@ author needs to resolve, but doesn't itself gate merge.
    any consumer without `workflow_dispatch:` skips here and verifies
    itself the next time its actual trigger fires:
    ```sh
-   gh search code --owner kolohelios 'KOLOHELIOS_BOT_APP_ID' --extension yaml \
+   gh search code --owner kolohelios 'KOLOHELIOS_BOT_CLIENT_ID' --extension yaml \
      --json repository,path \
      --jq '.[] | "\(.repository.nameWithOwner) \(.path | split("/") | last)"' \
    | sort -u \
