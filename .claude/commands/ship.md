@@ -65,11 +65,15 @@ diagnose the failure.
 
 ### 5. Push and open PR
 
-Run `shaka repo send`. It sets a bookmark from the change description, pushes
-it, and creates a PR if one doesn't exist. Report the PR URL.
+Run `shaka repo send`. It fetches, rebases onto `main@origin` (re-running
+preflight if the rebase moved `@`, since new ancestors could conflict with
+our changes in ways `jj` doesn't flag), sets a bookmark from the change
+description, pushes, and creates a PR if one doesn't exist. Report the PR
+URL.
 
 If `shaka repo send` errors because the change has no description, stop and
-ask the user to run `jj describe`.
+ask the user to run `jj describe`. If the rebase hits a conflict, stop and
+let the user resolve it.
 
 ## Conventions
 
@@ -86,7 +90,9 @@ Halt the workflow and report to the user when:
 - `shaka repo sync` hits a merge conflict
 - `shaka commit lint` reports errors that aren't trivially auto-fixable
 - Self-review surfaces something unintentional
-- `shaka preflight` fails any check
+- `shaka preflight` fails any check (including the conditional re-run inside
+  `shaka repo send` when `main@origin` advanced during the work)
+- `shaka repo send`'s pre-push rebase hits a conflict — let the user resolve
 - The change has no description (push step needs one)
 
 A failed step is a stop — not a prompt to retry blindly. Diagnose first.

@@ -1,7 +1,8 @@
 use crate::gh;
 use crate::jj;
+use crate::preflight;
 use crate::repo::describe;
-use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
     let description = match jj::current_description() {
@@ -42,12 +43,52 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
     let body = synthesized.body.as_str();
 
     if dry_run {
+        println!("would run: jj git fetch");
+        println!("would run: jj rebase -b @ -d main@origin");
+        println!(
+            "would run: shaka preflight --since origin/main {DIM}(only if rebase moved @){RESET}"
+        );
         println!("would run: jj bookmark set {bookmark} -r @");
         println!("would run: jj git push --allow-new --bookmark {bookmark}");
         if !no_pr {
             println!("would run: gh pr create --title {title:?} --head {bookmark}");
         }
         return;
+    }
+
+    println!("{BOLD}fetching from origin{RESET}");
+    if let Err(e) = jj::fetch() {
+        eprintln!("{RED}{BOLD}error:{RESET} {e}");
+        std::process::exit(1);
+    }
+
+    let before = match jj::commit_id_of("@") {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} {e}");
+            std::process::exit(1);
+        }
+    };
+
+    println!("{BOLD}rebasing onto main@origin{RESET}");
+    if let Err(e) = jj::rebase_branch_onto("@", "main@origin") {
+        eprintln!("{RED}{BOLD}error:{RESET} {e}");
+        std::process::exit(1);
+    }
+
+    let after = match jj::commit_id_of("@") {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if before != after {
+        println!(
+            "{BOLD}main@origin advanced — re-running preflight{RESET} {DIM}(rebase pulled in new ancestors){RESET}"
+        );
+        preflight::run(false, Some("origin/main".to_string()));
     }
 
     println!("{BOLD}setting bookmark {bookmark}{RESET}");
