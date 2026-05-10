@@ -244,6 +244,7 @@ mod tests {
                 tags: vec![],
                 todoist_task_id: None,
                 history_checked: false,
+                targets: vec![],
             },
             "body\n",
         )

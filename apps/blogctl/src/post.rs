@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use crate::error::{Error, Result};
 use crate::kind::Kind;
 use crate::stage::Stage;
 use crate::storage::DEFAULT_THEME;
+use crate::target::{TargetEntry, TargetStatus};
 
 /// Frontmatter metadata. Mirrors the YAML block at the top of every post
 /// file. Fields stay required so a round-trip preserves shape; clients
@@ -32,6 +34,11 @@ pub struct PostMetadata {
     pub todoist_task_id: Option<String>,
     #[serde(default)]
     pub history_checked: bool,
+    /// Distribution targets. Orthogonal to `status` (editorial pipeline):
+    /// records *where* this post has been pushed and the per-venue state.
+    /// Default `[]` keeps existing files parsing unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<TargetEntry>,
 }
 
 fn default_theme() -> String {
@@ -64,6 +71,7 @@ impl Post {
                 path: path.to_path_buf(),
                 source,
             })?;
+        validate_targets(path, &metadata.targets)?;
         Ok(Self {
             metadata,
             body: body.to_string(),
@@ -91,6 +99,36 @@ impl Post {
         }
         Ok(out)
     }
+}
+
+/// Enforce the cross-field invariants the type system can't carry:
+/// each `Target` appears at most once, and a `Published` entry has
+/// both `url` and `published_at`.
+fn validate_targets(path: &Path, targets: &[TargetEntry]) -> Result<()> {
+    let mut seen = HashSet::with_capacity(targets.len());
+    for entry in targets {
+        if !seen.insert(entry.name) {
+            return Err(Error::DuplicateTarget {
+                path: path.to_path_buf(),
+                name: entry.name,
+            });
+        }
+        if entry.status == TargetStatus::Published {
+            if entry.url.is_none() {
+                return Err(Error::PublishedTargetMissingUrl {
+                    path: path.to_path_buf(),
+                    name: entry.name,
+                });
+            }
+            if entry.published_at.is_none() {
+                return Err(Error::PublishedTargetMissingPublishedAt {
+                    path: path.to_path_buf(),
+                    name: entry.name,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 fn split_frontmatter<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a str)> {
@@ -156,6 +194,7 @@ mod tests {
             tags: vec!["rust".into(), "tooling".into()],
             todoist_task_id: None,
             history_checked: false,
+            targets: vec![],
         }
     }
 
@@ -301,5 +340,161 @@ Body.
         let raw = "---\ntitle: T\nslug: t\nkind: post\nstatus: concept\ncreated_at: 2026-05-03T00:00:00Z\nupdated_at: 2026-05-03T00:00:00Z\ntags: []\n---\n\n--- not a delimiter ---\n";
         let post = parse(raw).unwrap();
         assert!(post.body.contains("--- not a delimiter ---"));
+    }
+
+    #[test]
+    fn parse_defaults_targets_to_empty_when_field_missing() {
+        let raw = r#"---
+title: "T"
+slug: t
+kind: post
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+---
+
+Body.
+"#;
+        let post = parse(raw).unwrap();
+        assert!(post.metadata.targets.is_empty());
+    }
+
+    #[test]
+    fn parse_accepts_post_with_targets() {
+        let raw = r#"---
+title: "T"
+slug: t
+kind: post
+status: published
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+targets:
+  - name: linkedin
+    status: published
+    url: https://www.linkedin.com/posts/example
+    published_at: 2026-05-08T14:32:00Z
+  - name: blog
+    status: planned
+---
+
+Body.
+"#;
+        let post = parse(raw).unwrap();
+        assert_eq!(post.metadata.targets.len(), 2);
+        assert_eq!(
+            post.metadata.targets[0].name,
+            crate::target::Target::Linkedin
+        );
+        assert_eq!(
+            post.metadata.targets[0].status,
+            crate::target::TargetStatus::Published
+        );
+        assert_eq!(post.metadata.targets[1].name, crate::target::Target::Blog);
+        assert_eq!(
+            post.metadata.targets[1].status,
+            crate::target::TargetStatus::Planned
+        );
+        assert!(post.metadata.targets[1].url.is_none());
+    }
+
+    #[test]
+    fn parse_rejects_duplicate_targets() {
+        let raw = r#"---
+title: "T"
+slug: t
+kind: post
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+targets:
+  - name: blog
+    status: planned
+  - name: blog
+    status: planned
+---
+
+Body.
+"#;
+        assert!(matches!(
+            parse(raw),
+            Err(Error::DuplicateTarget { name, .. }) if name == crate::target::Target::Blog
+        ));
+    }
+
+    #[test]
+    fn parse_rejects_published_target_missing_url() {
+        let raw = r#"---
+title: "T"
+slug: t
+kind: post
+status: published
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+targets:
+  - name: linkedin
+    status: published
+    published_at: 2026-05-08T14:32:00Z
+---
+
+Body.
+"#;
+        assert!(matches!(
+            parse(raw),
+            Err(Error::PublishedTargetMissingUrl { name, .. })
+                if name == crate::target::Target::Linkedin
+        ));
+    }
+
+    #[test]
+    fn parse_rejects_published_target_missing_published_at() {
+        let raw = r#"---
+title: "T"
+slug: t
+kind: post
+status: published
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+targets:
+  - name: linkedin
+    status: published
+    url: https://www.linkedin.com/posts/example
+---
+
+Body.
+"#;
+        assert!(matches!(
+            parse(raw),
+            Err(Error::PublishedTargetMissingPublishedAt { name, .. })
+                if name == crate::target::Target::Linkedin
+        ));
+    }
+
+    #[test]
+    fn render_round_trips_post_with_targets() {
+        use crate::target::{Target, TargetEntry, TargetStatus};
+        let mut metadata = fixture_metadata();
+        metadata.targets = vec![
+            TargetEntry {
+                name: Target::Linkedin,
+                status: TargetStatus::Published,
+                url: Some("https://www.linkedin.com/posts/example".into()),
+                published_at: Some(datetime!(2026-05-08 14:32:00 UTC)),
+            },
+            TargetEntry {
+                name: Target::Blog,
+                status: TargetStatus::Planned,
+                url: None,
+                published_at: None,
+            },
+        ];
+        let original = Post::new(metadata, "Body.\n");
+        let rendered = original.render().unwrap();
+        let reparsed = parse(&rendered).unwrap();
+        assert_eq!(reparsed.metadata, original.metadata);
     }
 }
