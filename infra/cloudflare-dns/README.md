@@ -5,14 +5,17 @@ Terraform-managed Cloudflare DNS zones. Slice #1 of the personal portfolio
 
 ## Layout
 
-- `terraform/main.tf` — Cloudflare provider, account data source, zone
-  resources.
+- `terraform/main.tf` — Cloudflare provider and zone resources.
+  Account ID comes literally from `var.cloudflare_account_id` (see
+  #311/#313 for why no `data "cloudflare_accounts"` lookup).
 - `terraform/outputs.tf` — `domain_expectations` is the stable contract
   consumed by `shaka domain check` (per-domain expected NS pair and DNSSEC
   state).
 - `domains/` — per-domain CUE registry, one `#Domain` instance per file.
   Validated against `tools/shaka/schema/domain.cue` by
   `shaka domain schema-check` (wired into `shaka preflight`).
+- `docs/runbooks/hover-to-cloudflare.md` — end-to-end procedure for
+  moving a domain from Hover-default NS to Cloudflare.
 
 ## Building
 
@@ -65,11 +68,17 @@ once after the credentials are exported — it wraps
 
 ## NS swap
 
-Hover-side NS swap is a manual one-time operation per domain — see #198
-for the `runbook`. After the swap and `TTL` burn-in, confirm with:
+Manual, one-time per domain. Full procedure with prerequisites,
+pre-flight checks, import path for legacy zones, and verification
+queries: [`docs/runbooks/hover-to-cloudflare.md`](docs/runbooks/hover-to-cloudflare.md).
+
+Quick verification once the swap has propagated:
 
 ```
-dig +short NS kolohelios.com @a.gtld-servers.net
+dig +short NS <domain> @1.1.1.1
 ```
 
-The output should match `tofu output domain_expectations`.
+The output should match `tofu output domain_expectations`. (Querying a
+TLD root with `+short` returns empty — the registry answers NS in
+AUTHORITY, not ANSWER. Use a recursive resolver for `+short`, or read
+the full `dig` output from a TLD server.)
