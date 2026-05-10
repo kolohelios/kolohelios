@@ -48,6 +48,24 @@ pub enum Error {
     #[error("invalid target status {0:?}: expected `planned`, `published`, or `retracted`")]
     InvalidTargetStatus(String),
 
+    #[error("duplicate target {name} in {path} (each target may appear at most once)")]
+    DuplicateTarget {
+        path: PathBuf,
+        name: crate::target::Target,
+    },
+
+    #[error("target {name} in {path} has status `published` but `url` is not set")]
+    PublishedTargetMissingUrl {
+        path: PathBuf,
+        name: crate::target::Target,
+    },
+
+    #[error("target {name} in {path} has status `published` but `published_at` is not set")]
+    PublishedTargetMissingPublishedAt {
+        path: PathBuf,
+        name: crate::target::Target,
+    },
+
     #[error("unknown theme {theme:?}: known themes are {}", known.join(", "))]
     UnknownTheme { theme: String, known: Vec<String> },
 

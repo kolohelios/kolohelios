@@ -66,6 +66,13 @@ updated_at: 2026-05-03T00:00:00Z
 tags: []
 todoist_task_id: null
 history_checked: false
+targets:
+  - name: linkedin
+    status: published
+    url: https://www.linkedin.com/posts/example
+    published_at: 2026-05-08T14:32:00Z
+  - name: blog
+    status: planned
 ---
 
 Draft text here.
@@ -75,6 +82,14 @@ Timestamps are RFC 3339 UTC. `kind` is one of `post` or `article`;
 `theme` is any name declared in `.blog-os.toml`'s `[themes.*]` table
 (the binary seeds `standard` and `parable`). The Markdown file is the
 source of truth.
+
+`status` tracks the editorial pipeline (where the post sits in
+`concept→ideation→editing→final-editing→published`); the directory the
+file lives in must agree with it. `targets` is orthogonal: a list of
+distribution venues and per-venue state (`planned`, `published`,
+`retracted`). `targets` defaults to `[]` and is optional. When a
+target's `status` is `published`, both `url` and `published_at` are
+required; each venue may appear at most once per post.
 
 ## Extension points
 

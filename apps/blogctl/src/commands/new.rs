@@ -47,6 +47,7 @@ pub fn run(
         tags: vec![],
         todoist_task_id: None,
         history_checked: false,
+        targets: vec![],
     };
     let post = Post::new(metadata, "");
     let path = repo.create_post(&post)?;
