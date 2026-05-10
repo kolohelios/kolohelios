@@ -42,6 +42,12 @@ pub enum Error {
     #[error("invalid kind {0:?}: expected `post` or `article`")]
     InvalidKind(String),
 
+    #[error("invalid target {0:?}: expected `linkedin` or `blog`")]
+    InvalidTarget(String),
+
+    #[error("invalid target status {0:?}: expected `planned`, `published`, or `retracted`")]
+    InvalidTargetStatus(String),
+
     #[error("unknown theme {theme:?}: known themes are {}", known.join(", "))]
     UnknownTheme { theme: String, known: Vec<String> },
 
