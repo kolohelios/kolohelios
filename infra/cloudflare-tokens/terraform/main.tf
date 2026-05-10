@@ -50,6 +50,10 @@ data "cloudflare_api_token_permission_groups_list" "account_settings_read" {
   name = "Account Settings Read"
 }
 
+data "cloudflare_api_token_permission_groups_list" "pages_write" {
+  name = "Pages Write"
+}
+
 locals {
   account_id = var.cloudflare_account_id
 }
@@ -98,4 +102,37 @@ resource "onepassword_item" "dns_management" {
   category = "password"
   password = cloudflare_api_token.dns_management.value
   tags     = ["cloudflare", "tf-managed", "dns"]
+}
+
+# ── pages-management ──────────────────────────────────────────────────
+#
+# Mirrors `tokens/pages-management.cue`. Consumed by
+# `infra/cloudflare-portfolio` for both the `tofu apply` that creates
+# the Pages project and the `wrangler pages deploy` step that uploads
+# `site/`. Account-scoped only — Pages has no zone-level resources.
+resource "cloudflare_api_token" "pages_management" {
+  name = "Pages Management (TF-managed)"
+
+  policies = [
+    {
+      effect = "allow"
+      permission_groups = [
+        { id = data.cloudflare_api_token_permission_groups_list.pages_write.result[0].id },
+      ]
+      resources = jsonencode({
+        "com.cloudflare.api.account.${local.account_id}" = "*"
+      })
+    },
+  ]
+
+  expires_on = "2026-08-07T00:00:00Z"
+}
+
+# Reference path: `op://<vault>/Cloudflare Pages Management Token/password`.
+resource "onepassword_item" "pages_management" {
+  vault    = var.onepassword_vault_id
+  title    = "Cloudflare Pages Management Token"
+  category = "password"
+  password = cloudflare_api_token.pages_management.value
+  tags     = ["cloudflare", "tf-managed", "pages"]
 }
