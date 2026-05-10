@@ -35,3 +35,16 @@ resource "cloudflare_pages_project" "kolohelios_portfolio" {
   name              = "kolohelios-portfolio"
   production_branch = "main"
 }
+
+# Custom-domain attachment so CF's edge knows to route requests for
+# kolohelios.com to this Pages project. The apex CNAME in
+# `infra/cloudflare-dns` is necessary but not sufficient — without
+# this resource, requests follow the CNAME but Pages returns "not
+# found" because no project owns the hostname. CF validates against
+# the existing CNAME on apply and provisions the TLS cert
+# automatically.
+resource "cloudflare_pages_domain" "kolohelios_com" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.kolohelios_portfolio.name
+  name         = "kolohelios.com"
+}
