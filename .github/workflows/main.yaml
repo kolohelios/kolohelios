@@ -103,6 +103,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       # Skip cargo dependency rebuilds when Cargo.lock is unchanged. Only
       # covers the host-side `cargo` invocations from `just validate`; the
       # `nix flake check` path runs in a sandbox actions/cache can't reach.
@@ -144,6 +145,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - run: nix build ./tools/shaka
       - uses: DeterminateSystems/flakehub-push@main
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -167,6 +169,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - run: nix build ./apps/blogctl
       - uses: DeterminateSystems/flakehub-push@main
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -190,6 +193,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       # `nix flake check` forces evaluation of the lib's outputs (lib,
       # formatter, devShells), which seeds the closure that flakehub-push
       # then uploads.
@@ -216,6 +220,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - run: nix build ./infra/devbox#linodeImage
       - uses: actions/upload-artifact@v7
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -244,4 +249,5 @@ jobs:
         with:
           determinate: true
           flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - run: nix run ./tools/shaka -- ci gate --needs '${{ toJson(needs) }}'
