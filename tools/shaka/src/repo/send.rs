@@ -137,8 +137,9 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, dry_run: bool) {
 ///
 /// Prefers a bookmark already on `@` (set by `/start` or the user). If `@`
 /// has no bookmark, derives one from the description. If `@` has multiple
-/// bookmarks, warns and falls back to deriving — pass `--bookmark` to pick
-/// one explicitly.
+/// bookmarks, errors — the user has expressed intent by creating bookmarks,
+/// so silently picking one (or deriving a third) would be wrong; pass
+/// `--bookmark` to disambiguate.
 pub fn resolve_bookmark(description: &str) -> Result<String, String> {
     let bookmarks = jj::current_bookmarks().map_err(|e| e.to_string())?;
     match bookmarks.len() {
@@ -146,14 +147,9 @@ pub fn resolve_bookmark(description: &str) -> Result<String, String> {
         0 => jj::derive_bookmark(description).ok_or_else(|| {
             "could not derive bookmark from description; pass --bookmark".to_string()
         }),
-        _ => {
-            eprintln!(
-                "{YELLOW}{BOLD}warn:{RESET} multiple bookmarks on @ ({}); deriving from description — pass --bookmark to override",
-                bookmarks.join(", ")
-            );
-            jj::derive_bookmark(description).ok_or_else(|| {
-                "could not derive bookmark from description; pass --bookmark".to_string()
-            })
-        }
+        _ => Err(format!(
+            "multiple bookmarks on @ ({}); pass --bookmark to pick one",
+            bookmarks.join(", ")
+        )),
     }
 }
