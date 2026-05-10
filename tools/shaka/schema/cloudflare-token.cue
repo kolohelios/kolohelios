@@ -42,8 +42,10 @@ package cloudflare_token
 	// when a second account becomes load-bearing.
 	account: "kolohelios"
 	// "all" = all current and future zones in the account; or an
-	// explicit list of zone names.
-	zones: "all" | [string, ...string]
+	// explicit list of zone names. Optional — only meaningful for tokens
+	// that grant zone-level permissions; absent for tokens whose
+	// permissions are purely account-scoped (e.g. Pages).
+	zones?: "all" | [string, ...string]
 }
 
 #UserScope: {
@@ -52,6 +54,7 @@ package cloudflare_token
 
 #PermissionGroup:
 	"Account Settings:Read" |
+	"Account:Cloudflare Pages:Edit" |
 	"Zone:Zone:Edit" |
 	"Zone:DNS:Edit" |
 	"User:API Tokens:Edit"
