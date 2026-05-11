@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 askama = { version = "0.12", default-features = false, features = ["config"] }
-worker = "0.5"
+worker = "0.8"
 
 [profile.release]
 opt-level = "s"

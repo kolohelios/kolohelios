@@ -56,9 +56,23 @@
           default = pkgs.mkShell {
             packages = [
               (rustToolchain pkgs)
+              pkgs.wrangler
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
+
+            # `worker-build` is installed lazily via `cargo install` in
+            # `wrangler.toml`'s build command (the workers-rs documented
+            # idiom — see #333 for whether to package it as a nix
+            # derivation instead). Append `~/.cargo/bin` to PATH so the
+            # resulting binary is visible to wrangler. Append (not
+            # prepend) because GitHub Actions runners ship a
+            # rustup-managed `cargo` in `~/.cargo/bin` that would
+            # otherwise shadow nix's cargo and bypass the project
+            # toolchain entirely.
+            shellHook = ''
+              export PATH="$PATH:$HOME/.cargo/bin"
+            '';
           };
         }
       );
