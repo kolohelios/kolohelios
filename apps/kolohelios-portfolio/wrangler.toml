@@ -3,6 +3,9 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2026-05-01"
 
 # `worker-build` compiles the crate to wasm32-unknown-unknown and emits
-# `build/worker/shim.mjs` + the WASM module that wrangler uploads.
+# `build/worker/shim.mjs` + the WASM module that wrangler uploads. The
+# `cargo install` is a no-op on subsequent runs and matches the
+# workers-rs documented idiom; the devshell adds `~/.cargo/bin` to PATH
+# so the installed binary is visible to the build step.
 [build]
-command = "worker-build --release"
+command = "cargo install -q worker-build --locked && worker-build --release"
