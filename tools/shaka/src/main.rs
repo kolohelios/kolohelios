@@ -12,6 +12,7 @@ mod preflight;
 mod project;
 mod repo;
 mod term;
+mod terraform;
 mod token;
 mod whitespace;
 mod workspace;
@@ -79,6 +80,11 @@ enum Commands {
         #[command(subcommand)]
         command: repo::RepoCommand,
     },
+    /// Generate Terraform HCL from typed CUE definitions
+    Terraform {
+        #[command(subcommand)]
+        command: terraform::TerraformCommand,
+    },
     /// API token tooling, scoped per provider (cloudflare, ...)
     Token {
         #[command(subcommand)]
@@ -112,6 +118,7 @@ fn main() {
         Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
+        Commands::Terraform { command } => terraform::run(command),
         Commands::Token { command } => token::run(command),
         Commands::Whitespace { command } => whitespace::run(command),
         Commands::Workspace { command } => workspace::run(command),

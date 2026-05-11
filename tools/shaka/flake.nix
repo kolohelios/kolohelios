@@ -56,13 +56,15 @@
             cargoLock.lockFile = ./Cargo.lock;
             # Integration tests shell out to external tools: tests/schema.rs
             # uses `cue vet`; tests/workspace.rs uses `jj` (which itself
-            # invokes `git` for colocated repos). Make all three available
+            # invokes `git` for colocated repos); tests/terraform_emit.rs
+            # uses `cue export` and `tofu fmt`. Make them all available
             # during the check phase so `nix flake check` (and CI's `shaka
             # preflight`) can run them in the build sandbox.
             nativeCheckInputs = [
               pkgs.cue
               pkgs.jujutsu
               pkgs.git
+              pkgs.opentofu
             ];
             # Bake shaka's runtime deps onto the wrapped binary's PATH so
             # `nix run ./tools/shaka -- <subcmd>` works without a dev shell
@@ -116,6 +118,10 @@
               # Storage). Audits skip-gracefully when AWS creds are
               # absent so CI without secrets still passes preflight.
               pkgs.awscli2
+              # opentofu is needed by `shaka terraform emit` (post-emit
+              # `tofu fmt`) and by the integration tests under
+              # tests/terraform_emit.rs.
+              pkgs.opentofu
             ]
             ++ (workflowPackages pkgs)
             # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks

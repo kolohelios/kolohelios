@@ -64,6 +64,15 @@ const CHECKS: &[Check] = &[
         run: shaka_deploy_generate_tf_check,
     },
     Check {
+        // Drift between a project's `cue/` source and its committed
+        // `terraform/module.tf`. Triggers on changes to the generator,
+        // the schema, any project's CUE source, or any project's
+        // emitted module.tf — mirroring the deploy check above.
+        name: "shaka terraform check",
+        paths: &["tools/shaka/**", "*/*/cue/**", "*/*/terraform/module.tf"],
+        run: shaka_terraform_check,
+    },
+    Check {
         name: "shaka project audit",
         // Any project-internal change can flip an audit outcome — README
         // presence, .gitignore presence, source files for the rust-has-tests
@@ -321,6 +330,10 @@ fn shaka_project_generate_justfiles_check() -> CheckResult {
 
 fn shaka_deploy_generate_tf_check() -> CheckResult {
     spawn_self(&["deploy", "generate-tf", "--check"])
+}
+
+fn shaka_terraform_check() -> CheckResult {
+    spawn_self(&["terraform", "check"])
 }
 
 fn shaka_project_audit() -> CheckResult {
