@@ -17,29 +17,16 @@ terraform {
 provider "cloudflare" {}
 
 # ── kolohelios.com ─────────────────────────────────────────────
+# The apex is owned by the Worker custom-domain attachment in
+# infra/cloudflare-deploy (slice #3 of #186); attaching a Worker custom
+# domain installs the routing record itself, and a user-owned CNAME at
+# the same hostname conflicts. The zone resource stays here because
+# zones are infra/cloudflare-dns's concern; per-app records sit with
+# the app's deploy block.
 resource "cloudflare_zone" "kolohelios_com" {
   account = {
     id = var.cloudflare_account_id
   }
   name = "kolohelios.com"
   type = "full"
-}
-
-# Apex → portfolio static origin (slice #2 of #186). CF flattens CNAME
-# at apex transparently — clients querying A/AAAA for kolohelios.com
-# get the resolved Pages IPs back. `proxied = true` puts CF's edge
-# cache (and TLS) in front of the Pages default subdomain. The target
-# is the `pages_subdomain` output of `infra/cloudflare-portfolio`;
-# hardcoded here rather than read via cross-project state because the
-# value is derived from a stable project name and a TF output
-# reference would couple the two projects' apply orders. When slice
-# #3 (#189) swings the apex to the Rust origin, this is a one-line
-# edit.
-resource "cloudflare_dns_record" "kolohelios_com_apex" {
-  zone_id = cloudflare_zone.kolohelios_com.id
-  name    = "kolohelios.com"
-  type    = "CNAME"
-  content = "kolohelios-portfolio.pages.dev"
-  ttl     = 1 # 1 = "automatic" when proxied
-  proxied = true
 }
