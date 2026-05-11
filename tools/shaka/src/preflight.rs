@@ -52,6 +52,18 @@ const CHECKS: &[Check] = &[
         run: shaka_project_generate_justfiles_check,
     },
     Check {
+        // Any change to a project.cue may add/remove/edit a deploy block,
+        // and any change to the generator or the output dir may drift the
+        // committed TF away from what the generator would produce now.
+        name: "shaka deploy generate-tf --check",
+        paths: &[
+            "tools/shaka/**",
+            "*/*/project.cue",
+            "infra/cloudflare-deploy/terraform/generated/**",
+        ],
+        run: shaka_deploy_generate_tf_check,
+    },
+    Check {
         name: "shaka project audit",
         // Any project-internal change can flip an audit outcome — README
         // presence, .gitignore presence, source files for the rust-has-tests
@@ -305,6 +317,10 @@ fn shaka_token_cloudflare_schema_check() -> CheckResult {
 
 fn shaka_project_generate_justfiles_check() -> CheckResult {
     spawn_self(&["project", "generate-justfiles", "--check"])
+}
+
+fn shaka_deploy_generate_tf_check() -> CheckResult {
+    spawn_self(&["deploy", "generate-tf", "--check"])
 }
 
 fn shaka_project_audit() -> CheckResult {

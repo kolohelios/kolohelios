@@ -1,0 +1,19 @@
+package project
+
+#Project & {
+	name: "portfolio-b"
+	kind: "rust"
+	coverage: {
+		line: {
+			fail: 0
+		}
+		branch: {
+			fail: 0
+		}
+	}
+	deploy: {
+		target:       "cloudflare-worker"
+		customDomain: "b.kolohelios.com"
+		zone:         "kolohelios.com"
+	}
+}

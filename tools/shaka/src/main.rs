@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 mod ci;
 mod commit;
+mod deploy;
 mod domain;
 mod gh;
 mod issue;
@@ -35,6 +36,12 @@ enum Commands {
     Commit {
         #[command(subcommand)]
         command: commit::CommitCommand,
+    },
+    /// Generate per-project deploy Terraform from `deploy:` blocks in
+    /// each project.cue (Worker custom domains, future targets)
+    Deploy {
+        #[command(subcommand)]
+        command: deploy::DeployCommand,
     },
     /// Domain inventory and drift tooling
     Domain {
@@ -98,6 +105,7 @@ fn main() {
         }
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
+        Commands::Deploy { command } => deploy::run(command),
         Commands::Domain { command } => domain::run(command),
         Commands::Issue { command } => issue::run(command),
         Commands::ObjectStore { command } => object_store::run(command),
