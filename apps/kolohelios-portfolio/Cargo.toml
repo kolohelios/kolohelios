@@ -1,0 +1,19 @@
+[package]
+name = "kolohelios-portfolio"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+askama = { version = "0.12", default-features = false, features = ["config"] }
+worker = "0.5"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
