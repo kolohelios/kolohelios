@@ -106,10 +106,11 @@ resource "onepassword_item" "dns_management" {
 
 # ── pages-management ──────────────────────────────────────────────────
 #
-# Mirrors `tokens/pages-management.cue`. Consumed by
-# `infra/cloudflare-portfolio` for both the `tofu apply` that creates
-# the Pages project and the `wrangler pages deploy` step that uploads
-# `site/`. Account-scoped only — Pages has no zone-level resources.
+# Mirrors `tokens/pages-management.cue`. Its original consumer
+# (`infra/cloudflare-portfolio`, slice #2 of #186) was retired when
+# slice #3 (#189) moved the portfolio onto a Worker; this token has no
+# consumer today and stays until the Worker-side replacement is
+# provisioned. Account-scoped only — Pages has no zone-level resources.
 resource "cloudflare_api_token" "pages_management" {
   name = "Pages Management (TF-managed)"
 
