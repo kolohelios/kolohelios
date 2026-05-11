@@ -38,8 +38,17 @@ struct AuditConfig {
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectKind {
     Rust,
+    RustWorker,
     Infra,
     NixLib,
+}
+
+impl ProjectKind {
+    /// Rust-flavored kinds share the cargo/clippy/license rules even
+    /// when coverage requirements diverge.
+    fn is_rust_flavored(self) -> bool {
+        matches!(self, ProjectKind::Rust | ProjectKind::RustWorker)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,7 +142,7 @@ impl Rule for RustHasTests {
         "rust-has-tests"
     }
     fn applies(&self, meta: &ProjectMeta) -> bool {
-        meta.kind == ProjectKind::Rust
+        meta.kind.is_rust_flavored()
     }
     fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
         if has_rust_tests(project_dir) {
@@ -149,11 +158,18 @@ impl Rule for RustCoverageThresholdNonzero {
         "rust-coverage-threshold-nonzero"
     }
     fn applies(&self, meta: &ProjectMeta) -> bool {
-        meta.kind == ProjectKind::Rust
+        meta.kind.is_rust_flavored()
     }
     fn check(&self, _project_dir: &Path, meta: &ProjectMeta) -> RuleResult {
         let Some(cov) = &meta.coverage else {
-            return RuleResult::Fail("rust project missing coverage block".into());
+            // Rust requires coverage; rust-worker treats it as opt-in
+            // (cargo-llvm-cov can't see the wasm-target code, so
+            // gating on native-only coverage is misleading).
+            return match meta.kind {
+                ProjectKind::Rust => RuleResult::Fail("rust project missing coverage block".into()),
+                ProjectKind::RustWorker => RuleResult::Pass,
+                _ => RuleResult::Pass,
+            };
         };
         if cov.line.fail == 0 || cov.branch.fail == 0 {
             return RuleResult::Fail(format!(
@@ -170,7 +186,7 @@ impl Rule for RustLicenseDual {
         "rust-license-dual"
     }
     fn applies(&self, meta: &ProjectMeta) -> bool {
-        meta.kind == ProjectKind::Rust
+        meta.kind.is_rust_flavored()
     }
     fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
         let cargo = project_dir.join("Cargo.toml");
@@ -664,6 +680,15 @@ mod tests {
         }
     }
 
+    fn rust_worker_meta() -> ProjectMeta {
+        ProjectMeta {
+            name: "demo".into(),
+            kind: ProjectKind::RustWorker,
+            coverage: None,
+            audit: None,
+        }
+    }
+
     #[test]
     fn readme_present_passes_when_readme_exists() {
         let tmp = TempDir::new().unwrap();
@@ -713,8 +738,9 @@ mod tests {
     }
 
     #[test]
-    fn rust_has_tests_only_applies_to_rust() {
+    fn rust_has_tests_applies_to_rust_and_rust_worker_only() {
         assert!(RustHasTests.applies(&rust_meta()));
+        assert!(RustHasTests.applies(&rust_worker_meta()));
         assert!(!RustHasTests.applies(&infra_meta()));
     }
 
@@ -800,8 +826,9 @@ mod tests {
     }
 
     #[test]
-    fn coverage_threshold_only_applies_to_rust() {
+    fn coverage_threshold_applies_to_rust_and_rust_worker_only() {
         assert!(RustCoverageThresholdNonzero.applies(&rust_meta()));
+        assert!(RustCoverageThresholdNonzero.applies(&rust_worker_meta()));
         assert!(!RustCoverageThresholdNonzero.applies(&infra_meta()));
     }
 
@@ -847,7 +874,7 @@ mod tests {
     }
 
     #[test]
-    fn coverage_threshold_fails_when_block_missing() {
+    fn coverage_threshold_fails_when_block_missing_on_rust() {
         let tmp = TempDir::new().unwrap();
         let meta = ProjectMeta {
             coverage: None,
@@ -860,8 +887,36 @@ mod tests {
     }
 
     #[test]
-    fn rust_license_dual_only_applies_to_rust() {
+    fn coverage_threshold_passes_when_block_missing_on_rust_worker() {
+        // Coverage is opt-in on rust-worker; absence must not fail.
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(
+            RustCoverageThresholdNonzero.check(tmp.path(), &rust_worker_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn coverage_threshold_fails_for_zero_threshold_on_rust_worker() {
+        // When a rust-worker app opts in, zero values are still rejected.
+        let tmp = TempDir::new().unwrap();
+        let meta = ProjectMeta {
+            coverage: Some(Coverage {
+                line: CoverageThreshold { fail: 0 },
+                branch: CoverageThreshold { fail: 50 },
+            }),
+            ..rust_worker_meta()
+        };
+        assert!(matches!(
+            RustCoverageThresholdNonzero.check(tmp.path(), &meta),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_license_dual_applies_to_rust_and_rust_worker_only() {
         assert!(RustLicenseDual.applies(&rust_meta()));
+        assert!(RustLicenseDual.applies(&rust_worker_meta()));
         assert!(!RustLicenseDual.applies(&infra_meta()));
     }
 

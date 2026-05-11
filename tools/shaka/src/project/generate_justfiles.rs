@@ -75,6 +75,70 @@ whitespace-check:
 validate: nix-fmt-check flake-check whitespace-check
 "#;
 
+// Rust crate that ships as a Cloudflare Worker (wasm32-unknown-unknown).
+// Coverage is optional (cargo-llvm-cov can't measure the wasm-target
+// code that handles requests; native-only would gate the wrong thing).
+// `build`/`--release` is intentionally absent — workers ship via
+// wrangler/worker-build, not a native release binary; the
+// wasm-target sanity check lives in `wasm-check`. The validate recipe
+// composes the wasm check so wasm-incompat deps surface here, not
+// later when wrangler tries to compile.
+const RUST_WORKER_TEMPLATE: &str = r#"wasm-check:
+    cargo check --target wasm32-unknown-unknown
+
+test:
+    cargo test
+
+fmt:
+    cargo fmt
+
+fmt-check:
+    cargo fmt --check
+
+lint:
+    cargo clippy --all-targets -- -D warnings
+
+doc-check:
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+
+deny:
+    cargo deny check
+
+# Macro-only deps can register as false positives — allowlist via
+# `package.metadata.cargo-machete.ignored` in the offending Cargo.toml.
+machete:
+    cargo machete
+
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
+        echo "coverage: not declared (optional on rust-worker); skipping"
+        exit 0
+    fi
+    fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
+    fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
+    measured=$(cargo llvm-cov --json --summary-only --branch)
+    line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
+    branch=$(jq <<<"$measured" '.data[0].totals.branches.percent')
+    printf 'coverage: line=%.1f%% branch=%.1f%% (gates: line>=%s%% branch>=%s%%)\n' \
+        "$line" "$branch" "$fail_line" "$fail_branch"
+    awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
+        'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
+
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
+    nix flake check
+
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: fmt-check lint doc-check deny machete test coverage wasm-check nix-fmt-check flake-check whitespace-check
+"#;
+
 // Infra projects intentionally do NOT run `nix flake check` in `validate`.
 // The devbox eval-check forces `system.build.toplevel.drvPath` evaluation,
 // which pulls a NixOS closure larger than a stock GitHub runner's disk
@@ -165,6 +229,7 @@ pub fn run(check: bool) {
 fn template_for(kind: &str, project_dir: &Path) -> Option<&'static str> {
     match kind {
         "rust" => Some(RUST_TEMPLATE),
+        "rust-worker" => Some(RUST_WORKER_TEMPLATE),
         "infra" => Some(if project_dir.join("terraform").is_dir() {
             INFRA_TEMPLATE_WITH_TF
         } else {
@@ -324,6 +389,15 @@ mod tests {
     }
 
     #[test]
+    fn template_for_rust_worker_returns_rust_worker_template() {
+        let dir = tmp_project("rust-worker");
+        assert_eq!(
+            template_for("rust-worker", dir.path()),
+            Some(RUST_WORKER_TEMPLATE)
+        );
+    }
+
+    #[test]
     fn template_for_unknown_kind_returns_none() {
         let dir = tmp_project("unknown");
         assert!(template_for("python", dir.path()).is_none());
@@ -341,6 +415,7 @@ mod tests {
     fn all_templates_run_whitespace_check() {
         for tpl in [
             RUST_TEMPLATE,
+            RUST_WORKER_TEMPLATE,
             NIX_LIB_TEMPLATE,
             INFRA_TEMPLATE_WITH_TF,
             INFRA_TEMPLATE_NO_TF,
@@ -358,6 +433,7 @@ mod tests {
     fn all_templates_run_nix_fmt_check() {
         for tpl in [
             RUST_TEMPLATE,
+            RUST_WORKER_TEMPLATE,
             NIX_LIB_TEMPLATE,
             INFRA_TEMPLATE_WITH_TF,
             INFRA_TEMPLATE_NO_TF,
@@ -366,6 +442,22 @@ mod tests {
             assert!(tpl.contains("nix fmt -- --check"));
             assert!(tpl.contains("nix-fmt-check"));
         }
+    }
+
+    #[test]
+    fn rust_worker_template_runs_wasm_check_in_validate() {
+        assert!(RUST_WORKER_TEMPLATE.contains("wasm-check:"));
+        assert!(RUST_WORKER_TEMPLATE.contains("cargo check --target wasm32-unknown-unknown"));
+        assert!(RUST_WORKER_TEMPLATE
+            .lines()
+            .any(|l| l.starts_with("validate:") && l.contains("wasm-check")));
+    }
+
+    #[test]
+    fn rust_worker_coverage_skips_when_block_absent() {
+        // The recipe must early-exit when the project.cue has no coverage
+        // block; otherwise it'd fail on a missing .coverage in `cue export`.
+        assert!(RUST_WORKER_TEMPLATE.contains(r#"jq -r '.coverage // "absent"'"#));
     }
 
     #[test]
