@@ -1,0 +1,14 @@
+package project
+
+#Project & {
+	name: "plain-app"
+	kind: "rust"
+	coverage: {
+		line: {
+			fail: 0
+		}
+		branch: {
+			fail: 0
+		}
+	}
+}
