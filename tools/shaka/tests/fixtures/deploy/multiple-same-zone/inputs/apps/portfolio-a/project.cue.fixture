@@ -2,15 +2,7 @@ package project
 
 #Project & {
 	name: "portfolio-a"
-	kind: "rust"
-	coverage: {
-		line: {
-			fail: 0
-		}
-		branch: {
-			fail: 0
-		}
-	}
+	kind: "rust-worker"
 	deploy: {
 		target:       "cloudflare-worker"
 		customDomain: "a.kolohelios.com"

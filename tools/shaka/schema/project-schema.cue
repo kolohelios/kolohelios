@@ -43,6 +43,22 @@ package project
 			fail: number & >=0 & <=100
 		}
 	}
+} | {
+	// Rust crate that compiles to wasm32-unknown-unknown and ships
+	// as a Cloudflare Worker. Coverage is optional because cargo-llvm-cov
+	// can't measure the wasm-target code paths that actually serve
+	// requests; native-only coverage would gate the wrong thing.
+	// Deploy lives here (not on `rust`) since `cloudflare-worker` only
+	// makes sense for wasm builds.
+	kind: "rust-worker"
+	coverage?: {
+		line: {
+			fail: number & >=0 & <=100
+		}
+		branch: {
+			fail: number & >=0 & <=100
+		}
+	}
 	deploy?: #Deploy
 } | {
 	kind: "infra"
