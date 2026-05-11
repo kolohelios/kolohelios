@@ -1,0 +1,8 @@
+name = "kolohelios-portfolio"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-05-01"
+
+# `worker-build` compiles the crate to wasm32-unknown-unknown and emits
+# `build/worker/shim.mjs` + the WASM module that wrangler uploads.
+[build]
+command = "worker-build --release"
