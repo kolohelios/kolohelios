@@ -1,9 +1,12 @@
 package cloudflare_token
 
-// CF Pages-management token consumed by `infra/cloudflare-portfolio` for
-// both the `tofu apply` (creating the Pages project) and the `wrangler
-// pages deploy` step that uploads `site/`. Account-scoped only — Pages
-// has no zone-level resources, so `zones` is omitted.
+// CF Pages-management token. The original consumer
+// (`infra/cloudflare-portfolio`, slice #2 of #186) was retired when
+// slice #3 (#189) moved the portfolio onto a Cloudflare Worker, so this
+// token currently has no consumer. Kept until the Worker-side
+// replacement token is provisioned, then this stanza goes away.
+// Account-scoped only — Pages has no zone-level resources, so `zones`
+// is omitted.
 //
 // 90-day expiry; rotate via
 // `tofu apply -replace=cloudflare_api_token.pages_management` until #290
