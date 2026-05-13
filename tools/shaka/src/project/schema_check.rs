@@ -1,10 +1,23 @@
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
-pub const SCHEMA: &str = include_str!("../../schema/project-schema.cue");
+/// In-tree path to the project schema. Returned by `write_schema`
+/// (the name is historical — `write_schema` no longer writes anything
+/// to disk). Kept as a path rather than a string so callers can pass
+/// it to `Command::arg` without conversion.
+///
+/// The schema imports `kolohelios.com/infra/cloudflare-dns/domains`
+/// to constrain hostname fields against the registry. CUE resolves
+/// that import by walking up from `cue`'s cwd to find
+/// `cue.mod/module.cue`. shaka invokes `cue` inheriting the caller's
+/// cwd: prod uses the repo root (real `cue.mod`); tests are
+/// responsible for setting up a `cue.mod` + minimal registry in
+/// their temp dir before spawning shaka. Anchoring the schema to
+/// `CARGO_MANIFEST_DIR` keeps it findable regardless of cwd.
+const SCHEMA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/schema/project-schema.cue");
+
 const SLOTS: &[&str] = &["apps", "infra", "nix", "packages", "services", "tools"];
 
 enum ProjectResult {
@@ -175,14 +188,9 @@ fn validate_project(schema_path: &Path, project_dir: &Path) -> ProjectResult {
 }
 
 pub fn write_schema() -> std::io::Result<PathBuf> {
-    // Per-process filename so integration tests that spawn multiple shaka
-    // subprocesses in parallel don't race on the same file (cue would see a
-    // half-written schema and fail with "reference '#Project' not found").
-    let path =
-        std::env::temp_dir().join(format!("shaka-project-schema-{}.cue", std::process::id()));
-    let mut f = std::fs::File::create(&path)?;
-    f.write_all(SCHEMA.as_bytes())?;
-    Ok(path)
+    // No I/O — the in-tree schema path is the working answer now that
+    // the schema imports the domain registry (see SCHEMA_PATH).
+    Ok(PathBuf::from(SCHEMA_PATH))
 }
 
 #[cfg(test)]

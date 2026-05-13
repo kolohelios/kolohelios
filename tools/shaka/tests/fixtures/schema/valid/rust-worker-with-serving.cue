@@ -1,5 +1,7 @@
 package project
 
+// Worker app with a `serving:` block — registered hostname passes
+// the `domain.#KnownHostnames` constraint.
 #Project & {
 	name: "kolohelios-portfolio"
 	kind: "rust-worker"
@@ -9,9 +11,4 @@ package project
 			hostnames: ["kolohelios.com"]
 		},
 	]
-	deploy: {
-		target:       "cloudflare-worker"
-		customDomain: "kolohelios.com"
-		zone:         "kolohelios.com"
-	}
 }

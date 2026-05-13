@@ -10,6 +10,8 @@ use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
+mod common;
+
 const SHAKA_BIN: &str = env!("CARGO_BIN_EXE_shaka");
 
 fn run_new(cwd: &Path, args: &[&str]) -> Output {
@@ -37,6 +39,7 @@ fn stderr_of(out: &Output) -> String {
 #[test]
 fn scaffolds_clean_rust_project_under_chosen_slot() {
     let tmp = TempDir::new().unwrap();
+    common::write_test_module(tmp.path());
     let out = run_new(tmp.path(), &["--name", "demo", "--slot", "tools"]);
     let stdout = stdout_of(&out);
     let stderr = stderr_of(&out);

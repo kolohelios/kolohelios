@@ -7,6 +7,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod common;
+
 const SHAKA_BIN: &str = env!("CARGO_BIN_EXE_shaka");
 
 fn fixtures_root() -> PathBuf {
@@ -50,6 +52,7 @@ impl Staged {
             let dst = slot.join(name);
             copy_dir(&src, &dst);
         }
+        common::write_test_module(root.path());
         Staged { root }
     }
 
