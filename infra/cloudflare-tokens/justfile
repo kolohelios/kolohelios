@@ -23,5 +23,7 @@ _env-check:
 plan: _env-check
     op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu plan'
 
-apply: _env-check
-    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu apply'
+# `*ARGS` lets CI pass `-auto-approve -input=false` while local
+# `just apply` stays interactive (see `.github/workflows/tf-apply.yml`).
+apply *ARGS: _env-check
+    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu apply {{ARGS}}'

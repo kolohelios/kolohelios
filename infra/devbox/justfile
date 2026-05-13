@@ -15,5 +15,5 @@ validate: tofu-validate nix-fmt-check whitespace-check
 plan:
     cd terraform && tofu init -input=false && tofu plan
 
-apply:
-    cd terraform && tofu init -input=false && tofu apply
+apply *ARGS:
+    cd terraform && tofu init -input=false && tofu apply {{ARGS}}
