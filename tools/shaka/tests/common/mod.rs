@@ -1,13 +1,24 @@
 //! Shared helpers for integration tests that spawn shaka against a
 //! temp dir.
 //!
+//! Not every test binary that `mod common;`-includes this file uses
+//! every helper, which trips clippy under `-D warnings`. The
+//! `#[allow(dead_code)]` attribute below covers all helpers — any
+//! genuine drift (a removed helper still referenced) shows up as a
+//! compile error at the call site.
+
+#![allow(dead_code)]
+//!
 //! The project schema imports
 //! `kolohelios.com/infra/cloudflare-dns/domains:domain` to constrain
 //! hostname fields against the registry. CUE resolves that import by
 //! walking up from `cue`'s cwd to find `cue.mod/module.cue`, so any
 //! test that runs shaka in a temp dir has to plant a `cue.mod` plus a
 //! registry there — otherwise `cue vet` fails with "imports are
-//! unavailable." Tests opt into this via [`write_test_module`].
+//! unavailable." Tests opt into this via [`write_test_module`] (stub
+//! registry, accepts any hostname — fine for fixtures that don't use
+//! `serving:` / `deploy:`) or [`write_test_module_with_registry`]
+//! (concrete zone list — the constraint actually fires).
 
 use std::path::Path;
 
@@ -15,13 +26,12 @@ use std::path::Path;
 /// the project schema's `import "kolohelios.com/...domains:domain"`
 /// resolves when `cue` is invoked with `current_dir(root)`.
 ///
-/// Most tests don't reference `#KnownHostnames` (no `serving:` /
-/// `deploy:` blocks in their project.cue fixtures), so the registry
-/// can stub the definition out — CUE's lazy evaluation keeps the stub
-/// from blowing up. An infra-side stub project is also planted so
-/// shaka's `audit` / `schema-check` passes over
-/// `tmp/infra/cloudflare-dns/` don't trip on a missing project.cue
-/// or audit-rule violations.
+/// The registry stubs `#KnownHostnames: _` so any hostname passes —
+/// fine for fixtures that don't exercise the constraint. Tests that
+/// *do* exercise it want [`write_test_module_with_registry`] instead.
+/// An infra-side stub project is also planted so shaka's `audit` /
+/// `schema-check` passes over `tmp/infra/cloudflare-dns/` don't trip
+/// on a missing project.cue or audit-rule violations.
 pub fn write_test_module(root: &Path) {
     std::fs::create_dir_all(root.join("cue.mod")).unwrap();
     std::fs::write(
@@ -72,4 +82,33 @@ pub fn write_test_module(root: &Path) {
         }\n",
     )
     .unwrap();
+}
+
+/// Like [`write_test_module`] but the registry actually enumerates
+/// `zones` (with the same regex-disjunction shape as the real
+/// `aggregate.cue`) so the project schema's hostname constraint
+/// fires. Use for tests where a `serving:` / `deploy:` fixture must
+/// be accepted (hostname matches the regex) or rejected (doesn't).
+pub fn write_test_module_with_registry(root: &Path, zones: &[&str]) {
+    write_test_module(root);
+    let registry_dir = root.join("infra/cloudflare-dns/domains");
+    let mut entries = String::new();
+    for z in zones {
+        entries.push_str(&format!("domains: \"{z}\": {{}}\n"));
+    }
+    let content = format!(
+        "package domain\n\
+        \n\
+        import \"strings\"\n\
+        \n\
+        domains: [string]: {{}}\n\
+        \n\
+        {entries}\n\
+        #KnownHostnames: or([\n\
+        \tfor k, _ in domains {{\n\
+        \t\t=~\"(^|\\\\.)\\(strings.Replace(k, \".\", \"\\\\.\", -1))$\"\n\
+        \t}},\n\
+        ])\n"
+    );
+    std::fs::write(registry_dir.join("registry.cue"), content).unwrap();
 }
