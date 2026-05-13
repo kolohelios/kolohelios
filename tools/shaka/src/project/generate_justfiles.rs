@@ -157,11 +157,43 @@ whitespace-check:
 
 validate: tofu-validate nix-fmt-check whitespace-check
 
+# Secrets (CF token, S3 credentials) live in 1Password and reach TF
+# through `op://...` refs in `.env`, resolved by `op run`. Fail fast
+# with a clear message when `.env` is missing rather than letting the
+# AWS SDK report "no valid credential sources found" — that error
+# masks the actual cause and sends people down the wrong rabbit hole.
+_env-check:
+    @test -f .env || { echo "error: .env not found. Run: cp .env.example .env" >&2; exit 1; }
+
+plan: _env-check
+    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu plan'
+
+apply: _env-check
+    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu apply'
+"#;
+
+// Infra-with-TF projects whose secrets aren't 1Password-resolved at
+// runtime — they use `terraform.tfvars` or hand-set env vars (e.g.
+// `infra/devbox`'s Linode token). Bare `tofu plan` / `apply`, no
+// `op run` wrapper. The discriminator is `.env.example` presence: the
+// 1Password projects carry one (it documents the `op://` references);
+// the tfvars-style projects don't.
+const INFRA_TEMPLATE_WITH_TF_BARE: &str = r#"tofu-validate:
+    cd terraform && tofu init -backend=false -input=false && tofu validate
+
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: tofu-validate nix-fmt-check whitespace-check
+
 plan:
     cd terraform && tofu init -input=false && tofu plan
 
 apply:
-    cd terraform && tofu apply
+    cd terraform && tofu init -input=false && tofu apply
 "#;
 
 // Infra projects without a `terraform/` directory (nix-only infra such
@@ -231,7 +263,14 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<&'static str> {
         "rust" => Some(RUST_TEMPLATE),
         "rust-worker" => Some(RUST_WORKER_TEMPLATE),
         "infra" => Some(if project_dir.join("terraform").is_dir() {
-            INFRA_TEMPLATE_WITH_TF
+            // `.env.example` signals the project resolves secrets via
+            // `op run --env-file=.env`; absence means tfvars/env-set
+            // credentials (see `infra/devbox`).
+            if project_dir.join(".env.example").is_file() {
+                INFRA_TEMPLATE_WITH_TF
+            } else {
+                INFRA_TEMPLATE_WITH_TF_BARE
+            }
         } else {
             INFRA_TEMPLATE_NO_TF
         }),
@@ -364,12 +403,23 @@ mod tests {
     }
 
     #[test]
-    fn template_for_infra_with_terraform_dir_returns_with_tf_template() {
-        let dir = tmp_project("infra-tf");
+    fn template_for_infra_with_tf_and_env_example_returns_op_run_template() {
+        let dir = tmp_project("infra-tf-op");
         std::fs::create_dir(dir.path().join("terraform")).unwrap();
+        std::fs::write(dir.path().join(".env.example"), "").unwrap();
         assert_eq!(
             template_for("infra", dir.path()),
             Some(INFRA_TEMPLATE_WITH_TF)
+        );
+    }
+
+    #[test]
+    fn template_for_infra_with_tf_no_env_example_returns_bare_template() {
+        let dir = tmp_project("infra-tf-bare");
+        std::fs::create_dir(dir.path().join("terraform")).unwrap();
+        assert_eq!(
+            template_for("infra", dir.path()),
+            Some(INFRA_TEMPLATE_WITH_TF_BARE)
         );
     }
 
@@ -418,6 +468,7 @@ mod tests {
             RUST_WORKER_TEMPLATE,
             NIX_LIB_TEMPLATE,
             INFRA_TEMPLATE_WITH_TF,
+            INFRA_TEMPLATE_WITH_TF_BARE,
             INFRA_TEMPLATE_NO_TF,
         ] {
             assert!(tpl.contains("whitespace-check:"));
@@ -436,6 +487,7 @@ mod tests {
             RUST_WORKER_TEMPLATE,
             NIX_LIB_TEMPLATE,
             INFRA_TEMPLATE_WITH_TF,
+            INFRA_TEMPLATE_WITH_TF_BARE,
             INFRA_TEMPLATE_NO_TF,
         ] {
             assert!(tpl.contains("nix-fmt-check:"));
@@ -465,7 +517,11 @@ mod tests {
         // See #170: infra `nix flake check` pulls a NixOS closure that
         // exceeds GitHub runner disk; `Build Linode image` covers the
         // eval check via full `nix build`.
-        for tpl in [INFRA_TEMPLATE_WITH_TF, INFRA_TEMPLATE_NO_TF] {
+        for tpl in [
+            INFRA_TEMPLATE_WITH_TF,
+            INFRA_TEMPLATE_WITH_TF_BARE,
+            INFRA_TEMPLATE_NO_TF,
+        ] {
             assert!(!tpl.contains("flake-check"));
             assert!(!tpl.contains("nix flake check"));
         }
@@ -535,6 +591,23 @@ mod tests {
     fn infra_with_tf_template_validate_chain() {
         assert!(INFRA_TEMPLATE_WITH_TF
             .contains("validate: tofu-validate nix-fmt-check whitespace-check\n"));
+    }
+
+    #[test]
+    fn infra_with_tf_template_wraps_plan_and_apply_in_op_run() {
+        // Both deploy-side recipes need 1Password-resolved secrets;
+        // bare `tofu plan` / `apply` fail with an opaque AWS SDK error.
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("plan: _env-check\n"));
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("apply: _env-check\n"));
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("op run --env-file=.env -- bash -c"));
+    }
+
+    #[test]
+    fn infra_with_tf_template_apply_includes_init() {
+        // `tofu apply` previously skipped `init` (relied on the user
+        // having run `plan` first). Folding `init -input=false` in
+        // removes one more "did the recipe just work?" footgun.
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("tofu init -input=false && tofu apply"));
     }
 
     #[test]

@@ -12,8 +12,16 @@ whitespace-check:
 
 validate: tofu-validate nix-fmt-check whitespace-check
 
-plan:
-    cd terraform && tofu init -input=false && tofu plan
+# Secrets (CF token, S3 credentials) live in 1Password and reach TF
+# through `op://...` refs in `.env`, resolved by `op run`. Fail fast
+# with a clear message when `.env` is missing rather than letting the
+# AWS SDK report "no valid credential sources found" — that error
+# masks the actual cause and sends people down the wrong rabbit hole.
+_env-check:
+    @test -f .env || { echo "error: .env not found. Run: cp .env.example .env" >&2; exit 1; }
 
-apply:
-    cd terraform && tofu apply
+plan: _env-check
+    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu plan'
+
+apply: _env-check
+    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu apply'
