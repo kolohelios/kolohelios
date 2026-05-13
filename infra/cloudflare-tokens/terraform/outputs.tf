@@ -10,10 +10,10 @@ output "provisioned_tokens" {
       expires_on      = cloudflare_api_token.dns_management.expires_on
       onepassword_uri = "op://${var.onepassword_vault_id}/${onepassword_item.dns_management.title}/password"
     }
-    "pages-management" = {
-      id              = cloudflare_api_token.pages_management.id
-      expires_on      = cloudflare_api_token.pages_management.expires_on
-      onepassword_uri = "op://${var.onepassword_vault_id}/${onepassword_item.pages_management.title}/password"
+    "deploy" = {
+      id              = cloudflare_api_token.deploy.id
+      expires_on      = cloudflare_api_token.deploy.expires_on
+      onepassword_uri = "op://${var.onepassword_vault_id}/${onepassword_item.deploy.title}/password"
     }
   }
 }

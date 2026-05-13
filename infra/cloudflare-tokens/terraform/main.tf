@@ -50,8 +50,8 @@ data "cloudflare_api_token_permission_groups_list" "account_settings_read" {
   name = "Account Settings Read"
 }
 
-data "cloudflare_api_token_permission_groups_list" "pages_write" {
-  name = "Pages Write"
+data "cloudflare_api_token_permission_groups_list" "workers_scripts_write" {
+  name = "Workers Scripts Write"
 }
 
 locals {
@@ -104,36 +104,47 @@ resource "onepassword_item" "dns_management" {
   tags     = ["cloudflare", "tf-managed", "dns"]
 }
 
-# ── pages-management ──────────────────────────────────────────────────
+# ── deploy ────────────────────────────────────────────────────────────
 #
-# Mirrors `tokens/pages-management.cue`. Its original consumer
-# (`infra/cloudflare-portfolio`, slice #2 of #186) was retired when
-# slice #3 (#189) moved the portfolio onto a Worker; this token has no
-# consumer today and stays until the Worker-side replacement is
-# provisioned. Account-scoped only — Pages has no zone-level resources.
-resource "cloudflare_api_token" "pages_management" {
-  name = "Pages Management (TF-managed)"
+# Mirrors `tokens/deploy.cue`. Consumed by `infra/cloudflare-deploy`
+# (TF custom-domain attach) and by `wrangler deploy` from `rust-worker`
+# apps (code uploads). The two flows share one token because both need
+# `Workers Scripts:Edit`; if their rotation cadences diverge, split.
+# Zone-scoped DNS comes along because `cloudflare_workers_custom_domain`
+# installs a CF-managed routing record alongside the attach.
+resource "cloudflare_api_token" "deploy" {
+  name = "Deploy (TF-managed)"
 
   policies = [
     {
       effect = "allow"
       permission_groups = [
-        { id = data.cloudflare_api_token_permission_groups_list.pages_write.result[0].id },
+        { id = data.cloudflare_api_token_permission_groups_list.workers_scripts_write.result[0].id },
       ]
       resources = jsonencode({
         "com.cloudflare.api.account.${local.account_id}" = "*"
       })
     },
+    {
+      effect = "allow"
+      permission_groups = [
+        { id = data.cloudflare_api_token_permission_groups_list.dns_write.result[0].id },
+      ]
+      resources = jsonencode({
+        # All current and future zones in the account.
+        "com.cloudflare.api.account.zone.*" = "*"
+      })
+    },
   ]
 
-  expires_on = "2026-08-07T00:00:00Z"
+  expires_on = "2026-08-11T00:00:00Z"
 }
 
-# Reference path: `op://<vault>/Cloudflare Pages Management Token/password`.
-resource "onepassword_item" "pages_management" {
+# Reference path: `op://<vault>/Cloudflare Deploy Token/password`.
+resource "onepassword_item" "deploy" {
   vault    = var.onepassword_vault_id
-  title    = "Cloudflare Pages Management Token"
+  title    = "Cloudflare Deploy Token"
   category = "password"
-  password = cloudflare_api_token.pages_management.value
-  tags     = ["cloudflare", "tf-managed", "pages"]
+  password = cloudflare_api_token.deploy.value
+  tags     = ["cloudflare", "tf-managed", "deploy"]
 }
