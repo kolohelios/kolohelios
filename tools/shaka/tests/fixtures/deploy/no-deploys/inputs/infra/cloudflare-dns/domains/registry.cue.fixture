@@ -1,0 +1,8 @@
+package domain
+
+// This fixture's project.cue has no deploy/serving blocks, so
+// `#KnownHostnames` is never referenced — the file exists only to
+// satisfy the schema's `import` so vet can complete. CUE's lazy
+// evaluation means the constraint's emptiness is fine.
+
+#KnownHostnames: _

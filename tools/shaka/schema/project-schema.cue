@@ -1,5 +1,7 @@
 package project
 
+import "kolohelios.com/infra/cloudflare-dns/domains:domain"
+
 #Namespace: {
 	kind:    "tfstate" | "cache" | "assets"
 	name:    string & =~"^[a-z][a-z0-9-]*$"
@@ -17,12 +19,31 @@ package project
 // block by `shaka deploy generate-tf` and committed under
 // `infra/cloudflare-deploy/terraform/generated/<project>.tf`.
 //
+// `customDomain` and `zone` are constrained to the registered
+// hostnames in `infra/cloudflare-dns/domains/` — a typo fails
+// `cue vet` before any TF runs.
+//
 // Future targets (`cloudflare-pages`, `fly`, `hetzner`, ...) extend
 // this as an additional disjunction branch when they have a consumer.
 #Deploy: {
 	target:       "cloudflare-worker"
-	customDomain: string & =~"^[a-z0-9.-]+$"
-	zone:         string & =~"^[a-z0-9.-]+$"
+	customDomain: domain.#KnownHostnames
+	zone:         domain.#KnownHostnames
+}
+
+// Where a project serves content. Decoupled from `#Deploy` (which is
+// the implementation detail of how the attachment lands) so future
+// projects that register a hostname without an active deploy block
+// can still declare intent here.
+//
+// CUE constrains `hostnames` to the registered set so typos fail
+// `cue vet`; cross-project audit rules in `shaka project audit`
+// enforce uniqueness (no two projects claim the same hostname) and
+// disposition compatibility (the domain's `disposition` matches what
+// the `via` here implies).
+#Serving: {
+	via: "cloudflare-worker" | "external"
+	hostnames: [domain.#KnownHostnames, ...domain.#KnownHostnames]
 }
 
 #Project: {
@@ -33,6 +54,7 @@ package project
 	audit?: {
 		overrides: [...#AuditOverride]
 	}
+	serving?: [#Serving, ...#Serving]
 } & ({
 	kind: "rust"
 	coverage: {
