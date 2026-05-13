@@ -3,9 +3,8 @@
 # The source of truth is each project's `deploy:` block in project.cue.
 
 resource "cloudflare_workers_custom_domain" "kolohelios_portfolio" {
-  account_id  = var.cloudflare_account_id
-  zone_id     = data.cloudflare_zone.kolohelios_com.zone_id
-  hostname    = "kolohelios.com"
-  service     = "kolohelios-portfolio"
-  environment = "production"
+  account_id = var.cloudflare_account_id
+  zone_id    = data.cloudflare_zone.kolohelios_com.zone_id
+  hostname   = "kolohelios.com"
+  service    = "kolohelios-portfolio"
 }

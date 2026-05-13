@@ -151,11 +151,10 @@ fn render_project(name: &str, deploy: &Deploy) -> String {
             let zone_ident = tf_ident(zone);
             body.push_str(&format!(
                 "resource \"cloudflare_workers_custom_domain\" \"{resource_ident}\" {{\n\
-                 \x20\x20account_id  = var.cloudflare_account_id\n\
-                 \x20\x20zone_id     = data.cloudflare_zone.{zone_ident}.zone_id\n\
-                 \x20\x20hostname    = \"{custom_domain}\"\n\
-                 \x20\x20service     = \"{name}\"\n\
-                 \x20\x20environment = \"production\"\n\
+                 \x20\x20account_id = var.cloudflare_account_id\n\
+                 \x20\x20zone_id    = data.cloudflare_zone.{zone_ident}.zone_id\n\
+                 \x20\x20hostname   = \"{custom_domain}\"\n\
+                 \x20\x20service    = \"{name}\"\n\
                  }}\n"
             ));
         }
