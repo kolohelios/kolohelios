@@ -1,0 +1,41 @@
+# `tofu apply` for `infra/cloudflare-deploy` on push to main.
+#
+# Calls the shared `tf-apply.yml` reusable workflow. Path filter
+# scopes the trigger to changes in this project plus the two
+# workflow files involved — a workflow refactor should also
+# re-apply on the next main-merge, not lie dormant until an
+# unrelated infra change lands.
+name: cloudflare-deploy apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/cloudflare-deploy/**
+      - .github/workflows/cloudflare-deploy-apply.yml
+      - .github/workflows/tf-apply.yml
+  workflow_dispatch:
+
+# Caller permissions are the ceiling for the called workflow's
+# permissions; `id-token: write` is needed so the called workflow's
+# nix-installer can authenticate with FlakeHub.
+permissions:
+  id-token: write
+  contents: read
+
+# Serialize applies to this project's TF state. Two rapid merges
+# would otherwise race two `tofu apply`s; the remote backend's
+# state lock would queue them implicitly, but an explicit group
+# makes the ordering visible in the Actions UI. `cancel-in-progress`
+# is `false` — canceling mid-apply leaves partial state.
+concurrency:
+  group: cloudflare-deploy-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    uses: ./.github/workflows/tf-apply.yml
+    with:
+      project_dir: infra/cloudflare-deploy
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
