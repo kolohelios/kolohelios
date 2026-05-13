@@ -55,6 +55,7 @@ package cloudflare_token
 #PermissionGroup:
 	"Account Settings:Read" |
 	"Account:Cloudflare Pages:Edit" |
+	"Account:Workers Scripts:Edit" |
 	"Zone:Zone:Edit" |
 	"Zone:DNS:Edit" |
 	"User:API Tokens:Edit"
