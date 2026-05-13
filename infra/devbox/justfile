@@ -16,4 +16,4 @@ plan:
     cd terraform && tofu init -input=false && tofu plan
 
 apply:
-    cd terraform && tofu apply
+    cd terraform && tofu init -input=false && tofu apply
