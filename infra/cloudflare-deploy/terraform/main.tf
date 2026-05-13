@@ -19,4 +19,12 @@ provider "cloudflare" {}
 # Resources, data sources, and outputs live under `generated/` —
 # emitted by `shaka deploy generate-tf` from each consuming project's
 # `deploy:` block. `_zones.tf` aggregates zone data sources;
-# `<project>.tf` holds per-app attachments.
+# `<project>.tf` holds per-app attachments; `variables.tf` declares the
+# parent variables the resources read. OpenTofu only auto-loads `.tf`
+# files in the directory it's invoked from, so the subdirectory is
+# pulled in as a module here. Providers auto-inherit from this root.
+module "generated" {
+  source = "./generated"
+
+  cloudflare_account_id = var.cloudflare_account_id
+}

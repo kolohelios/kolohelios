@@ -89,14 +89,18 @@ fn collect_deploys(root: &Path, schema_path: &Path) -> Result<Vec<(String, Deplo
     Ok(out)
 }
 
-/// (relative path, content) pairs. Always includes `_zones.tf` when any
-/// deploy exists; one `<project>.tf` per app with a deploy block.
+/// (relative path, content) pairs. Always includes `variables.tf` plus
+/// `_zones.tf` when any deploy exists; one `<project>.tf` per app with
+/// a deploy block. `variables.tf` declares the parent variables the
+/// generated resources read (passed through by the `module "generated"`
+/// block in the consuming project's `main.tf`).
 fn render_all(deploys: &[(String, Deploy)]) -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
     if deploys.is_empty() {
         return out;
     }
 
+    out.push((PathBuf::from("variables.tf"), render_variables()));
     out.push((PathBuf::from("_zones.tf"), render_zones(deploys)));
     for (name, deploy) in deploys {
         out.push((
@@ -105,6 +109,17 @@ fn render_all(deploys: &[(String, Deploy)]) -> Vec<(PathBuf, String)> {
         ));
     }
     out
+}
+
+fn render_variables() -> String {
+    let mut body = String::from(HEADER);
+    body.push_str(
+        "variable \"cloudflare_account_id\" {\n\
+         \x20\x20description = \"Cloudflare account ID; passed through from the parent module.\"\n\
+         \x20\x20type        = string\n\
+         }\n",
+    );
+    body
 }
 
 fn render_zones(deploys: &[(String, Deploy)]) -> String {
@@ -316,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn render_all_emits_zones_plus_one_file_per_project() {
+    fn render_all_emits_variables_zones_plus_one_file_per_project() {
         let deploys = vec![(
             "kolohelios-portfolio".into(),
             Deploy::CloudflareWorker {
@@ -326,7 +341,10 @@ mod tests {
         )];
         let out = render_all(&deploys);
         let names: Vec<_> = out.iter().map(|(p, _)| p.display().to_string()).collect();
-        assert_eq!(names, vec!["_zones.tf", "kolohelios-portfolio.tf"]);
+        assert_eq!(
+            names,
+            vec!["variables.tf", "_zones.tf", "kolohelios-portfolio.tf"]
+        );
     }
 
     #[test]
