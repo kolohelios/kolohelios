@@ -1,0 +1,52 @@
+# Reusable `tofu apply` workflow for `infra/*` projects.
+#
+# Caller (per-project workflow under #343) passes the project directory
+# and the 1Password Service Account token. The SA token lets `op run`
+# resolve every `op://` reference in the project's `.env` (Cloudflare
+# token, Linode S3 creds for remote tfstate, etc.) so `just apply`
+# authenticates the same way it does locally.
+#
+# Apply runs non-interactively via `just apply -auto-approve
+# -input=false`; the generated recipe already wraps `tofu apply` in
+# `op run --env-file=.env -- bash -c '...'` and inits before applying,
+# so this workflow stays thin.
+name: tf-apply
+
+on:
+  workflow_call:
+    inputs:
+      project_dir:
+        description: "Path to the infra project (e.g. infra/cloudflare-deploy)"
+        required: true
+        type: string
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN:
+        description: "1Password Service Account token used by `op run` to resolve `.env` references"
+        required: true
+
+jobs:
+  apply:
+    name: tofu apply
+    runs-on: ubuntu-latest
+    permissions:
+      # nix-installer-action mints an OIDC token to authenticate with
+      # FlakeHub for the `kolohelios-nix` private input.
+      id-token: write
+      contents: read
+    env:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: tofu apply
+        working-directory: ${{ inputs.project_dir }}
+        # `.env` is gitignored; copy from the in-repo example so the
+        # recipe's `_env-check` precondition passes. `.env.example`
+        # already holds the `op://` refs the SA token will resolve.
+        run: |
+          cp .env.example .env
+          nix develop . --command just apply -auto-approve -input=false
