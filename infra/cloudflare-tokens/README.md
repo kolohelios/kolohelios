@@ -62,8 +62,11 @@ Service Account**:
 - **Name**: `kolohelios-monorepo-tf`
 - **Vault access**: read-write, scoped to the *Kolohelios Monorepo*
   vault only.
-- **Token expiration**: 90 days (or longer if local applies dominate;
-  CI applies move to a separate SA per #291).
+- **Token expiration**: 90 days.
+
+One service account covers both local and CI applies — the token is
+stored in two places so each context can read it without needing the
+other.
 
 Store the SA token in the same vault as a new *Password* item:
 
@@ -71,6 +74,38 @@ Store the SA token in the same vault as a new *Password* item:
 - Store the SA token in the `password` field.
 
 Reference path: `op://vedq2v6cmtkglnonkenrjneepa/1Password Service Account/password`.
+
+This is what `.env`'s `OP_SERVICE_ACCOUNT_TOKEN` resolves to under
+`op run` — the TF `onepassword` provider reads it from the
+environment to authenticate against the vault.
+
+For CI applies, store the same token as a GitHub repository secret so
+workflows can export it directly (no interactive `op` session exists
+in CI to resolve the `op://` reference):
+
+- GitHub repo **Settings → Secrets and variables → Actions → New
+  repository secret**.
+- **Name**: `OP_SERVICE_ACCOUNT_TOKEN`.
+- **Value**: the SA token (same value as the 1Password item's
+  `password` field).
+
+CI workflows then declare:
+
+```yaml
+env:
+  OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+```
+
+and `op run --env-file=.env -- just apply` works without an
+interactive `op` session: the CLI authenticates against the vault
+using the SA token already in the environment, resolves the
+remaining `op://` references (CF tokens, S3 credentials) from the
+vault, and exports them for the wrapped command.
+
+**Rotation**: when the SA token is regenerated (every 90 days, or
+ad-hoc if compromised), update both stores — the 1Password vault item
+and the GitHub secret. The two stores aren't auto-synced; #290 will
+automate the rotation.
 
 ### 3. Author `.env`
 
