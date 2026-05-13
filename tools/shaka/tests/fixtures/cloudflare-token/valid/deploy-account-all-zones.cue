@@ -1,11 +1,11 @@
 package cloudflare_token
 
 #Token & {
-	name:    "unknown-perm"
-	purpose: "rejected because permission group is not in the closed enum"
+	name:    "deploy"
+	purpose: "Worker deploys (TF custom-domain attach + wrangler code uploads)"
 	permission_groups: [
+		"Account:Workers Scripts:Edit",
 		"Zone:DNS:Edit",
-		"Zone:Workers Routes:Edit",
 	]
 	scope: {
 		type:    "account"
