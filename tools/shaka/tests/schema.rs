@@ -9,14 +9,28 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod common;
+
 const SCHEMA_PATH: &str = "schema/project-schema.cue";
 
+/// Vet `project` against `schema`, with cue's cwd set to a temp dir
+/// that carries a `cue.mod` and a real-ish domain registry. The
+/// schema imports the registry to constrain hostname fields, so cue
+/// needs both the module root (found by walking up from cwd) and a
+/// registry whose `#KnownHostnames` actually enumerates known zones
+/// — a wildcard stub would let invalid fixtures (intentionally using
+/// unregistered hostnames) slip through. Local `cargo test` happens
+/// to be inside the real module, but `nix build`'s sandbox is not —
+/// this setup makes the constraint fire in both environments.
 fn cue_vet(schema: &Path, project: &Path) -> bool {
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    common::write_test_module_with_registry(tmp.path(), &["kolohelios.com"]);
     Command::new("cue")
         .arg("vet")
         .arg("-c")
         .arg(schema)
         .arg(project)
+        .current_dir(tmp.path())
         .output()
         .expect("failed to spawn cue (is it on PATH?)")
         .status

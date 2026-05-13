@@ -103,10 +103,21 @@ fn read_project(schema: &Path, file: &Path) -> Result<ProjectFile, RegistryError
     // `cue export` needs both the schema (for #Project) and the project
     // file unified together. Schema-check has already enforced structure,
     // so any export failure here is a real problem and bubbles up.
+    //
+    // `current_dir(file.parent())` anchors cue's module-resolution walk
+    // at the project dir. The project schema imports the domain
+    // registry, so cue needs to find `cue.mod/module.cue` somewhere
+    // up the tree. Inheriting the caller's cwd works in
+    // `cargo test`/`cargo run` (cwd = repo root) but breaks under
+    // `nix build`'s sandbox (cwd = `/build/.tmpXXX/`, no cue.mod). The
+    // file's parent always sits inside the project tree containing
+    // `cue.mod`, so the walk succeeds in both worlds.
+    let project_dir = file.parent().expect("project file has a parent dir");
     let output = Command::new("cue")
         .args(["export", "--out", "json"])
         .arg(schema)
         .arg(file)
+        .current_dir(project_dir)
         .output()
         .with_context(|_| SpawnCueExportSnafu {
             file: file.display().to_string(),
@@ -263,9 +274,36 @@ mod tests {
         assert_eq!(ns("tfstate", "devbox").prefix(), "tfstate/devbox");
     }
 
+    /// Plant a minimal CUE module + stubbed domain registry into
+    /// `root` so the project schema's
+    /// `import "kolohelios.com/infra/cloudflare-dns/domains:domain"`
+    /// resolves when `cue export` runs against a fixture project.cue
+    /// here. The tests below don't reference `#KnownHostnames` (no
+    /// `serving:` / `deploy:` blocks), so the stub is sufficient.
+    /// Local `cargo test` happens to work because cwd is the repo
+    /// root (real `cue.mod` is found one walk-up away), but `nix
+    /// build`'s sandbox has no enclosing module — this setup makes
+    /// the tests pass in both.
+    fn plant_test_module(root: &Path) {
+        fs::create_dir_all(root.join("cue.mod")).unwrap();
+        fs::write(
+            root.join("cue.mod/module.cue"),
+            "module: \"kolohelios.com\"\nlanguage: version: \"v0.15.1\"\n",
+        )
+        .unwrap();
+        let registry = root.join("infra/cloudflare-dns/domains");
+        fs::create_dir_all(&registry).unwrap();
+        fs::write(
+            registry.join("registry.cue"),
+            "package domain\n\n#KnownHostnames: _\n",
+        )
+        .unwrap();
+    }
+
     #[test]
     fn collect_skips_projects_without_object_storage() {
         let tmp = TempDir::new().unwrap();
+        plant_test_module(tmp.path());
         fs::create_dir_all(tmp.path().join("apps/foo")).unwrap();
         fs::write(
             tmp.path().join("apps/foo/project.cue"),
@@ -280,6 +318,7 @@ mod tests {
     #[test]
     fn collect_reads_namespaces_from_project_cue() {
         let tmp = TempDir::new().unwrap();
+        plant_test_module(tmp.path());
         fs::create_dir_all(tmp.path().join("infra/devbox")).unwrap();
         fs::write(
             tmp.path().join("infra/devbox/project.cue"),
