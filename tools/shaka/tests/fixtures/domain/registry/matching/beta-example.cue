@@ -1,7 +1,6 @@
 package domain
 
-#Domain & {
-	name:           "beta.example"
+domains: "beta.example": {
 	disposition:    "personal-alt"
 	nameservers:    "cloudflare"
 	dnssec_enabled: false

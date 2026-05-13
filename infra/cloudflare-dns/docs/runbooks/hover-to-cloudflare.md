@@ -58,16 +58,19 @@ become hyphens — `kolohelios.com` → `kolohelios-com.cue`):
 ```cue
 package domain
 
-#Domain & {
-	name:           "<domain>"
+import schema "kolohelios.com/tools/shaka/schema/domain"
+
+domains: "<domain>": schema.#Domain & {
 	disposition:    "<role>"
 	nameservers:    "cloudflare"
 	dnssec_enabled: false
 }
 ```
 
-`disposition` is one of the values declared in
-`tools/shaka/schema/domain.cue` (`portfolio-canonical`,
+The key (`"<domain>"`) is the `hostname`; the `domains` map is merged
+across every file in the registry package, so this single entry adds
+to the aggregate. `disposition` is one of the values declared in
+`tools/shaka/schema/domain/domain.cue` (`portfolio-canonical`,
 `portfolio-alias`, `personal-alt`, `product-reserve`, `park`,
 `let-expire`). `shaka domain schema-check` (in `shaka preflight`)
 gates the shape.

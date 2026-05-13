@@ -11,9 +11,12 @@ Terraform-managed Cloudflare DNS zones. Slice #1 of the personal portfolio
 - `terraform/outputs.tf` — `domain_expectations` is the stable contract
   consumed by `shaka domain check` (per-domain expected NS pair and DNSSEC
   state).
-- `domains/` — per-domain CUE registry, one `#Domain` instance per file.
-  Validated against `tools/shaka/schema/domain.cue` by
-  `shaka domain schema-check` (wired into `shaka preflight`).
+- `domains/` — per-domain CUE registry, one keyed entry per file
+  (`domains: "<hostname>": schema.#Domain & { ... }`) plus
+  `aggregate.cue` declaring the typed map and the derived
+  `#KnownHostnames` `enum`. Validated against
+  `tools/shaka/schema/domain/domain.cue` by `shaka domain schema-check`
+  (wired into `shaka preflight`).
 - `docs/runbooks/hover-to-cloudflare.md` — end-to-end procedure for
   moving a domain from Hover-default NS to Cloudflare.
 

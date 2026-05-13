@@ -1,7 +1,6 @@
 package domain
 
-#Domain & {
-	name:        "gamma.example"
+domains: "gamma.example": {
 	disposition: "let-expire"
 	nameservers: "unmanaged"
 }

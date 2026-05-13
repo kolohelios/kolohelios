@@ -88,14 +88,16 @@ fn missing_registry_dir_treated_as_empty() {
 }
 
 #[test]
-fn duplicate_registry_names_fail_loud() {
+fn conflicting_registry_entries_fail_loud() {
+    // Two registry files declare `domains: "alpha.example"` with
+    // conflicting bodies (different `disposition` / `nameservers`).
+    // CUE refuses to unify them; the error surfaces via `cue export`
+    // rather than a separate Rust dedup pass. The exact CUE wording
+    // ("conflicting values") is stable enough to assert against.
     let out = run_inventory(&snapshot("two-domains.json"), &registry("duplicate"));
     let stderr = stderr_of(&out);
     assert!(!out.status.success(), "stderr: {stderr}");
-    assert!(
-        stderr.contains("duplicate names in registry"),
-        "stderr: {stderr}"
-    );
+    assert!(stderr.contains("conflicting values"), "stderr: {stderr}");
     assert!(stderr.contains("alpha.example"), "stderr: {stderr}");
 }
 

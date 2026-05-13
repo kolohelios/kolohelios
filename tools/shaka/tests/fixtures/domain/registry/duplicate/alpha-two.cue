@@ -1,7 +1,6 @@
 package domain
 
-#Domain & {
-	name:        "alpha.example"
+domains: "alpha.example": {
 	disposition: "park"
 	nameservers: "unmanaged"
 }

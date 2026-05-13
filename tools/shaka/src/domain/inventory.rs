@@ -1,13 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use serde::Deserialize;
 
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
-
-const SCHEMA: &str = include_str!("../../schema/domain.cue");
 
 pub const REFRESH_SNIPPET: &str = "\
 REFRESH PROCEDURE
@@ -40,9 +37,14 @@ struct HoverEntry {
     name: String,
 }
 
+/// Shape `cue export` returns for the registry package: a `domains`
+/// map keyed by hostname. The value-side is discarded for inventory
+/// purposes (the diff cares only about which hostnames exist), so the
+/// inner type stays `serde_json::Value`.
 #[derive(Debug, Deserialize)]
-struct RegistryEntry {
-    name: String,
+struct RegistryExport {
+    #[serde(default)]
+    domains: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -63,12 +65,7 @@ pub fn run(input: &Path, registry_dir: &Path) {
         Err(e) => die(&format!("could not read snapshot {}: {e}", input.display())),
     };
 
-    let schema_path = match write_schema() {
-        Ok(p) => p,
-        Err(e) => die(&format!("could not write schema: {e}")),
-    };
-
-    let registry = match load_registry(registry_dir, &schema_path) {
+    let registry = match load_registry(registry_dir) {
         Ok(names) => names,
         Err(e) => die(&format!(
             "could not read registry {}: {e}",
@@ -82,7 +79,7 @@ pub fn run(input: &Path, registry_dir: &Path) {
             registry_dir.display()
         );
         eprintln!(
-            "  {DIM}populate the directory with one CUE file per domain (see tools/shaka/schema/domain.cue){RESET}"
+            "  {DIM}populate the directory with one CUE file per domain (see tools/shaka/schema/domain/domain.cue){RESET}"
         );
         eprintln!(
             "  {DIM}snapshot has {} domain(s); all are reported as adds below{RESET}",
@@ -111,57 +108,57 @@ fn load_snapshot(path: &Path) -> Result<BTreeSet<String>, String> {
     Ok(names.into_iter().collect())
 }
 
-fn load_registry(dir: &Path, schema_path: &Path) -> Result<BTreeSet<String>, String> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
-        Err(e) => return Err(e.to_string()),
-    };
-
-    let mut files: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("cue"))
-        .collect();
-    files.sort();
-
-    let mut names: Vec<String> = Vec::with_capacity(files.len());
-    for file in &files {
-        let entry = export_registry_file(schema_path, file)?;
-        names.push(entry.name);
+fn load_registry(dir: &Path) -> Result<BTreeSet<String>, String> {
+    // Missing or .cue-less directory short-circuits to empty registry
+    // — the caller surfaces a `registry is empty` warning so the user
+    // knows the diff is reporting "everything is an add."
+    if !dir.exists() || !has_cue_files(dir) {
+        return Ok(BTreeSet::new());
     }
 
-    let dups = find_duplicates(&names);
-    if !dups.is_empty() {
-        return Err(format!("duplicate names in registry: {}", dups.join(", ")));
-    }
-    Ok(names.into_iter().collect())
-}
-
-fn export_registry_file(schema_path: &Path, file: &Path) -> Result<RegistryEntry, String> {
+    // Treat the directory as a CUE package; `cue export` walks every
+    // non-underscore `.cue` file and merges them into a single value.
+    // The aggregate file declares `domains: [string]: schema.#Domain`
+    // and each per-domain file adds `domains: "<name>": {...}` —
+    // collisions (same key, conflicting values) surface as a CUE
+    // error rather than needing manual dedup in Rust. Empty packages
+    // export `{}` (no `domains` field), which serde fills with the
+    // default empty map via `#[serde(default)]`.
+    //
+    // `current_dir(dir)` + `.` package path: `cue` rejects absolute
+    // directory arguments with "cannot use absolute directory as
+    // package path", so we cd in and use the relative `.`. The CUE
+    // module root (`cue.mod/module.cue`) is found by walking up from
+    // there, which lets `import schema "kolohelios.com/..."` resolve.
     let output = Command::new("cue")
         .arg("export")
         .arg("--out")
         .arg("json")
-        .arg(schema_path)
-        .arg(file)
+        .arg(".")
+        .current_dir(dir)
         .output()
         .map_err(|e| format!("failed to spawn cue: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let detail = if stderr.is_empty() { stdout } else { stderr };
-        return Err(format!("cue export {}: {detail}", file.display()));
+        return Err(format!("cue export {}: {detail}", dir.display()));
     }
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("could not parse {}: {e}", file.display()))
+    let export: RegistryExport = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("could not parse cue export output: {e}"))?;
+    Ok(export.domains.into_keys().collect())
 }
 
-fn write_schema() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir().join(format!("shaka-domain-schema-{}.cue", std::process::id()));
-    let mut f = std::fs::File::create(&path)?;
-    f.write_all(SCHEMA.as_bytes())?;
-    Ok(path)
+fn has_cue_files(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            let p = e.path();
+            p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("cue")
+        })
 }
 
 pub fn diff_inventory(hover: &BTreeSet<String>, registry: &BTreeSet<String>) -> InventoryDiff {

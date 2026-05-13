@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const SCHEMA_PATH: &str = "schema/domain.cue";
+const SCHEMA_PATH: &str = "schema/domain/domain.cue";
 
 fn cue_vet(schema: &Path, fixture: &Path) -> bool {
     Command::new("cue")
