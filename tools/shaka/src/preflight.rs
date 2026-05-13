@@ -31,7 +31,7 @@ const CHECKS: &[Check] = &[
     Check {
         name: "shaka domain schema-check",
         paths: &[
-            "tools/shaka/schema/domain.cue",
+            "tools/shaka/schema/domain/**",
             "tools/shaka/src/domain/**",
             "infra/cloudflare-dns/domains/**",
         ],
