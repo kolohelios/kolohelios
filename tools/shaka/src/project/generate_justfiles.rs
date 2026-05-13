@@ -168,8 +168,10 @@ _env-check:
 plan: _env-check
     op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu plan'
 
-apply: _env-check
-    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu apply'
+# `*ARGS` lets CI pass `-auto-approve -input=false` while local
+# `just apply` stays interactive (see `.github/workflows/tf-apply.yml`).
+apply *ARGS: _env-check
+    op run --env-file=.env -- bash -c 'cd terraform && tofu init -input=false && tofu apply {{ARGS}}'
 "#;
 
 // Infra-with-TF projects whose secrets aren't 1Password-resolved at
@@ -192,8 +194,8 @@ validate: tofu-validate nix-fmt-check whitespace-check
 plan:
     cd terraform && tofu init -input=false && tofu plan
 
-apply:
-    cd terraform && tofu init -input=false && tofu apply
+apply *ARGS:
+    cd terraform && tofu init -input=false && tofu apply {{ARGS}}
 "#;
 
 // Infra projects without a `terraform/` directory (nix-only infra such
@@ -598,7 +600,7 @@ mod tests {
         // Both deploy-side recipes need 1Password-resolved secrets;
         // bare `tofu plan` / `apply` fail with an opaque AWS SDK error.
         assert!(INFRA_TEMPLATE_WITH_TF.contains("plan: _env-check\n"));
-        assert!(INFRA_TEMPLATE_WITH_TF.contains("apply: _env-check\n"));
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("apply *ARGS: _env-check\n"));
         assert!(INFRA_TEMPLATE_WITH_TF.contains("op run --env-file=.env -- bash -c"));
     }
 
@@ -608,6 +610,17 @@ mod tests {
         // having run `plan` first). Folding `init -input=false` in
         // removes one more "did the recipe just work?" footgun.
         assert!(INFRA_TEMPLATE_WITH_TF.contains("tofu init -input=false && tofu apply"));
+    }
+
+    #[test]
+    fn infra_apply_recipes_forward_args() {
+        // Same recipe drives local (interactive) and CI (`-auto-approve
+        // -input=false`); the `*ARGS` shape avoids the alternative of
+        // duplicating recipes per environment.
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("apply *ARGS:"));
+        assert!(INFRA_TEMPLATE_WITH_TF.contains("tofu apply {{ARGS}}"));
+        assert!(INFRA_TEMPLATE_WITH_TF_BARE.contains("apply *ARGS:"));
+        assert!(INFRA_TEMPLATE_WITH_TF_BARE.contains("tofu apply {{ARGS}}"));
     }
 
     #[test]
