@@ -21,32 +21,32 @@
 # insurance; sequencing avoids paying for a wasted preview when
 # the credential chain is broken.
 #
-# Path filter scopes the trigger to changes in this project plus
-# the two workflow files involved — a workflow refactor should
-# also re-deploy on the next main-merge, not lie dormant until an
-# unrelated app change lands.
+# The workflow runs on every PR and every push to `main`, with a
+# `changes` job at the head that detects whether portfolio-
+# relevant paths actually changed. All downstream jobs are
+# gated on its output, so they skip cheaply for unrelated
+# changes. This "always-run + skip" shape lets `verify` be added
+# to branch protection as a required check — GitHub treats a
+# skipped required check as success-equivalent, but a check that
+# never registers (because the workflow itself was filtered out
+# by `on.<event>.paths`) blocks merge forever. See #416 and the
+# `Detect changes` job in `.github/workflows/main.yaml` for the
+# canonical shape.
 name: kolohelios-portfolio deploy
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    paths:
-      - apps/kolohelios-portfolio/**
-      - .github/workflows/kolohelios-portfolio-deploy.yml
-      - .github/workflows/cf-deploy.yml
   push:
     branches: [main]
-    paths:
-      - apps/kolohelios-portfolio/**
-      - .github/workflows/kolohelios-portfolio-deploy.yml
-      - .github/workflows/cf-deploy.yml
   workflow_dispatch:
 
 # Caller permissions are the ceiling for the called workflow's
 # permissions; `id-token: write` is needed so the called
 # workflow's nix-installer can authenticate with FlakeHub.
 # `pull-requests: write` lets the `comment` job post / edit the
-# sticky preview comment.
+# sticky preview comment; the `changes` job needs
+# `pull-requests: read` and inherits it from the write grant.
 permissions:
   id-token: write
   contents: read
@@ -64,8 +64,45 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Detect whether portfolio-relevant paths changed in this
+  # event. Downstream jobs gate on `outputs.portfolio == 'true'`
+  # and skip when it's false (unrelated PR / push). Mirrors the
+  # `Detect changes` job in `main.yaml` so the two stay
+  # recognizable. Base-ref shim handles the case where
+  # `github.event.before` is the zero-SHA on a freshly created
+  # branch.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      portfolio: ${{ steps.filter.outputs.portfolio }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: base
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            BASE=$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)
+          fi
+          echo "ref=$BASE" >> "$GITHUB_OUTPUT"
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          base: ${{ steps.base.outputs.ref }}
+          filters: |
+            portfolio:
+              - 'apps/kolohelios-portfolio/**'
+              - '.github/workflows/kolohelios-portfolio-deploy.yml'
+              - '.github/workflows/cf-deploy.yml'
+
   verify:
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    needs: changes
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && needs.changes.outputs.portfolio == 'true'
     uses: ./.github/workflows/cf-deploy.yml
     with:
       project_dir: apps/kolohelios-portfolio
@@ -74,8 +111,8 @@ jobs:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
   preview:
-    needs: verify
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    needs: [changes, verify]
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && needs.changes.outputs.portfolio == 'true'
     uses: ./.github/workflows/cf-deploy.yml
     with:
       project_dir: apps/kolohelios-portfolio
@@ -84,8 +121,8 @@ jobs:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
   comment:
-    needs: preview
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    needs: [changes, preview]
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && needs.changes.outputs.portfolio == 'true'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -120,7 +157,8 @@ jobs:
           fi
 
   cleanup:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    needs: changes
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && needs.changes.outputs.portfolio == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -156,8 +194,13 @@ jobs:
             --force \
             || true
 
+  # `workflow_dispatch` bypasses the changes filter so a manual
+  # re-deploy isn't blocked by an unchanged push base. Real
+  # `push: main` deploys still gate on the filter so unrelated
+  # commits don't burn a no-op deploy run.
   deploy:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: (github.event_name == 'push' && needs.changes.outputs.portfolio == 'true') || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/cf-deploy.yml
     with:
       project_dir: apps/kolohelios-portfolio
