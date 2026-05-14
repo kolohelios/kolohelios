@@ -82,6 +82,14 @@ const CHECKS: &[Check] = &[
         run: shaka_ci_generate_workflows_check,
     },
     Check {
+        // Catches workflow files that bypass generation entirely
+        // (sibling concern to generate-workflows --check, which only
+        // sees files the generator already accounts for).
+        name: "shaka ci audit-workflows",
+        paths: &["tools/shaka/**", "*/*/project.cue", ".github/workflows/**"],
+        run: shaka_ci_audit_workflows,
+    },
+    Check {
         name: "shaka project audit",
         // Any project-internal change can flip an audit outcome — README
         // presence, .gitignore presence, source files for the rust-has-tests
@@ -347,6 +355,10 @@ fn shaka_terraform_check() -> CheckResult {
 
 fn shaka_ci_generate_workflows_check() -> CheckResult {
     spawn_self(&["ci", "generate-workflows", "--check"])
+}
+
+fn shaka_ci_audit_workflows() -> CheckResult {
+    spawn_self(&["ci", "audit-workflows"])
 }
 
 fn shaka_project_audit() -> CheckResult {
