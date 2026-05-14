@@ -13,5 +13,8 @@ package project
 		target:       "cloudflare-worker"
 		customDomain: "kolohelios.com"
 		zone:         "kolohelios.com"
+		cache: {
+			bypassPaths: ["/api/"]
+		}
 	}
 }

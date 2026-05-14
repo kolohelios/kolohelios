@@ -18,8 +18,11 @@ backend) is hand-written.
 - `terraform/generated/` — generator-owned. One `<project>.tf` per
   app with a `deploy:` block, plus `_zones.tf` aggregating one
   `data "cloudflare_zone"` per unique zone referenced across all
-  deploys. Carries a "Do not edit by hand" header; drift is caught by
-  `shaka deploy generate-tf --check` in `shaka preflight`.
+  deploys. When a project declares `deploy.cache`, its `<project>.tf`
+  also carries a zone-level `cloudflare_ruleset` for the
+  `http_request_cache_settings` phase. Carries a "Do not edit by
+  hand" header; drift is caught by `shaka deploy generate-tf --check`
+  in `shaka preflight`.
 
 ## Building
 
