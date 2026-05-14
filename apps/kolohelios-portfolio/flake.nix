@@ -57,6 +57,17 @@
             packages = [
               (rustToolchain pkgs)
               pkgs.wrangler
+              # `cargo install worker-build` (lazily invoked by
+              # wrangler.toml's `[build]` command) pulls in
+              # `openssl-sys`, which needs system openssl headers +
+              # pkg-config to compile natively. Locally invisible
+              # because the prebuilt `worker-build` is cached in
+              # `~/.cargo/bin/`; CI starts fresh, so the install
+              # actually runs and the missing headers fail the build.
+              # #333 tracks packaging `worker-build` as a nix
+              # derivation, which would let us drop both of these.
+              pkgs.pkg-config
+              pkgs.openssl
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;

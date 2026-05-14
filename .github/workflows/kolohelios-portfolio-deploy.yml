@@ -1,0 +1,67 @@
+# `wrangler deploy` for `apps/kolohelios-portfolio`.
+#
+# Two triggers, two jobs:
+#
+#   - `pull_request` → `verify` job calls cf-deploy.yml with
+#     `verify_only: true`. Runs `wrangler deploy --dry-run` so
+#     credential rot, stale `op://` refs, malformed
+#     `wrangler.toml`, and CF account/scope mismatches fail
+#     pre-merge.
+#   - `push: main` → `deploy` job calls cf-deploy.yml with the
+#     default `verify_only: false`, performing the real upload.
+#
+# Path filter scopes the trigger to changes in this project plus
+# the two workflow files involved — a workflow refactor should
+# also re-deploy on the next main-merge, not lie dormant until an
+# unrelated app change lands.
+name: kolohelios-portfolio deploy
+
+on:
+  pull_request:
+    paths:
+      - apps/kolohelios-portfolio/**
+      - .github/workflows/kolohelios-portfolio-deploy.yml
+      - .github/workflows/cf-deploy.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/kolohelios-portfolio/**
+      - .github/workflows/kolohelios-portfolio-deploy.yml
+      - .github/workflows/cf-deploy.yml
+  workflow_dispatch:
+
+# Caller permissions are the ceiling for the called workflow's
+# permissions; `id-token: write` is needed so the called
+# workflow's nix-installer can authenticate with FlakeHub.
+permissions:
+  id-token: write
+  contents: read
+
+# Serialize real deploys to this Worker. Two rapid merges would
+# otherwise race two `wrangler deploy`s; whichever lands second
+# wins, but the ordering should be visible in the Actions UI.
+# `cancel-in-progress` is `false` — canceling mid-deploy can
+# leave the script half-uploaded. Verify jobs use a per-PR group
+# so an updated PR cancels its previous verify run.
+concurrency:
+  group: kolohelios-portfolio-deploy-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/cf-deploy.yml
+    with:
+      project_dir: apps/kolohelios-portfolio
+      verify_only: true
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/cf-deploy.yml
+    with:
+      project_dir: apps/kolohelios-portfolio
+      verify_only: false
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
