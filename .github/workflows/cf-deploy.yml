@@ -105,6 +105,52 @@ jobs:
           determinate: true
           flakehub: true
       - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: diagnose toolchain resolution
+        working-directory: ${{ inputs.project_dir }}
+        # Read-only diagnostic for #403. CI hit a failure mode where
+        # `worker-build`'s wasm-target probe (`which("rustc")` →
+        # `rustc --print sysroot`) resolved to a nightly toolchain
+        # that wasn't in our flake's declared closure. This step
+        # captures the env worker-build (or any sibling tool) would
+        # see, so a future failure pinpoints the source rather than
+        # surfacing the symptom downstream.
+        #
+        # Both outside-devshell and inside-`nix develop` `$PATH` are
+        # dumped because the unexplained April-29 rustc could be
+        # entering from either layer. `|| true` on every probe keeps
+        # the step green — its only job is to leave forensic data in
+        # the run log.
+        run: |
+          echo "::group::outside devshell"
+          echo "--- which -a rustc ---"
+          which -a rustc 2>&1 || true
+          echo "--- PATH ---"
+          echo "$PATH" | tr ':' '\n'
+          echo "--- ~/.cargo/bin ---"
+          ls -la "$HOME/.cargo/bin/" 2>&1 || true
+          echo "--- ~/.rustup ---"
+          ls -la "$HOME/.rustup/toolchains/" 2>&1 || true
+          echo "--- /nix/store *rust-default* ---"
+          ls -d /nix/store/*rust-default* 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::inside nix develop"
+          # shellcheck disable=SC2016
+          # ^ single-quoted on purpose: $PATH and $HOME need to be
+          # expanded by the *inner* bash invoked by nix develop, not
+          # by the outer step shell.
+          nix develop . --command bash -c '
+            echo "--- which -a rustc ---"
+            which -a rustc 2>&1 || true
+            echo "--- rustc --print sysroot ---"
+            rustc --print sysroot 2>&1 || true
+            echo "--- rustc --target wasm32-unknown-unknown --print target-libdir ---"
+            rustc --target wasm32-unknown-unknown --print target-libdir 2>&1 || true
+            echo "--- PATH ---"
+            echo "$PATH" | tr ":" "\n"
+            echo "--- ~/.cargo/bin ---"
+            ls -la "$HOME/.cargo/bin/" 2>&1 || true
+          ' || true
+          echo "::endgroup::"
       - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
         id: wrangler
         working-directory: ${{ inputs.project_dir }}
