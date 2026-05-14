@@ -155,6 +155,13 @@ pub enum RepoCommand {
         /// helper (`gh auth setup-git`) before invoking shaka.
         #[arg(long)]
         repo: Option<String>,
+        /// After creating or updating the PR, queue GitHub auto-merge
+        /// (`gh pr merge --auto --rebase`). The PR merges as soon as the
+        /// repo's required checks pass. Requires `allow_auto_merge: true`
+        /// on the target repo; merge strategy is fixed to rebase to match
+        /// repo policy.
+        #[arg(long)]
+        auto_merge: bool,
     },
 }
 
@@ -181,6 +188,7 @@ pub fn run(cmd: RepoCommand) {
             input,
             pr_branch,
             repo,
-        } => bump_locks::run(input, pr_branch, repo),
+            auto_merge,
+        } => bump_locks::run(input, pr_branch, repo, auto_merge),
     }
 }
