@@ -80,6 +80,16 @@
               # derivation, which would let us drop both of these.
               pkgs.pkg-config
               pkgs.openssl
+              # Tailwind CSS compiler — invoked from wrangler.toml's
+              # [build] step after `build-site` renders templates to
+              # dist/. nixpkgs ships the standalone Go binary; no
+              # Node toolchain required.
+              pkgs.tailwindcss
+              # `cue` is used by `build-site` to export
+              # `data/work-history.cue` to JSON the templates iterate
+              # over. Same tool the shaka schema/audit checks use,
+              # just exposed here for the portfolio's build path.
+              pkgs.cue
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;

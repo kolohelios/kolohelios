@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+{% block title %}work — kolohelios{% endblock %}
+{% block content %}
+<article class="space-y-12">
+  <header>
+    <h1 class="text-3xl font-semibold tracking-tight">Work history</h1>
+    <p class="mt-2 text-stone-600 dark:text-stone-400">
+      The chart visualization for this data lands in <a class="underline hover:no-underline" href="https://github.com/kolohelios/kolohelios/issues/192">#192</a>.
+    </p>
+  </header>
+
+  {% for entry in entries %}
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">{{ entry.role }}</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">{{ entry.company }}</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; {{ entry.start_date }} &mdash; {% match entry.end_date %}{% when Some with (e) %}{{ e }}{% when None %}present{% endmatch %}</span>
+      </p>
+      {% match entry.context %}{% when Some with (c) %}
+      <p class="text-sm italic text-stone-500 dark:text-stone-500">{{ c }}</p>
+      {% when None %}{% endmatch %}
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+      {% for achievement in entry.achievements %}
+      <li>{{ achievement }}</li>
+      {% endfor %}
+    </ul>
+
+    {% match entry.technology %}{% when Some with (techs) %}
+    <p class="text-xs text-stone-500 dark:text-stone-500">
+      <span class="font-medium">Technology:</span>
+      {% for tech in techs %}{{ tech }}{% if !loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% when None %}{% endmatch %}
+  </section>
+  {% endfor %}
+
+  <section class="space-y-2 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <h2 class="text-xl font-semibold tracking-tight">Earlier career</h2>
+    <p class="text-stone-500 dark:text-stone-500 text-sm">1997 &mdash; 2015</p>
+    <p class="text-stone-700 dark:text-stone-300 leading-relaxed">
+      Leadership roles spanning engineering, operations, sales and marketing, and
+      general business management at manufacturing and industrial automation
+      companies. Co-inventor on US patent 7,610,734 for siding installation
+      tools, plus two related fiber-cement cutting applications, developed
+      through 3D CAD, CNC prototyping, and 3D printing.
+    </p>
+  </section>
+</article>
+{% endblock %}

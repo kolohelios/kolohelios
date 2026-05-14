@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>work — kolohelios</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="min-h-screen bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
+<header class="border-b border-stone-200 dark:border-stone-800">
+  <nav class="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+    <a href="/" class="font-semibold tracking-tight hover:text-stone-600 dark:hover:text-stone-400">kolohelios</a>
+    <ul class="flex gap-6 text-sm">
+      <li><a href="/about" class="hover:text-stone-600 dark:hover:text-stone-400">about</a></li>
+      <li><a href="/work" class="hover:text-stone-600 dark:hover:text-stone-400">work</a></li>
+      <li><a href="/projects" class="hover:text-stone-600 dark:hover:text-stone-400">projects</a></li>
+    </ul>
+  </nav>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-12">
+
+<article class="space-y-12">
+  <header>
+    <h1 class="text-3xl font-semibold tracking-tight">Work history</h1>
+    <p class="mt-2 text-stone-600 dark:text-stone-400">
+      The chart visualization for this data lands in <a class="underline hover:no-underline" href="https://github.com/kolohelios/kolohelios/issues/192">#192</a>.
+    </p>
+  </header>
+
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Principal Software Engineer</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">Whitepages</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2023-06 &mdash; present</span>
+      </p>
+
+      <p class="text-sm italic text-stone-500 dark:text-stone-500">consumer search platform: 1B+ indexed pages, 10M+ unique users/month</p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Architected and productionized a Flow-Based Programming data graph streaming platform, replacing a multi-week manually coordinated release process with on-demand delivery; currently handles ~2.5M events/day across two tenants in active onboarding.</li>
+
+      <li>Backing datasets cover ~355M people, ~436M phones, ~483M emails, and ~234M addresses; the platform also powers a real-time pipeline streaming scraped public-records data to subscriber webhooks.</li>
+
+      <li>Own architecture decisions, the function server, the pipeline compiler (built on a CUE-based DSL), metrics and logging, and bulk ingestion/export operations.</li>
+
+      <li>Built avmbench, a Property and People data delivery platform that unlocked a $1M net new revenue source — covering ~125M properties across all 50 states with a 17.1% national median error rate on valuation estimates, built on a custom geographic aggregation DSL and Census TIGER pipelines.</li>
+
+      <li>Designed and shipped P95-latency-based load shedding for the search layer in Scala — ring-buffer windowed computation, OPEN/TRIPPED state machine with hysteresis, 429-with-Retry-After rejection — wrapping all 18 route handlers.</li>
+
+      <li>Led migration of 2.5M events/day from Amplitude to Databricks Delta tables, eliminating several thousand dollars per month in overage fees while preserving the Salesforce/Kinesis ingest path.</li>
+
+      <li>Drove monorepo migration with shared tooling, standardized linting, and Nix-based developer environments — supporting ~100 service releases per week and shifting CVE scanning from infrequent reactive scans to proactive CI gates.</li>
+
+      <li>Built pagecraft, an internal developer-productivity CLI adopted across the team — PR review workflow with parallelized GitHub fetches and Nix/darwin tooling.</li>
+
+      <li>Built MCP integration and AI inference harness on the engineering platform; authored &quot;Jon&#x27;s Workflow with AI,&quot; adopted org-wide as the reference for AI-assisted engineering practice.</li>
+
+      <li>Combined hands-on mentorship and operationalized agentic AI with a robust spec process to lift delivered work 2.5-4x year-over-year, leaving the team running ahead of business demand with real operational headroom despite shrinking headcount.</li>
+
+      <li>Sustained high-volume, substantive peer code review across the platform org — 261 reviews in the first 15 weeks of 2026 alone (~75/month, mean 6 / median 4 comments per PR, ~1,000-line PR average) — reinforcing engineering standards and a small-PR discipline.</li>
+
+      <li>Authored org-wide strategy documents (Whitepages as a Platform, Single Source of Data Definitions, Data Release Tenets) shaping platform architecture and release governance.</li>
+
+    </ul>
+
+
+    <p class="text-xs text-stone-500 dark:text-stone-500">
+      <span class="font-medium">Technology:</span>
+      Python, Rust, Scala, CUE, Nix, Kubernetes, Helm, Databricks, Delta Lake, MCP
+    </p>
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Engineering Manager</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">Whitepages</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2022-08 &mdash; 2023-06</span>
+      </p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Managed and mentored a team of 6 engineers on the consumer web platform (SEO, Core Web Vitals, conversion optimization, GDPR compliance).</li>
+
+      <li>Led delivery on LCP regression fixes for high-traffic page types, INP tracking ahead of Google&#x27;s CWV INP rollout, and an org-wide OneTrust GDPR cookie consent rollout.</li>
+
+      <li>Returned to the IC track in Jun 2023 to focus on data platform architecture.</li>
+
+    </ul>
+
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Lead Sr. Software Engineer, Web &amp; Mobile Apps</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">Whitepages</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2021-12 &mdash; 2022-08</span>
+      </p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Reversed a multi-quarter decline in Google indexation, increasing indexed pages 30%.</li>
+
+      <li>Drove dozens of millions of SERP-indexed URLs from red LCP (Core Web Vitals failure) to zero, with monitoring automation to keep them green.</li>
+
+      <li>Increased mobile revenue by 20% YoY by focusing on stability and adding new features.</li>
+
+      <li>Made tooling and documentation improvements to reduce friction and speed up delivery for the whitepages.com and mobile app teams.</li>
+
+    </ul>
+
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Software Engineer</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">LIFX / Buddy Technologies</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2019-07 &mdash; 2021-12</span>
+      </p>
+
+      <p class="text-sm italic text-stone-500 dark:text-stone-500">contractor through Bluehawk Consulting, converted to FTE in Jan 2020</p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Built a new React Native application to replace separate native iOS and Android applications.</li>
+
+      <li>Added new features to iOS and Android native applications to support a new LIFX power switch product.</li>
+
+      <li>Worked with a team of three for four months to replace a fragile monolithic platform with a new microservice-based platform, saving $120k a year while improving availability and maintainability.</li>
+
+      <li>Built a React Native application for Airstream&#x27;s Smart platform; led mobile development and authored custom native plugins for unique connectivity scenarios.</li>
+
+      <li>Built tooling and test frameworks for code quality (type-checking, linting, unit testing) and regression/UX testing (Storybook, screenshot diffing, Detox E2E).</li>
+
+      <li>Architected an end-to-end &quot;checklist service&quot; as a fully tested Micronaut microservice with CRUD support and a performance-optimized client API.</li>
+
+    </ul>
+
+
+    <p class="text-xs text-stone-500 dark:text-stone-500">
+      <span class="font-medium">Technology:</span>
+      React Native, TypeScript, Java, Swift, Kotlin, Micronaut, PostgreSQL, Azure, MQTT, HomeKit
+    </p>
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Senior Software Engineer</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">Belkin International</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2018-11 &mdash; 2019-07</span>
+      </p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Extended a Cordova mobile application, built React Native and Flutter proof-of-concept apps, and created a test automation framework.</li>
+
+    </ul>
+
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Product Development Manager</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">UpTop</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2018-06 &mdash; 2018-11</span>
+      </p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Delivered a React Native application for TERRA Staffing and an Alexa skill for TD Bank.</li>
+
+    </ul>
+
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Development Team Lead</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">UpTop</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2016-04 &mdash; 2018-06</span>
+      </p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Added value as an individual contributor (averaging 120% billable utilization) while supporting business goals to build a full-stack development team which grew as large as 12 developers.</li>
+
+      <li>Successfully delivered 13 web and hybrid mobile application projects for clients including Microsoft, Premera, Capital One, Belkin, and Entertainment Partners.</li>
+
+      <li>Led architecture shift from server-rendered ASP.NET MVC to Web API + Angular on Microsoft&#x27;s Cloud Launchpad portal, decoupling frontend and backend concerns.</li>
+
+      <li>Served as lead mobile developer on the Belkin Linksys consumer app, with the team delivering on schedule for the CES launch window.</li>
+
+    </ul>
+
+
+    <p class="text-xs text-stone-500 dark:text-stone-500">
+      <span class="font-medium">Technology:</span>
+      ASP.NET Core, C#, Node, MS SQL, Azure, AWS, React, Angular 2+, PHP, WordPress, Elasticsearch
+    </p>
+
+  </section>
+
+  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <header class="space-y-1">
+      <h2 class="text-xl font-semibold tracking-tight">Software Developer</h2>
+      <p class="text-stone-700 dark:text-stone-300">
+        <span class="font-medium">UpTop</span>
+        <span class="text-stone-500 dark:text-stone-500"> &middot; 2015-07 &mdash; 2016-04</span>
+      </p>
+
+    </header>
+
+    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+
+      <li>Finished three client projects (each estimated between 4 and 6 months) early and under budget.</li>
+
+    </ul>
+
+
+  </section>
+
+
+  <section class="space-y-2 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+    <h2 class="text-xl font-semibold tracking-tight">Earlier career</h2>
+    <p class="text-stone-500 dark:text-stone-500 text-sm">1997 &mdash; 2015</p>
+    <p class="text-stone-700 dark:text-stone-300 leading-relaxed">
+      Leadership roles spanning engineering, operations, sales and marketing, and
+      general business management at manufacturing and industrial automation
+      companies. Co-inventor on US patent 7,610,734 for siding installation
+      tools, plus two related fiber-cement cutting applications, developed
+      through 3D CAD, CNC prototyping, and 3D printing.
+    </p>
+  </section>
+</article>
+
+</main>
+<footer class="border-t border-stone-200 mt-16 dark:border-stone-800">
+  <div class="mx-auto max-w-3xl px-6 py-6 text-xs text-stone-500 dark:text-stone-500">
+    <p>&copy; Jon Edwards &middot; <a href="https://github.com/kolohelios" class="hover:text-stone-700 dark:hover:text-stone-300">github</a></p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+{% block title %}about — kolohelios{% endblock %}
+{% block content %}
+<article class="space-y-8">
+  <header>
+    <h1 class="text-3xl font-semibold tracking-tight">About</h1>
+  </header>
+
+  <section class="space-y-4 leading-relaxed text-stone-700 dark:text-stone-300">
+    <p>
+      Principal Software Engineer building streaming data platforms over
+      datasets in the hundreds of millions of records, modernizing developer
+      platforms with Nix and monorepo tooling, and operationalizing
+      AI-assisted engineering practice.
+    </p>
+    <p>
+      In the past year, shipped a Flow-Based Programming data graph (~2.5M
+      events/day), avmbench &mdash; a property and people delivery platform
+      that unlocked $1M in net new revenue &mdash; and Scala load shedding
+      for a high-traffic search layer. 10+ years bridging deep IC and
+      engineering leadership; has managed teams of up to 12.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-xl font-semibold tracking-tight">Specialties</h2>
+    <ul class="list-disc pl-6 space-y-1 text-stone-700 dark:text-stone-300">
+      <li>Streaming data platforms</li>
+      <li>Developer-platform modernization</li>
+      <li>AI-assisted engineering practice</li>
+      <li>Flow-Based Programming</li>
+      <li>Distributed data pipelines</li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-xl font-semibold tracking-tight">Languages &amp; tools</h2>
+    <dl class="space-y-3 text-sm text-stone-700 dark:text-stone-300">
+      <div>
+        <dt class="font-medium text-stone-900 dark:text-stone-100">Languages</dt>
+        <dd>Python, TypeScript, JavaScript, CUE, Bash; working knowledge of Rust, Scala 2, Java, C#, Kotlin, Swift</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-stone-900 dark:text-stone-100">Cloud &amp; infrastructure</dt>
+        <dd>AWS, Kubernetes, Helm, Terraform, Azure</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-stone-900 dark:text-stone-100">Build &amp; deploy</dt>
+        <dd>Nix, Docker, monorepos, CI/CD (GitHub Actions, Jenkins)</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-stone-900 dark:text-stone-100">Data &amp; AI</dt>
+        <dd>Databricks, Delta Lake, Parquet, PostgreSQL, Redis, Elasticsearch, MCP, Claude API</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-stone-900 dark:text-stone-100">Frontend &amp; mobile</dt>
+        <dd>React, React Native, Angular 2+, Cordova</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-stone-900 dark:text-stone-100">Leadership</dt>
+        <dd>Team management, mentorship, high-volume substantive code review, engineering governance</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-xl font-semibold tracking-tight">Education</h2>
+    <p class="text-stone-700 dark:text-stone-300">
+      <strong>Olympic College</strong> &mdash; A.A.S., General Studies. 3.75 GPA, Phi Theta Kappa.
+    </p>
+  </section>
+</article>
+{% endblock %}
