@@ -4,7 +4,12 @@ name: Bump kolohelios-nix locks
 # (`apps/blogctl`, `infra/devbox`, `tools/shaka`). When at least one
 # consumer's lock changes, opens a single lockstep PR (`bot/bump-kolohelios-nix`).
 # If a PR is already open for that branch, force-pushes fresher locks
-# onto it instead of opening a duplicate. No auto-merge.
+# onto it instead of opening a duplicate.
+#
+# `--auto-merge` queues GitHub auto-merge (rebase strategy) on the PR.
+# The `Gate` required status check gates the merge; if a consumer breaks
+# under the new lock, auto-merge waits for the fix — same one-place fix
+# as a manual review would land.
 #
 # All branch / commit / push / PR-or-update logic lives in
 # `shaka repo bump-locks --pr-branch <name>`. This workflow is the thin
@@ -69,6 +74,7 @@ jobs:
         run: |
           nix run ./tools/shaka -- repo bump-locks \
             --input kolohelios-nix \
-            --pr-branch bot/bump-kolohelios-nix
+            --pr-branch bot/bump-kolohelios-nix \
+            --auto-merge
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

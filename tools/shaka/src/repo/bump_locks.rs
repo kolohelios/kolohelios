@@ -13,7 +13,7 @@ enum BumpResult {
     Failed(String),
 }
 
-pub fn run(input: String, pr_branch: Option<String>, repo: Option<String>) {
+pub fn run(input: String, pr_branch: Option<String>, repo: Option<String>, auto_merge: bool) {
     match repo {
         Some(slug) => {
             let Some(branch) = pr_branch else {
@@ -23,16 +23,16 @@ pub fn run(input: String, pr_branch: Option<String>, repo: Option<String>) {
                 );
                 std::process::exit(2);
             };
-            if let Err(e) = run_remote(&input, &branch, &slug) {
+            if let Err(e) = run_remote(&input, &branch, &slug, auto_merge) {
                 eprintln!("{RED}{BOLD}bump-locks failed:{RESET} {e}");
                 std::process::exit(1);
             }
         }
-        None => run_monorepo(input, pr_branch),
+        None => run_monorepo(input, pr_branch, auto_merge),
     }
 }
 
-fn run_monorepo(input: String, pr_branch: Option<String>) {
+fn run_monorepo(input: String, pr_branch: Option<String>, auto_merge: bool) {
     let projects = schema_check::discover(Path::new("."));
     if projects.is_empty() {
         println!("{YELLOW}no projects found{RESET}");
@@ -80,14 +80,14 @@ fn run_monorepo(input: String, pr_branch: Option<String>) {
     }
 
     if let Some(branch) = pr_branch {
-        if let Err(e) = publish_pr(&input, &branch, &updated_paths) {
+        if let Err(e) = publish_pr(&input, &branch, &updated_paths, auto_merge) {
             eprintln!("{RED}{BOLD}publish failed:{RESET} {e}");
             std::process::exit(1);
         }
     }
 }
 
-fn run_remote(input: &str, branch: &str, slug: &str) -> Result<(), String> {
+fn run_remote(input: &str, branch: &str, slug: &str, auto_merge: bool) -> Result<(), String> {
     println!("{BOLD}bump-locks:{RESET} input `{input}` in remote `{slug}`");
 
     let temp = tempfile::tempdir().map_err(|e| format!("failed to create temp dir: {e}"))?;
@@ -134,13 +134,25 @@ fn run_remote(input: &str, branch: &str, slug: &str) -> Result<(), String> {
     if let Some(pr) = gh::pr_for_head(slug, branch).map_err(|e| e.to_string())? {
         if pr.state == PrState::Open {
             println!("{GREEN}{BOLD}updated existing PR:{RESET} {}", pr.url);
+            if auto_merge {
+                enable_auto_merge(&pr.url)?;
+            }
             return Ok(());
         }
     }
 
-    let body = format_remote_pr_body(input);
+    let body = format_remote_pr_body(input, auto_merge);
     let url = gh::pr_create(slug, &title, &body, branch).map_err(|e| e.to_string())?;
     println!("{GREEN}{BOLD}created PR:{RESET} {url}");
+    if auto_merge {
+        enable_auto_merge(&url)?;
+    }
+    Ok(())
+}
+
+fn enable_auto_merge(pr_url: &str) -> Result<(), String> {
+    gh::pr_merge_auto_rebase(pr_url).map_err(|e| e.to_string())?;
+    println!("  {DIM}auto-merge queued{RESET}");
     Ok(())
 }
 
@@ -157,11 +169,19 @@ fn git_in(work: &Path, args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn format_remote_pr_body(input: &str) -> String {
+fn format_remote_pr_body(input: &str, auto_merge: bool) -> String {
     format!(
-        "Automated bump of `{input}` flake input.\n\n\
-         No auto-merge. Review the lockfile diff and merge when CI is green.\n"
+        "Automated bump of `{input}` flake input.\n\n{}\n",
+        merge_footer(auto_merge)
     )
+}
+
+fn merge_footer(auto_merge: bool) -> &'static str {
+    if auto_merge {
+        "Auto-merge queued — GitHub will rebase-merge once required checks pass."
+    } else {
+        "No auto-merge. Review the lockfile diff and merge when CI is green."
+    }
 }
 
 fn bump_one(project: &Path, input: &str) -> BumpResult {
@@ -200,7 +220,12 @@ fn bump_one(project: &Path, input: &str) -> BumpResult {
     }
 }
 
-fn publish_pr(input: &str, branch: &str, updated: &[PathBuf]) -> Result<(), String> {
+fn publish_pr(
+    input: &str,
+    branch: &str,
+    updated: &[PathBuf],
+    auto_merge: bool,
+) -> Result<(), String> {
     if updated.is_empty() {
         println!("{DIM}no changes to publish{RESET}");
         return Ok(());
@@ -216,13 +241,19 @@ fn publish_pr(input: &str, branch: &str, updated: &[PathBuf]) -> Result<(), Stri
     if let Some(pr) = gh::pr_for_head(&repo, branch).map_err(|e| e.to_string())? {
         if pr.state == PrState::Open {
             println!("{GREEN}{BOLD}updated existing PR:{RESET} {}", pr.url);
+            if auto_merge {
+                enable_auto_merge(&pr.url)?;
+            }
             return Ok(());
         }
     }
 
-    let body = format_pr_body(input, updated);
+    let body = format_pr_body(input, updated, auto_merge);
     let url = gh::pr_create(&repo, &title, &body, branch).map_err(|e| e.to_string())?;
     println!("{GREEN}{BOLD}created PR:{RESET} {url}");
+    if auto_merge {
+        enable_auto_merge(&url)?;
+    }
     Ok(())
 }
 
@@ -238,14 +269,16 @@ fn git(args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn format_pr_body(input: &str, updated: &[PathBuf]) -> String {
+fn format_pr_body(input: &str, updated: &[PathBuf], auto_merge: bool) -> String {
     let mut body =
         format!("Automated daily bump of `{input}` across all FlakeHub-pinned consumers.\n\n");
     body.push_str("Updated `flake.lock` in:\n");
     for project in updated {
         body.push_str(&format!("- `{}`\n", project.display()));
     }
-    body.push_str("\nNo auto-merge. Review the lockfile diff and merge when CI is green.\n");
+    body.push('\n');
+    body.push_str(merge_footer(auto_merge));
+    body.push('\n');
     body
 }
 
@@ -320,12 +353,20 @@ mod tests {
 
     #[test]
     fn remote_pr_body_is_terse_and_names_input() {
-        let body = format_remote_pr_body("blogctl");
+        let body = format_remote_pr_body("blogctl", false);
         assert!(body.contains("`blogctl`"));
         assert!(body.contains("No auto-merge"));
         // The remote case has only one flake by construction; the body
         // should not list project paths the way the monorepo version does.
         assert!(!body.contains("Updated `flake.lock` in:"));
+    }
+
+    #[test]
+    fn remote_pr_body_advertises_auto_merge_when_set() {
+        let body = format_remote_pr_body("blogctl", true);
+        assert!(body.contains("`blogctl`"));
+        assert!(body.contains("Auto-merge queued"));
+        assert!(!body.contains("No auto-merge"));
     }
 
     #[test]
@@ -336,10 +377,18 @@ mod tests {
                 PathBuf::from("./apps/blogctl"),
                 PathBuf::from("./infra/devbox"),
             ],
+            false,
         );
         assert!(body.contains("`kolohelios-nix`"));
         assert!(body.contains("./apps/blogctl"));
         assert!(body.contains("./infra/devbox"));
         assert!(body.contains("No auto-merge"));
+    }
+
+    #[test]
+    fn pr_body_advertises_auto_merge_when_set() {
+        let body = format_pr_body("kolohelios-nix", &[PathBuf::from("./apps/blogctl")], true);
+        assert!(body.contains("Auto-merge queued"));
+        assert!(!body.contains("No auto-merge"));
     }
 }

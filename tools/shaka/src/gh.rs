@@ -353,6 +353,30 @@ pub fn pr_create(repo: &str, title: &str, body: &str, head: &str) -> Result<Stri
     Ok(url)
 }
 
+/// Enable GitHub auto-merge on a PR with the rebase strategy.
+///
+/// Calls `gh pr merge --auto --rebase <pr-url>`. The PR will merge as soon
+/// as the repo's required checks pass. Idempotent — safe to call on a PR
+/// that already has auto-merge enabled.
+///
+/// Fails if the target repo has `allow_auto_merge: false`. The caller is
+/// expected to enforce that via repo policy (`shaka repo audit`).
+pub fn pr_merge_auto_rebase(pr_url: &str) -> Result<(), GhError> {
+    let output = Command::new("gh")
+        .args(["pr", "merge", "--auto", "--rebase", pr_url])
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: format!("gh pr merge --auto --rebase {pr_url}"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    Ok(())
+}
+
 /// Fetch the title of a GitHub issue by number.
 ///
 /// Shells out to `gh issue view <n> --json title --jq .title`.

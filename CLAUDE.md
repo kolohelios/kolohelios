@@ -217,10 +217,13 @@ bot/bump-kolohelios-nix`, which:
 3. Opens a single lockstep PR; if one is already open for that branch,
    the force-push updates it in place instead of creating a duplicate.
 
-No auto-merge — the PR is reviewed and merged manually after CI is
-green. The `kolohelios-nix-via-flakehub` audit rule guarantees that
-every consumer pins via the FlakeHub URL, so the bumper's grep-based
-discovery is safe.
+Auto-merge is queued automatically (`--auto-merge` passes
+`gh pr merge --auto --rebase` to GitHub). The PR merges as soon as
+the `Gate` check passes; if any consumer's CI breaks, the merge
+waits until the lock is fixed — same one-place fix a manual review
+would land. The `kolohelios-nix-via-flakehub` audit rule guarantees
+that every consumer pins via the FlakeHub URL, so the bumper's
+grep-based discovery is safe.
 
 The workflow authenticates as the `kolohelios-bot` GitHub App (same
 secret/variable as `auto-rebase-prs.yaml`) so the post-bump push
