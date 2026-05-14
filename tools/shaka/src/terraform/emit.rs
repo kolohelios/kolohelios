@@ -3,7 +3,7 @@
 //! `tofu fmt` to canonicalize.
 
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use hcl_edit::expr::{
     Array, Expression, FuncArgs, FuncCall, FuncName, Object, ObjectKey, ObjectValue, Traversal,
@@ -66,8 +66,19 @@ pub fn format_string(s: &str) -> Result<String, String> {
 /// Spawn `tofu fmt <path>` (which rewrites the file in place).
 /// Public so callers that emit-then-fmt-in-place don't have to duplicate
 /// the spawn dance and its error handling.
+///
+/// `tofu fmt` echoes the formatted file path to stdout on every
+/// invocation, which is noise for every caller in this codebase — the
+/// emit-side wrapper already announces what it wrote, and the
+/// check-side caller is operating on a tempfile the user never sees.
+/// stdout is suppressed unconditionally; stderr stays inherited so
+/// genuine errors still surface.
 pub fn tofu_fmt(path: &Path) -> Result<(), String> {
-    let status = Command::new("tofu").arg("fmt").arg(path).status();
+    let status = Command::new("tofu")
+        .arg("fmt")
+        .arg(path)
+        .stdout(Stdio::null())
+        .status();
     match status {
         Ok(s) if s.success() => Ok(()),
         Ok(s) => Err(format!(
