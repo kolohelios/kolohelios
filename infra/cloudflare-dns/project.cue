@@ -10,4 +10,5 @@ package project
 			purpose: "Terraform remote state for the Cloudflare DNS zones (slice #1: kolohelios.com)"
 		},
 	]
+	ci: apply: reusable_workflow: "./.github/workflows/tf-apply.yml"
 }
