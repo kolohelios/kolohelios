@@ -73,7 +73,16 @@
             # Set deliberately to the everyday subset; less-common shaka
             # subcommands (object-store, preflight) still want the dev
             # shell, which carries awscli2/tofu/actionlint/vale/typos.
-            nativeBuildInputs = [ pkgs.makeWrapper ];
+            nativeBuildInputs = [
+              pkgs.makeWrapper
+              pkgs.installShellFiles
+            ];
+            postInstall = ''
+              installShellCompletion --cmd shaka \
+                --bash <($out/bin/shaka completions bash) \
+                --fish <($out/bin/shaka completions fish) \
+                --zsh  <($out/bin/shaka completions zsh)
+            '';
             postFixup = ''
               wrapProgram $out/bin/shaka \
                 --prefix PATH : ${
