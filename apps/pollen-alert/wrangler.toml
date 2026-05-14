@@ -1,0 +1,17 @@
+name = "pollen-alert"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-05-14"
+
+# `worker-build` compiles the crate to wasm32-unknown-unknown and emits
+# `build/worker/shim.mjs` + the WASM module that wrangler uploads. The
+# `cargo install` is a no-op on subsequent runs and matches the
+# workers-rs documented idiom; the devshell adds `~/.cargo/bin` to PATH
+# so the installed binary is visible to the build step.
+[build]
+command = "cargo install -q worker-build --locked && worker-build --release"
+
+# Nightly cron firing the scheduled handler. `0 2 * * *` UTC translates
+# to 7 PM PDT / 6 PM PST locally — DST drift accepted (v1 keeps the
+# UTC value stable rather than tracking local time).
+[triggers]
+crons = ["0 2 * * *"]
