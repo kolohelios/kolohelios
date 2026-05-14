@@ -185,6 +185,27 @@ jobs:
           name: kolohelios/blogctl
           visibility: public
           rolling: true
+      # Fire a repository_dispatch at kolohelios/blogs-and-posts so its
+      # bump-blogctl workflow runs immediately rather than waiting up
+      # to 24h for its daily cron. The kolohelios-bot App already has
+      # contents:write on both repos (it's the same identity used by
+      # auto-rebase-prs and bump-blogctl in blogs-and-posts), so no
+      # new secrets are required.
+      - uses: actions/create-github-app-token@v3
+        id: bot-token
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        with:
+          client-id: ${{ vars.KOLOHELIOS_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
+          owner: kolohelios
+          repositories: blogs-and-posts
+      - name: Notify blogs-and-posts of new blogctl publish
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.bot-token.outputs.token }}
+        run: |
+          gh api -X POST repos/kolohelios/blogs-and-posts/dispatches \
+            -f event_type=blogctl-published
 
   build-nix-lib:
     name: Build kolohelios-nix
