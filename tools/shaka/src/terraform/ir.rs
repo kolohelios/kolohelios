@@ -63,6 +63,14 @@ pub struct Resource {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DataSource {
+    pub ty: String,
+    pub name: String,
+    pub attributes: Vec<(String, Expr)>,
+    pub blocks: Vec<NestedBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Provider {
     pub name: String,
     pub attributes: Vec<(String, Expr)>,
@@ -86,6 +94,7 @@ pub struct Module {
     pub terraform: Option<TerraformBlock>,
     pub providers: Vec<Provider>,
     pub variables: Vec<Variable>,
+    pub data_sources: Vec<DataSource>,
     pub resources: Vec<Resource>,
     pub outputs: Vec<Output>,
 }
@@ -109,6 +118,13 @@ pub fn from_json(value: &Json) -> Result<Module, IrError> {
             module
                 .variables
                 .push(parse_variable(item, &format!("variables[{i}]"))?);
+        }
+    }
+    if let Some(arr) = obj.get("data_sources") {
+        for (i, item) in as_array(arr, "data_sources")?.iter().enumerate() {
+            module
+                .data_sources
+                .push(parse_data_source(item, &format!("data_sources[{i}]"))?);
         }
     }
     if let Some(arr) = obj.get("resources") {
@@ -248,6 +264,35 @@ fn parse_resource(value: &Json, path: &str) -> Result<Resource, IrError> {
         None => Vec::new(),
     };
     Ok(Resource {
+        ty,
+        name,
+        attributes,
+        blocks,
+    })
+}
+
+fn parse_data_source(value: &Json, path: &str) -> Result<DataSource, IrError> {
+    let obj = as_object(value, path)?;
+    let ty = require_string(obj, path, "type")?;
+    let name = require_string(obj, path, "name")?;
+    let attributes = parse_attributes(
+        obj.get("attributes").ok_or_else(|| IrError::MissingField {
+            path: path.to_string(),
+            field: "attributes",
+        })?,
+        &format!("{path}.attributes"),
+    )?;
+    let blocks = match obj.get("blocks") {
+        Some(b) => {
+            let arr = as_array(b, &format!("{path}.blocks"))?;
+            arr.iter()
+                .enumerate()
+                .map(|(i, v)| parse_nested_block(v, &format!("{path}.blocks[{i}]")))
+                .collect::<Result<_, _>>()?
+        }
+        None => Vec::new(),
+    };
+    Ok(DataSource {
         ty,
         name,
         attributes,
@@ -516,6 +561,33 @@ mod tests {
             m.resources[0].blocks[0].attributes,
             vec![("prevent_destroy".into(), Expr::Bool(true))]
         );
+    }
+
+    #[test]
+    fn from_json_parses_data_source() {
+        let v = json!({
+            "data_sources": [
+                {
+                    "type": "cloudflare_zone",
+                    "name": "kolohelios_com",
+                    "attributes": {"filter": {"name": "kolohelios.com"}}
+                }
+            ]
+        });
+        let m = from_json(&v).unwrap();
+        assert_eq!(m.data_sources.len(), 1);
+        assert_eq!(m.data_sources[0].ty, "cloudflare_zone");
+        assert_eq!(m.data_sources[0].name, "kolohelios_com");
+        match &m.data_sources[0].attributes[0].1 {
+            Expr::Object(pairs) => {
+                assert_eq!(pairs[0].0, "name");
+                match &pairs[0].1 {
+                    Expr::String(s) => assert_eq!(s, "kolohelios.com"),
+                    other => panic!("expected string, got {other:?}"),
+                }
+            }
+            other => panic!("expected object filter, got {other:?}"),
+        }
     }
 
     #[test]

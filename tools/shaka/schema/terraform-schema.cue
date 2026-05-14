@@ -53,6 +53,17 @@ package terraform
 	blocks?: [...#NestedBlock]
 }
 
+// HCL `data` blocks — provider-data lookups like
+// `data "cloudflare_zone" "x" { ... }`. Shape mirrors #Resource; the
+// emitter writes the `data` keyword instead of `resource` and the rest
+// of the block is identical.
+#DataSource: {
+	type: string & =~"^[a-z][a-z0-9_]*$"
+	name: string & =~"^[a-zA-Z_][a-zA-Z0-9_]*$"
+	attributes: {[string]: #Value}
+	blocks?: [...#NestedBlock]
+}
+
 #Provider: {
 	name: string & =~"^[a-z][a-z0-9_]*$"
 	attributes?: {[string]: #Value}
@@ -74,5 +85,6 @@ package terraform
 terraform?: #TerraformBlock
 providers?: [...#Provider]
 variables?: [...#Variable]
+data_sources?: [...#DataSource]
 resources?: [...#Resource]
 outputs?: [...#Output]

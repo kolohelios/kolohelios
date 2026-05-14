@@ -13,7 +13,6 @@ pub mod emit;
 pub mod ir;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use clap::Subcommand;
 
@@ -134,7 +133,7 @@ fn render_to_path(cue_dir: &Path, out_path: &Path) -> Result<(), String> {
     }
     std::fs::write(out_path, rendered.as_bytes())
         .map_err(|e| format!("could not write {}: {e}", out_path.display()))?;
-    tofu_fmt(out_path)
+    emit::tofu_fmt(out_path)
 }
 
 /// Same pipeline as `render_to_path`, but lands the canonicalized
@@ -149,7 +148,7 @@ fn render_to_string(cue_dir: &Path) -> Result<String, String> {
         .map_err(|e| format!("could not create tempfile: {e}"))?;
     std::fs::write(tmp.path(), rendered.as_bytes())
         .map_err(|e| format!("could not write {}: {e}", tmp.path().display()))?;
-    tofu_fmt(tmp.path())?;
+    emit::tofu_fmt(tmp.path())?;
     std::fs::read_to_string(tmp.path())
         .map_err(|e| format!("could not read {}: {e}", tmp.path().display()))
 }
@@ -158,20 +157,6 @@ fn render_raw(cue_dir: &Path) -> Result<String, String> {
     let json = cue::load(cue_dir).map_err(|e| format!("{e}"))?;
     let module = ir::from_json(&json).map_err(|e| format!("{e}"))?;
     Ok(emit::render(&module))
-}
-
-fn tofu_fmt(path: &Path) -> Result<(), String> {
-    let status = Command::new("tofu").arg("fmt").arg(path).status();
-    match status {
-        Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!(
-            "tofu fmt {} exited with status {s}",
-            path.display()
-        )),
-        Err(e) => Err(format!(
-            "could not spawn tofu (is it on PATH? infra devshells provide it): {e}"
-        )),
-    }
 }
 
 fn die(msg: &str) -> ! {
