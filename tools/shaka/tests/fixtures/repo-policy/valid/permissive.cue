@@ -7,6 +7,7 @@ package repopolicy
 		merge:               true
 		squash:              true
 		deleteBranchOnMerge: false
+		autoMerge:           false
 	}
 	branchProtection: {
 		requiredChecks: []

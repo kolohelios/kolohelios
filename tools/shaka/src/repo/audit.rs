@@ -184,37 +184,41 @@ fn check_general(repo: &str, policy: &RepoPolicy) -> (Vec<Check>, Option<Value>)
         ));
     }
 
-    push_merge_check(
-        &mut checks,
-        "Rebase merge",
-        data["allow_rebase_merge"].as_bool() == Some(true),
-        policy.merge.rebase,
-    );
-    push_merge_check(
-        &mut checks,
-        "Merge commits",
-        data["allow_merge_commit"].as_bool() == Some(true),
-        policy.merge.merge,
-    );
-    push_merge_check(
-        &mut checks,
-        "Squash merge",
-        data["allow_squash_merge"].as_bool() == Some(true),
-        policy.merge.squash,
-    );
-    push_merge_check(
-        &mut checks,
-        "Delete branch on merge",
-        data["delete_branch_on_merge"].as_bool() == Some(true),
-        policy.merge.delete_branch_on_merge,
-    );
+    let observed_bool = |key: &str| data[key].as_bool() == Some(true);
+    checks.extend([
+        merge_check(
+            "Rebase merge",
+            observed_bool("allow_rebase_merge"),
+            policy.merge.rebase,
+        ),
+        merge_check(
+            "Merge commits",
+            observed_bool("allow_merge_commit"),
+            policy.merge.merge,
+        ),
+        merge_check(
+            "Squash merge",
+            observed_bool("allow_squash_merge"),
+            policy.merge.squash,
+        ),
+        merge_check(
+            "Delete branch on merge",
+            observed_bool("delete_branch_on_merge"),
+            policy.merge.delete_branch_on_merge,
+        ),
+        merge_check(
+            "Auto-merge",
+            observed_bool("allow_auto_merge"),
+            policy.merge.auto_merge,
+        ),
+    ]);
 
     (checks, Some(data))
 }
 
-fn push_merge_check(checks: &mut Vec<Check>, name: &'static str, observed: bool, want: bool) {
+fn merge_check(name: &'static str, observed: bool, want: bool) -> Check {
     let (pass_msg, fail_msg) = enabled_messages(want);
-    checks.push(bool_check(name, observed == want, pass_msg, fail_msg));
+    bool_check(name, observed == want, pass_msg, fail_msg)
 }
 
 fn enabled_messages(want: bool) -> (&'static str, &'static str) {
@@ -234,6 +238,7 @@ fn fix_general(repo: &str, checks: &[Check], policy: &RepoPolicy) {
                     | "Merge commits"
                     | "Squash merge"
                     | "Delete branch on merge"
+                    | "Auto-merge"
                     | "Issues enabled"
             )
     });
@@ -252,6 +257,7 @@ fn fix_general(repo: &str, checks: &[Check], policy: &RepoPolicy) {
         merge,
         squash,
         delete_branch_on_merge,
+        auto_merge,
     } = policy.merge;
     body.insert("allow_rebase_merge".into(), json!(rebase));
     body.insert("allow_merge_commit".into(), json!(merge));
@@ -260,6 +266,7 @@ fn fix_general(repo: &str, checks: &[Check], policy: &RepoPolicy) {
         "delete_branch_on_merge".into(),
         json!(delete_branch_on_merge),
     );
+    body.insert("allow_auto_merge".into(), json!(auto_merge));
 
     match gh::api_patch(&format!("/repos/{repo}"), &Value::Object(body)) {
         Ok(_) => println!("  {GREEN}Fixed{RESET}"),
