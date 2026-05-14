@@ -9,6 +9,7 @@ use hcl_edit::expr::{
     Array, Expression, FuncArgs, FuncCall, FuncName, Object, ObjectKey, ObjectValue, Traversal,
     TraversalOperator,
 };
+use hcl_edit::repr::Decorate;
 use hcl_edit::structure::{Attribute, Block, Body};
 use hcl_edit::Ident;
 
@@ -46,6 +47,22 @@ pub fn render_with_header(module: &Module, header: &str) -> String {
     }
 }
 
+/// Run `tofu fmt` over `s` (via a temp file) and return the canonical
+/// output. Useful for callers that already have raw HCL in memory and
+/// don't want to spawn the formatter manually each time.
+pub fn format_string(s: &str) -> Result<String, String> {
+    let tmp = tempfile::Builder::new()
+        .prefix("shaka-tf-fmt-")
+        .suffix(".tf")
+        .tempfile()
+        .map_err(|e| format!("could not create tempfile: {e}"))?;
+    std::fs::write(tmp.path(), s.as_bytes())
+        .map_err(|e| format!("could not write {}: {e}", tmp.path().display()))?;
+    tofu_fmt(tmp.path())?;
+    std::fs::read_to_string(tmp.path())
+        .map_err(|e| format!("could not read {}: {e}", tmp.path().display()))
+}
+
 /// Spawn `tofu fmt <path>` (which rewrites the file in place).
 /// Public so callers that emit-then-fmt-in-place don't have to duplicate
 /// the spawn dance and its error handling.
@@ -53,7 +70,10 @@ pub fn tofu_fmt(path: &Path) -> Result<(), String> {
     let status = Command::new("tofu").arg("fmt").arg(path).status();
     match status {
         Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("tofu fmt {} exited with status {s}", path.display())),
+        Ok(s) => Err(format!(
+            "tofu fmt {} exited with status {s}",
+            path.display()
+        )),
         Err(e) => Err(format!(
             "could not spawn tofu (is it on PATH? infra devshells provide it): {e}"
         )),
@@ -223,18 +243,40 @@ fn build_expr(e: &Expr) -> Expression {
         Expr::Ref(traversal_str) => build_traversal(traversal_str),
         Expr::List(items) => {
             let mut arr = Array::new();
+            // Heuristic: if any element is an object literal, the list
+            // is "complex" and we want a multi-line layout so tofu fmt
+            // doesn't collapse the whole structure into one long line.
+            // Simple lists (`tags = ["a", "b"]`) stay inline.
+            let multiline = items.iter().any(|e| matches!(e, Expr::Object(_)));
             for item in items {
-                arr.push(build_expr(item));
+                let mut elem = build_expr(item);
+                if multiline {
+                    elem.decor_mut().set_prefix("\n");
+                }
+                arr.push(elem);
+            }
+            if multiline {
+                arr.set_trailing("\n");
+                arr.set_trailing_comma(true);
             }
             Expression::from(arr)
         }
         Expr::Object(pairs) => {
             let mut obj = Object::new();
+            // Same heuristic as lists: if any value is itself an object
+            // (i.e. there's structure to lay out), break across lines.
+            // Flat objects like `{ source = "...", version = "..." }`
+            // stay inline.
+            let multiline = pairs.iter().any(|(_, v)| matches!(v, Expr::Object(_)));
             for (k, v) in pairs {
-                obj.insert(
-                    ObjectKey::from(Ident::new(k)),
-                    ObjectValue::new(build_expr(v)),
-                );
+                let mut key = ObjectKey::from(Ident::new(k));
+                if multiline {
+                    key.decor_mut().set_prefix("\n");
+                }
+                obj.insert(key, ObjectValue::new(build_expr(v)));
+            }
+            if multiline {
+                obj.set_trailing("\n");
             }
             Expression::from(obj)
         }
