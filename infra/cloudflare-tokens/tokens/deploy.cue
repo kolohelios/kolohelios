@@ -13,7 +13,9 @@ package cloudflare_token
 //     per-project cache rules (`cloudflare_ruleset`, phase
 //     `http_request_cache_settings`) for the zones the Workers
 //     attach to. The rulesets endpoint is gated by
-//     `Cache Rules:Edit`, separate from `DNS:Edit`.
+//     `Cache Settings:Edit`, separate from `DNS:Edit`. The grant
+//     is broader than "cache rules" — it covers all cache settings
+//     on the zone, which is the smallest scope CF exposes.
 //
 // Sharing one token for all three flows keeps the credential surface
 // tight; if rotation cadences diverge, split later.
@@ -27,7 +29,7 @@ package cloudflare_token
 	purpose: "Worker deploys (TF custom-domain attach + wrangler code uploads + cache rules)"
 	permission_groups: [
 		"Account:Workers Scripts:Edit",
-		"Zone:Cache Rules:Edit",
+		"Zone:Cache Settings:Edit",
 		"Zone:DNS:Edit",
 	]
 	scope: {
