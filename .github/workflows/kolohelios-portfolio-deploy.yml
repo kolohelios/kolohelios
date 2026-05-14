@@ -1,14 +1,25 @@
 # `wrangler deploy` for `apps/kolohelios-portfolio`.
 #
-# Two triggers, two jobs:
+# Four jobs across two triggers:
 #
-#   - `pull_request` → `verify` job calls cf-deploy.yml with
-#     `verify_only: true`. Runs `wrangler deploy --dry-run` so
-#     credential rot, stale `op://` refs, malformed
-#     `wrangler.toml`, and CF account/scope mismatches fail
-#     pre-merge.
-#   - `push: main` → `deploy` job calls cf-deploy.yml with the
-#     default `verify_only: false`, performing the real upload.
+#   - `pull_request` → `verify` (dry-run against the prod script
+#     name, fast credential gate) followed by `preview` (real
+#     deploy to `kolohelios-portfolio-pr-${pr.number}`) followed
+#     by `comment` (sticky bot comment with the *.workers.dev
+#     URL). `preview` needs `verify` so broken credentials don't
+#     burn a real deploy run.
+#   - `pull_request: closed` (merged or abandoned) → `cleanup`
+#     deletes the ephemeral preview Worker so dead scripts don't
+#     accumulate.
+#   - `push: main` (+ workflow_dispatch) → `deploy` does the real
+#     prod upload.
+#
+# Verify and preview both run on every qualifying PR push:
+# verify catches issues specific to the prod script name and
+# config (`wrangler.toml` routes, token rotation timing, etc.)
+# that a `--name`-overridden preview deploy would bypass. Cheap
+# insurance; sequencing avoids paying for a wasted preview when
+# the credential chain is broken.
 #
 # Path filter scopes the trigger to changes in this project plus
 # the two workflow files involved — a workflow refactor should
@@ -18,6 +29,7 @@ name: kolohelios-portfolio deploy
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - apps/kolohelios-portfolio/**
       - .github/workflows/kolohelios-portfolio-deploy.yml
@@ -33,29 +45,116 @@ on:
 # Caller permissions are the ceiling for the called workflow's
 # permissions; `id-token: write` is needed so the called
 # workflow's nix-installer can authenticate with FlakeHub.
+# `pull-requests: write` lets the `comment` job post / edit the
+# sticky preview comment.
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 # Serialize real deploys to this Worker. Two rapid merges would
 # otherwise race two `wrangler deploy`s; whichever lands second
 # wins, but the ordering should be visible in the Actions UI.
-# `cancel-in-progress` is `false` — canceling mid-deploy can
-# leave the script half-uploaded. Verify jobs use a per-PR group
-# so an updated PR cancels its previous verify run.
+# `cancel-in-progress` is `false` for push:main — canceling
+# mid-deploy can leave the script half-uploaded. PR-triggered
+# jobs use a per-PR group and cancel on update so a force-push
+# abandons the in-flight verify / preview.
 concurrency:
   group: kolohelios-portfolio-deploy-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     uses: ./.github/workflows/cf-deploy.yml
     with:
       project_dir: apps/kolohelios-portfolio
       verify_only: true
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+  preview:
+    needs: verify
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    uses: ./.github/workflows/cf-deploy.yml
+    with:
+      project_dir: apps/kolohelios-portfolio
+      script_name_override: kolohelios-portfolio-pr-${{ github.event.pull_request.number }}
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+  comment:
+    needs: preview
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      # Sticky comment: an HTML marker in the body lets subsequent
+      # runs find and edit the existing comment instead of posting
+      # a new one on every push. Both list and edit go through the
+      # REST API (`/repos/{repo}/issues/{n}/comments` and
+      # `/repos/{repo}/issues/comments/{id}`) so the integer
+      # comment IDs round-trip cleanly — `gh pr view --json
+      # comments` would return GraphQL node IDs that the REST
+      # PATCH endpoint doesn't accept.
+      - name: post preview URL comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          WORKER_URL: ${{ needs.preview.outputs.worker_url }}
+        run: |
+          body="<!-- preview-deploy:portfolio -->
+          📦 **Preview deploy** for this PR is live at:
+
+          ${WORKER_URL}
+
+          Updates on every push; deleted when the PR closes."
+          existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq 'map(select(.body | contains("<!-- preview-deploy:portfolio -->"))) | .[0].id // empty')
+          if [[ -n "$existing" ]]; then
+            gh api "repos/$REPO/issues/comments/$existing" -X PATCH -f body="$body"
+          else
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="$body"
+          fi
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+    steps:
+      - name: verify OP_SERVICE_ACCOUNT_TOKEN
+        run: |
+          if [[ -z "$OP_SERVICE_ACCOUNT_TOKEN" ]]; then
+            echo "::error::OP_SERVICE_ACCOUNT_TOKEN is empty; check repo/org secret"
+            exit 1
+          fi
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: wrangler delete preview Worker
+        working-directory: apps/kolohelios-portfolio
+        # `--force` skips interactive confirmation; safe because the
+        # script name is deterministically derived from the PR
+        # number. `|| true` tolerates "not found" — a cleanup
+        # running against a PR that never produced a preview
+        # (closed before first preview deploy succeeded) shouldn't
+        # fail the workflow.
+        run: |
+          cp .env.example .env
+          nix develop . --command op run --env-file=.env -- \
+            wrangler delete \
+            --name kolohelios-portfolio-pr-${{ github.event.pull_request.number }} \
+            --force \
+            || true
 
   deploy:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
