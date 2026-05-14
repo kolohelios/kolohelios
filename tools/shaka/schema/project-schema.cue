@@ -98,6 +98,19 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	deploy?: #Deploy
 } | {
 	kind: "infra"
+	// CI/CD workflow configuration. Workflow files under
+	// `.github/workflows/` are generated from this block by
+	// `shaka ci generate-workflows`; drift is caught in preflight.
+	ci?: {
+		// Wires this project into a reusable `tofu apply` workflow.
+		// Generates `.github/workflows/<name>-apply.yml` that calls
+		// `reusable_workflow` with `project_dir = <slot>/<name>`,
+		// path-filtered to changes in this project plus the two
+		// workflow files involved.
+		apply?: {
+			reusable_workflow: =~"^\\./\\.github/workflows/[a-z0-9-]+\\.ya?ml$"
+		}
+	}
 } | {
 	kind: "nix-lib"
 })
