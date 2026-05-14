@@ -10,4 +10,5 @@ package project
 			purpose: "Terraform remote state for Cloudflare API tokens (per-token resources + 1Password sync)"
 		},
 	]
+	ci: apply: reusable_workflow: "./.github/workflows/tf-apply.yml"
 }
