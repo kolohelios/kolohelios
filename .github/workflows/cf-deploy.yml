@@ -1,19 +1,32 @@
 # Reusable `wrangler deploy` workflow for `rust-worker` apps.
 #
-# Caller (per-project workflow, e.g. `kolohelios-portfolio-deploy.yml`
-# under #341) passes the project directory and the 1Password Service
-# Account token. The SA token lets `op run` resolve every `op://`
-# reference in the project's `.env` (CF deploy token, account id,
-# etc.) so `wrangler deploy` authenticates the same way it does
-# locally. Mirrors `tf-apply.yml`'s shape — one input, one secret,
-# the project's `.env.example` is the source of truth for what
-# resolves.
+# Caller (per-project workflow, e.g. `kolohelios-portfolio-deploy.yml`)
+# passes the project directory and the 1Password Service Account
+# token. The SA token lets `op run` resolve every `op://` reference
+# in the project's `.env` (CF deploy token, account id, etc.) so
+# `wrangler deploy` authenticates the same way it does locally.
+# Mirrors `tf-apply.yml`'s shape — one input, one secret, the
+# project's `.env.example` is the source of truth for what resolves.
+#
+# `verify_only: true` toggles dry-run mode: `wrangler deploy
+# --dry-run` exercises the full credential chain (SA token, vault
+# permissions, `op://` resolution, CF API auth, account/scope
+# checks) plus the build (wasm compile, `wrangler.toml`
+# validation), but skips the actual upload. Use this from PR
+# triggers so credential rot, stale `op://` refs, expired tokens,
+# or misconfigured Worker scripts fail pre-merge instead of
+# surfacing after the first real `push: main` deploy. The only
+# failure modes that slip past dry-run are apply-time CF API
+# outages and the literal upload itself.
 #
 # Threat-model assumptions (worth revisiting if any of these change):
 #
 #   - This workflow is invoked only via `workflow_call` from callers
-#     triggered by `push: main` (no fork PR triggers). Fork PRs can't
-#     reach `main`, so the SA token never flows into untrusted YAML.
+#     triggered by `push: main` (real deploys) or `pull_request`
+#     with `verify_only: true` (dry-run preflights). Fork PRs can't
+#     reach `main`; same-repo PRs receive secrets by default. If
+#     callers ever trigger from fork PRs without secret gating, the
+#     SA token's blast radius is the whole 1Password vault.
 #   - Third-party actions below are tag-pinned; SHA pinning is a
 #     known gap tracked in #377.
 #   - Child secrets resolved by `op run` (e.g. CLOUDFLARE_API_TOKEN)
@@ -32,6 +45,11 @@ on:
         description: "Path to the rust-worker app (e.g. apps/kolohelios-portfolio)"
         required: true
         type: string
+      verify_only:
+        description: "If true, run `wrangler deploy --dry-run` instead of the real deploy. Use from PR triggers as a pre-merge credential and config check."
+        required: false
+        type: boolean
+        default: false
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN:
         description: "1Password Service Account token used by `op run` to resolve `.env` references"
@@ -39,7 +57,7 @@ on:
 
 jobs:
   deploy:
-    name: wrangler deploy
+    name: ${{ inputs.verify_only && 'wrangler deploy (dry-run)' || 'wrangler deploy' }}
     runs-on: ubuntu-latest
     permissions:
       # nix-installer-action mints an OIDC token to authenticate with
@@ -65,11 +83,18 @@ jobs:
           determinate: true
           flakehub: true
       - uses: DeterminateSystems/flakehub-cache-action@v3
-      - name: wrangler deploy
+      - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
         working-directory: ${{ inputs.project_dir }}
         # `.env` is gitignored; copy from the in-repo example so the
         # `op run` invocation finds the file. `.env.example` already
         # holds the `op://` refs the SA token will resolve.
+        #
+        # `--dry-run` (verify_only mode) runs everything `wrangler
+        # deploy` would do except the final upload: wasm build,
+        # `wrangler.toml` validation, CF API authentication, account
+        # and scope checks. Strictly stronger than a bare `op run
+        # -- true` credential probe.
         run: |
           cp .env.example .env
-          nix develop . --command op run --env-file=.env -- wrangler deploy
+          nix develop . --command op run --env-file=.env -- \
+            wrangler deploy ${{ inputs.verify_only && '--dry-run' || '' }}
