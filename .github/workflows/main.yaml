@@ -22,7 +22,7 @@ concurrency:
 jobs:
   # ── Detect changed paths ──────────────────────────────────────
   # Build jobs use these outputs to skip when their inputs haven't
-  # changed. The validate job always runs but passes the base ref
+  # changed. The preflight job always runs but passes the base ref
   # to `shaka preflight --since` so individual checks self-skip.
   changes:
     name: Detect changes
@@ -61,11 +61,13 @@ jobs:
             blogctl:
               - 'apps/blogctl/**'
 
-  # ── Single gate for branch protection ─────────────────────────
+  # ── Set up the environment and run shaka preflight ─────────────
   # `shaka preflight` runs every validation check in one place. CI and
-  # local dev invoke the same command so they cannot drift apart.
-  validate:
-    name: Validate
+  # local dev invoke the same command so they cannot drift apart. The
+  # required-check that gates merge is `gate` below — this job is its
+  # heaviest upstream.
+  preflight:
+    name: Preflight
     needs: changes
     runs-on: ubuntu-latest
     permissions:
@@ -120,7 +122,7 @@ jobs:
   # cheap (FlakeHub + nix store cache hit), so the safety is free.
   build-shaka:
     name: Build shaka
-    needs: [validate, changes]
+    needs: [preflight, changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.shaka == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -144,7 +146,7 @@ jobs:
 
   build-blogctl:
     name: Build blogctl
-    needs: [validate, changes]
+    needs: [preflight, changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.blogctl == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -189,7 +191,7 @@ jobs:
 
   build-nix-lib:
     name: Build kolohelios-nix
-    needs: [validate, changes]
+    needs: [preflight, changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.nix-lib == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -216,7 +218,7 @@ jobs:
 
   build-image:
     name: Build Linode image
-    needs: [validate, changes]
+    needs: [preflight, changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -245,7 +247,7 @@ jobs:
   # new CI job must add itself to `gate.needs`.
   gate:
     name: Gate
-    needs: [changes, validate, build-shaka, build-blogctl, build-nix-lib, build-image]
+    needs: [changes, preflight, build-shaka, build-blogctl, build-nix-lib, build-image]
     if: always()
     runs-on: ubuntu-latest
     permissions:
