@@ -10,7 +10,12 @@ Terraform and configured by a NixOS module evaluated from this flake.
 - `nixos/image.nix` — the variant of the system used to bake a
   Linode-compatible disk image.
 - `nixos/hardware.nix` — generic hardware bits shared by both.
-- `terraform/` — the `Linode` resources (instance, networking) and the
+- `cue/` — typed source of truth for the Terraform module
+  (`module.cue` declares the `Linode` resources against
+  `tools/shaka/schema/terraform-schema.cue`).
+- `terraform/` — the committed `module.tf` (emitted from `cue/` by
+  `shaka terraform emit`), the committed `backend.tf` (from
+  `project.cue` via `shaka object-store tfstate emit`), and the
   variables file template (`terraform.tfvars.example`).
 
 ## Building
@@ -25,6 +30,21 @@ runs the same fmt/lint/flake-check steps CI runs for this project (via
 ```
 nix build .#image
 ```
+
+## Editing the Terraform module
+
+The module is declared in CUE under `cue/` and validated against
+`tools/shaka/schema/terraform-schema.cue`. The HCL OpenTofu reads
+(`terraform/module.tf`) is generated — never edit it directly. The
+workflow:
+
+1. Edit `cue/module.cue`.
+2. Run `shaka terraform emit --project infra/devbox` to regenerate
+   `terraform/module.tf`.
+3. Commit both the CUE source and the regenerated HCL.
+
+`shaka terraform check` (in `shaka preflight`) catches the case where
+one was committed without the other.
 
 ## Provisioning
 
