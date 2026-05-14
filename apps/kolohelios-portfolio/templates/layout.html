@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>kolohelios — Jon Edwards</title>
+<title>{% block title %}kolohelios{% endblock %}</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="min-h-screen bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
@@ -18,26 +18,7 @@
   </nav>
 </header>
 <main class="mx-auto max-w-3xl px-6 py-12">
-
-<section class="space-y-6">
-  <h1 class="text-3xl font-semibold tracking-tight">Jon Edwards</h1>
-  <p class="text-lg leading-relaxed text-stone-700 dark:text-stone-300">
-    Principal Software Engineer. Streaming data platforms over hundreds of
-    millions of records, developer-platform modernization with Nix and
-    monorepos, and operationalizing AI-assisted engineering practice.
-  </p>
-  <p class="text-stone-700 dark:text-stone-300">
-    Currently at <strong>Whitepages</strong>, building a Flow-Based Programming
-    data graph that handles ~2.5M events/day. Previously at LIFX, Belkin, and
-    UpTop. 10+ years bridging deep IC and engineering leadership.
-  </p>
-  <nav class="flex flex-wrap gap-x-6 gap-y-2 text-sm pt-4 border-t border-stone-200 dark:border-stone-800">
-    <a href="/about" class="text-stone-700 hover:text-stone-900 dark:text-stone-300 dark:hover:text-stone-100">More about me &rarr;</a>
-    <a href="/work" class="text-stone-700 hover:text-stone-900 dark:text-stone-300 dark:hover:text-stone-100">Work history &rarr;</a>
-    <a href="/projects" class="text-stone-700 hover:text-stone-900 dark:text-stone-300 dark:hover:text-stone-100">Projects &rarr;</a>
-  </nav>
-</section>
-
+{% block content %}{% endblock %}
 </main>
 <footer class="border-t border-stone-200 mt-16 dark:border-stone-800">
   <div class="mx-auto max-w-3xl px-6 py-6 text-xs text-stone-500 dark:text-stone-500">

@@ -233,7 +233,7 @@ pub fn run(check: bool) {
     for project in &projects {
         match read_meta(&schema_path, project) {
             Ok(meta) => match template_for(&meta.kind, project) {
-                Some(body) => items.push((project.join("justfile"), render(body))),
+                Some(body) => items.push((project.join("justfile"), render(&body))),
                 None => {
                     eprintln!(
                         "{RED}{BOLD}error:{RESET} {} has unknown kind {:?}",
@@ -260,26 +260,63 @@ pub fn run(check: bool) {
     }
 }
 
-fn template_for(kind: &str, project_dir: &Path) -> Option<&'static str> {
+fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
     match kind {
-        "rust" => Some(RUST_TEMPLATE),
-        "rust-worker" => Some(RUST_WORKER_TEMPLATE),
-        "infra" => Some(if project_dir.join("terraform").is_dir() {
-            // `.env.example` signals the project resolves secrets via
-            // `op run --env-file=.env`; absence means tfvars/env-set
-            // credentials (see `infra/devbox`).
-            if project_dir.join(".env.example").is_file() {
-                INFRA_TEMPLATE_WITH_TF
+        "rust" => Some(RUST_TEMPLATE.to_string()),
+        "rust-worker" => Some(
+            // `src/bin/build-site.rs` signals a static-site build
+            // pipeline (templates + tailwind → committed `dist/`).
+            // Add a `build-check` recipe that re-runs the pipeline
+            // and diffs against committed output, and fold it into
+            // `validate` so CI catches drift.
+            if project_dir.join("src/bin/build-site.rs").is_file() {
+                rust_worker_with_build_site()
             } else {
-                INFRA_TEMPLATE_WITH_TF_BARE
+                RUST_WORKER_TEMPLATE.to_string()
+            },
+        ),
+        "infra" => Some(
+            if project_dir.join("terraform").is_dir() {
+                // `.env.example` signals the project resolves secrets via
+                // `op run --env-file=.env`; absence means tfvars/env-set
+                // credentials (see `infra/devbox`).
+                if project_dir.join(".env.example").is_file() {
+                    INFRA_TEMPLATE_WITH_TF
+                } else {
+                    INFRA_TEMPLATE_WITH_TF_BARE
+                }
+            } else {
+                INFRA_TEMPLATE_NO_TF
             }
-        } else {
-            INFRA_TEMPLATE_NO_TF
-        }),
-        "nix-lib" => Some(NIX_LIB_TEMPLATE),
+            .to_string(),
+        ),
+        "nix-lib" => Some(NIX_LIB_TEMPLATE.to_string()),
         _ => None,
     }
 }
+
+/// `RUST_WORKER_TEMPLATE` with the `build-check` recipe prepended and
+/// the recipe added as a dependency of `validate`. Used when a
+/// rust-worker project ships a `src/bin/build-site.rs` static-site
+/// generator alongside the worker.
+fn rust_worker_with_build_site() -> String {
+    let mut body = RUST_WORKER_BUILD_CHECK_RECIPE.to_string();
+    body.push_str(&RUST_WORKER_TEMPLATE.replace(
+        "validate: fmt-check lint",
+        "validate: build-check fmt-check lint",
+    ));
+    body
+}
+
+const RUST_WORKER_BUILD_CHECK_RECIPE: &str = r#"# Drift check for the static-asset build pipeline. Re-runs the same
+# render-and-tailwind pipeline that produces committed `dist/`, into
+# a temp directory, and diffs against `dist/`. Forces a regenerate-
+# and-commit when templates, data, or styles change so CI can't
+# silently deploy a `dist/` that doesn't match its sources.
+build-check:
+    cargo run --quiet --features build-site --bin build-site -- --check
+
+"#;
 
 fn render(body: &str) -> String {
     format!("{HEADER}{body}")
@@ -401,7 +438,10 @@ mod tests {
     #[test]
     fn template_for_rust_returns_rust_template() {
         let dir = tmp_project("rust");
-        assert_eq!(template_for("rust", dir.path()), Some(RUST_TEMPLATE));
+        assert_eq!(
+            template_for("rust", dir.path()).as_deref(),
+            Some(RUST_TEMPLATE)
+        );
     }
 
     #[test]
@@ -410,7 +450,7 @@ mod tests {
         std::fs::create_dir(dir.path().join("terraform")).unwrap();
         std::fs::write(dir.path().join(".env.example"), "").unwrap();
         assert_eq!(
-            template_for("infra", dir.path()),
+            template_for("infra", dir.path()).as_deref(),
             Some(INFRA_TEMPLATE_WITH_TF)
         );
     }
@@ -420,7 +460,7 @@ mod tests {
         let dir = tmp_project("infra-tf-bare");
         std::fs::create_dir(dir.path().join("terraform")).unwrap();
         assert_eq!(
-            template_for("infra", dir.path()),
+            template_for("infra", dir.path()).as_deref(),
             Some(INFRA_TEMPLATE_WITH_TF_BARE)
         );
     }
@@ -429,7 +469,7 @@ mod tests {
     fn template_for_infra_without_terraform_dir_returns_no_tf_template() {
         let dir = tmp_project("infra-notf");
         assert_eq!(
-            template_for("infra", dir.path()),
+            template_for("infra", dir.path()).as_deref(),
             Some(INFRA_TEMPLATE_NO_TF)
         );
     }
@@ -437,15 +477,31 @@ mod tests {
     #[test]
     fn template_for_nix_lib_returns_nix_lib_template() {
         let dir = tmp_project("nix-lib");
-        assert_eq!(template_for("nix-lib", dir.path()), Some(NIX_LIB_TEMPLATE));
+        assert_eq!(
+            template_for("nix-lib", dir.path()).as_deref(),
+            Some(NIX_LIB_TEMPLATE)
+        );
     }
 
     #[test]
     fn template_for_rust_worker_returns_rust_worker_template() {
         let dir = tmp_project("rust-worker");
         assert_eq!(
-            template_for("rust-worker", dir.path()),
+            template_for("rust-worker", dir.path()).as_deref(),
             Some(RUST_WORKER_TEMPLATE)
+        );
+    }
+
+    #[test]
+    fn template_for_rust_worker_with_build_site_adds_build_check() {
+        let dir = tmp_project("rust-worker-bs");
+        std::fs::create_dir_all(dir.path().join("src/bin")).unwrap();
+        std::fs::write(dir.path().join("src/bin/build-site.rs"), "// stub").unwrap();
+        let tpl = template_for("rust-worker", dir.path()).expect("template");
+        assert!(tpl.contains("build-check:"), "missing build-check recipe");
+        assert!(
+            tpl.contains("validate: build-check fmt-check lint"),
+            "build-check not folded into validate"
         );
     }
 
