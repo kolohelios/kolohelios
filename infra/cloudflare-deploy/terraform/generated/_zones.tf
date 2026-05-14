@@ -3,7 +3,5 @@
 # The source of truth is each project's `deploy:` block in project.cue.
 
 data "cloudflare_zone" "kolohelios_com" {
-  filter = {
-    name = "kolohelios.com"
-  }
+  filter = { name = "kolohelios.com", }
 }
