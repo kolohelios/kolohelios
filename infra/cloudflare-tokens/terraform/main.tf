@@ -54,6 +54,10 @@ data "cloudflare_api_token_permission_groups_list" "workers_scripts_write" {
   name = "Workers Scripts Write"
 }
 
+data "cloudflare_api_token_permission_groups_list" "cache_rules_write" {
+  name = "Cache Rules Write"
+}
+
 locals {
   account_id = var.cloudflare_account_id
 }
@@ -107,11 +111,14 @@ resource "onepassword_item" "dns_management" {
 # ── deploy ────────────────────────────────────────────────────────────
 #
 # Mirrors `tokens/deploy.cue`. Consumed by `infra/cloudflare-deploy`
-# (TF custom-domain attach) and by `wrangler deploy` from `rust-worker`
-# apps (code uploads). The two flows share one token because both need
-# `Workers Scripts:Edit`; if their rotation cadences diverge, split.
-# Zone-scoped DNS comes along because `cloudflare_workers_custom_domain`
-# installs a CF-managed routing record alongside the attach.
+# (TF custom-domain attach + per-project cache rulesets) and by
+# `wrangler deploy` from `rust-worker` apps (code uploads). The three
+# flows share one token because all three converge on the same zones;
+# if their rotation cadences diverge, split. Zone-scoped DNS comes
+# along because `cloudflare_workers_custom_domain` installs a
+# CF-managed routing record alongside the attach. Zone-scoped
+# Cache Rules gates the `/zones/{id}/rulesets` API used by the
+# `http_request_cache_settings` ruleset.
 resource "cloudflare_api_token" "deploy" {
   name = "Deploy (TF-managed)"
 
@@ -129,6 +136,7 @@ resource "cloudflare_api_token" "deploy" {
       effect = "allow"
       permission_groups = [
         { id = data.cloudflare_api_token_permission_groups_list.dns_write.result[0].id },
+        { id = data.cloudflare_api_token_permission_groups_list.cache_rules_write.result[0].id },
       ]
       resources = jsonencode({
         # All current and future zones in the account.
