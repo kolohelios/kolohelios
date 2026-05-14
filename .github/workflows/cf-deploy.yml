@@ -105,6 +105,28 @@ jobs:
           determinate: true
           flakehub: true
       - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: worker-build
+        working-directory: ${{ inputs.project_dir }}
+        # Build the worker upstream of `wrangler deploy` so the wasm
+        # build runs inside our devshell, not inside a subprocess
+        # wrangler spawns with a different `$PATH`. `wasm-pack`'s
+        # wasm-target probe does `which("rustc")` against `$PATH`;
+        # in CI a wrangler-spawned subprocess was somehow resolving
+        # a rustc outside our declared closure and failing the probe
+        # (#403). Pulling the build out of wrangler keeps everything
+        # in a `$PATH` we control. See `wrangler.toml`'s top-of-file
+        # comment + #423.
+        #
+        # Split into two `nix develop --command` invocations rather
+        # than one `bash -c`: each call applies the flake's
+        # `shellHook` (which puts `~/.cargo/bin` on `$PATH`), so the
+        # `worker-build` binary that `cargo install` drops there is
+        # visible to the second call. `--locked` pins `worker-build`
+        # to its published `Cargo.lock`; subsequent runs no-op when
+        # the binary is already cached.
+        run: |
+          nix develop . --command cargo install -q worker-build --locked
+          nix develop . --command worker-build --release
       - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
         id: wrangler
         working-directory: ${{ inputs.project_dir }}
@@ -113,10 +135,10 @@ jobs:
         # holds the `op://` refs the SA token will resolve.
         #
         # `--dry-run` (verify_only mode) runs everything `wrangler
-        # deploy` would do except the final upload: wasm build,
-        # `wrangler.toml` validation, CF API authentication, account
-        # and scope checks. Strictly stronger than a bare `op run
-        # -- true` credential probe.
+        # deploy` would do except the final upload: `wrangler.toml`
+        # validation, CF API authentication, account and scope
+        # checks, asset upload prep. The wasm build already ran in
+        # the previous step.
         #
         # `--name <override>` (script_name_override mode) deploys to
         # an alternate Worker name without touching `wrangler.toml`.
