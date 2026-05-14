@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use crate::commands;
 use crate::error::Result;
 use crate::kind::Kind;
+use crate::openrouter;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -85,6 +86,26 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// LLM interaction subcommands.
+    Ai {
+        #[command(subcommand)]
+        action: AiAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AiAction {
+    /// Send a one-shot prompt to OpenRouter and print the reply.
+    /// Requires `OPENROUTER_API_KEY` in the environment — wrap the
+    /// invocation in `op run --env-file=.env -- ...` to resolve it
+    /// from 1Password.
+    Ping {
+        /// Prompt text to send to the model.
+        prompt: String,
+        /// OpenRouter model identifier.
+        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
+        model: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -122,6 +143,9 @@ pub fn dispatch(cmd: Command) -> Result<()> {
         },
         Command::Doctor { workdir } => commands::doctor::run(workdir),
         Command::Fix { workdir, dry_run } => commands::fix::run(workdir, dry_run),
+        Command::Ai { action } => match action {
+            AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
+        },
     }
 }
 
@@ -170,6 +194,15 @@ mod tests {
             vec!["blogctl", "doctor", "--workdir", "/tmp/wd"],
             vec!["blogctl", "fix", "--workdir", "/tmp/wd"],
             vec!["blogctl", "fix", "--workdir", "/tmp/wd", "--dry-run"],
+            vec!["blogctl", "ai", "ping", "hello"],
+            vec![
+                "blogctl",
+                "ai",
+                "ping",
+                "hello",
+                "--model",
+                "openai/gpt-4o-mini",
+            ],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }

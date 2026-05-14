@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod demote;
 pub mod doctor;
 pub mod fix;

@@ -115,6 +115,17 @@ pub enum Error {
         "workdir unhealthy: {0} finding(s); run `blogctl fix` to repair the auto-correctable subset"
     )]
     WorkdirUnhealthy(usize),
+
+    #[error(
+        "OPENROUTER_API_KEY not set — invoke through `op run --env-file=.env -- ...` or set it in the environment"
+    )]
+    OpenrouterApiKeyMissing,
+
+    #[error("OpenRouter request failed: {0}")]
+    OpenrouterRequest(String),
+
+    #[error("OpenRouter response contained no choices")]
+    OpenrouterEmptyResponse,
 }
 
 impl Error {
