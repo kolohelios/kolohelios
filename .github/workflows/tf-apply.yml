@@ -10,6 +10,13 @@
 # -input=false`; the generated recipe already wraps `tofu apply` in
 # `op run --env-file=.env -- bash -c '...'` and inits before applying,
 # so this workflow stays thin.
+#
+# Wrapped in `shaka ci mask-and-run` so each op-resolved value
+# (CLOUDFLARE_API_TOKEN, the S3 creds for tfstate, etc.) is registered
+# with GH Actions log masking before any consumer runs — `tofu apply`
+# error context that echoes a sensitive value still shows as `***`.
+# The recipe's own inner `op run` is harmless redundancy; keeping the
+# wrapper at the outermost layer leaves local `just apply` unchanged.
 name: tf-apply
 
 on:
@@ -49,4 +56,5 @@ jobs:
         # already holds the `op://` refs the SA token will resolve.
         run: |
           cp .env.example .env
-          nix develop . --command just apply -auto-approve -input=false
+          nix develop . --command shaka ci mask-and-run --env-file=.env -- \
+            just apply -auto-approve -input=false
