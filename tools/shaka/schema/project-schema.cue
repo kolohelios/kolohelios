@@ -14,9 +14,22 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	justification: string & !=""
 }
 
+// Cache rules for the deploy's zone. When set, `shaka deploy
+// generate-tf` emits a `cloudflare_ruleset` (phase
+// `http_request_cache_settings`) alongside the custom-domain
+// attachment. Opinionated defaults bake the rule shape into the
+// generator (POSTs always bypass; static-asset extensions and TTLs
+// are fixed); knobs land here when a second consumer needs them.
+#CacheRules: {
+	// Path prefixes (e.g. "/api/") to bypass caching. POSTs are
+	// bypassed unconditionally and don't need to be listed.
+	bypassPaths: [...string & =~"^/"]
+}
+
 // Deploy intent for an app. The TF that materializes the attachment
-// (Worker custom domain + zone data source) is generated from this
-// block by `shaka deploy generate-tf` and committed under
+// (Worker custom domain + zone data source, plus optional cache
+// ruleset) is generated from this block by `shaka deploy generate-tf`
+// and committed under
 // `infra/cloudflare-deploy/terraform/generated/<project>.tf`.
 //
 // `customDomain` and `zone` are constrained to the registered
@@ -29,6 +42,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	target:       "cloudflare-worker"
 	customDomain: domain.#KnownHostnames
 	zone:         domain.#KnownHostnames
+	cache?:       #CacheRules
 }
 
 // Where a project serves content. Decoupled from `#Deploy` (which is
