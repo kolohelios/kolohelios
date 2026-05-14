@@ -73,6 +73,15 @@ const CHECKS: &[Check] = &[
         run: shaka_terraform_check,
     },
     Check {
+        // Drift between a project's `ci:` block and the committed
+        // wrapper workflow under `.github/workflows/`. Triggers on
+        // changes to the generator, any project.cue, or any workflow
+        // file.
+        name: "shaka ci generate-workflows --check",
+        paths: &["tools/shaka/**", "*/*/project.cue", ".github/workflows/**"],
+        run: shaka_ci_generate_workflows_check,
+    },
+    Check {
         name: "shaka project audit",
         // Any project-internal change can flip an audit outcome — README
         // presence, .gitignore presence, source files for the rust-has-tests
@@ -334,6 +343,10 @@ fn shaka_deploy_generate_tf_check() -> CheckResult {
 
 fn shaka_terraform_check() -> CheckResult {
     spawn_self(&["terraform", "check"])
+}
+
+fn shaka_ci_generate_workflows_check() -> CheckResult {
+    spawn_self(&["ci", "generate-workflows", "--check"])
 }
 
 fn shaka_project_audit() -> CheckResult {
