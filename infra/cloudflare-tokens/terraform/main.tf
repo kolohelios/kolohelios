@@ -54,8 +54,8 @@ data "cloudflare_api_token_permission_groups_list" "workers_scripts_write" {
   name = "Workers Scripts Write"
 }
 
-data "cloudflare_api_token_permission_groups_list" "cache_rules_write" {
-  name = "Cache Rules Write"
+data "cloudflare_api_token_permission_groups_list" "cache_settings_write" {
+  name = "Cache Settings Write"
 }
 
 locals {
@@ -117,8 +117,9 @@ resource "onepassword_item" "dns_management" {
 # if their rotation cadences diverge, split. Zone-scoped DNS comes
 # along because `cloudflare_workers_custom_domain` installs a
 # CF-managed routing record alongside the attach. Zone-scoped
-# Cache Rules gates the `/zones/{id}/rulesets` API used by the
-# `http_request_cache_settings` ruleset.
+# Cache Settings gates the `/zones/{id}/rulesets` API used by the
+# `http_request_cache_settings` ruleset (covers all cache settings
+# on the zone, not just rules — smallest CF-exposed scope).
 resource "cloudflare_api_token" "deploy" {
   name = "Deploy (TF-managed)"
 
@@ -136,7 +137,7 @@ resource "cloudflare_api_token" "deploy" {
       effect = "allow"
       permission_groups = [
         { id = data.cloudflare_api_token_permission_groups_list.dns_write.result[0].id },
-        { id = data.cloudflare_api_token_permission_groups_list.cache_rules_write.result[0].id },
+        { id = data.cloudflare_api_token_permission_groups_list.cache_settings_write.result[0].id },
       ]
       resources = jsonencode({
         # All current and future zones in the account.
