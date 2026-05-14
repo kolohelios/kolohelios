@@ -1,0 +1,104 @@
+{
+  "entries": [
+    {
+      "company": "Whitepages",
+      "role": "Principal Software Engineer",
+      "start_date": "2023-06",
+      "context": "consumer search platform: 1B+ indexed pages, 10M+ unique users/month",
+      "achievements": [
+        "Architected and productionized a Flow-Based Programming data graph streaming platform, replacing a multi-week manually coordinated release process with on-demand delivery; currently handles ~2.5M events/day across two tenants in active onboarding.",
+        "Backing datasets cover ~355M people, ~436M phones, ~483M emails, and ~234M addresses; the platform also powers a real-time pipeline streaming scraped public-records data to subscriber webhooks.",
+        "Own architecture decisions, the function server, the pipeline compiler (built on a CUE-based DSL), metrics and logging, and bulk ingestion/export operations.",
+        "Built avmbench, a Property and People data delivery platform that unlocked a $1M net new revenue source — covering ~125M properties across all 50 states with a 17.1% national median error rate on valuation estimates, built on a custom geographic aggregation DSL and Census TIGER pipelines.",
+        "Designed and shipped P95-latency-based load shedding for the search layer in Scala — ring-buffer windowed computation, OPEN/TRIPPED state machine with hysteresis, 429-with-Retry-After rejection — wrapping all 18 route handlers.",
+        "Led migration of 2.5M events/day from Amplitude to Databricks Delta tables, eliminating several thousand dollars per month in overage fees while preserving the Salesforce/Kinesis ingest path.",
+        "Drove monorepo migration with shared tooling, standardized linting, and Nix-based developer environments — supporting ~100 service releases per week and shifting CVE scanning from infrequent reactive scans to proactive CI gates.",
+        "Built pagecraft, an internal developer-productivity CLI adopted across the team — PR review workflow with parallelized GitHub fetches and Nix/darwin tooling.",
+        "Built MCP integration and AI inference harness on the engineering platform; authored \"Jon's Workflow with AI,\" adopted org-wide as the reference for AI-assisted engineering practice.",
+        "Combined hands-on mentorship and operationalized agentic AI with a robust spec process to lift delivered work 2.5-4x year-over-year, leaving the team running ahead of business demand with real operational headroom despite shrinking headcount.",
+        "Sustained high-volume, substantive peer code review across the platform org — 261 reviews in the first 15 weeks of 2026 alone (~75/month, mean 6 / median 4 comments per PR, ~1,000-line PR average) — reinforcing engineering standards and a small-PR discipline.",
+        "Authored org-wide strategy documents (Whitepages as a Platform, Single Source of Data Definitions, Data Release Tenets) shaping platform architecture and release governance."
+      ],
+      "technology": ["Python", "Rust", "Scala", "CUE", "Nix", "Kubernetes", "Helm", "Databricks", "Delta Lake", "MCP"]
+    },
+    {
+      "company": "Whitepages",
+      "role": "Engineering Manager",
+      "start_date": "2022-08",
+      "end_date": "2023-06",
+      "achievements": [
+        "Managed and mentored a team of 6 engineers on the consumer web platform (SEO, Core Web Vitals, conversion optimization, GDPR compliance).",
+        "Led delivery on LCP regression fixes for high-traffic page types, INP tracking ahead of Google's CWV INP rollout, and an org-wide OneTrust GDPR cookie consent rollout.",
+        "Returned to the IC track in Jun 2023 to focus on data platform architecture."
+      ]
+    },
+    {
+      "company": "Whitepages",
+      "role": "Lead Sr. Software Engineer, Web & Mobile Apps",
+      "start_date": "2021-12",
+      "end_date": "2022-08",
+      "achievements": [
+        "Reversed a multi-quarter decline in Google indexation, increasing indexed pages 30%.",
+        "Drove dozens of millions of SERP-indexed URLs from red LCP (Core Web Vitals failure) to zero, with monitoring automation to keep them green.",
+        "Increased mobile revenue by 20% YoY by focusing on stability and adding new features.",
+        "Made tooling and documentation improvements to reduce friction and speed up delivery for the whitepages.com and mobile app teams."
+      ]
+    },
+    {
+      "company": "LIFX / Buddy Technologies",
+      "role": "Software Engineer",
+      "start_date": "2019-07",
+      "end_date": "2021-12",
+      "context": "contractor through Bluehawk Consulting, converted to FTE in Jan 2020",
+      "achievements": [
+        "Built a new React Native application to replace separate native iOS and Android applications.",
+        "Added new features to iOS and Android native applications to support a new LIFX power switch product.",
+        "Worked with a team of three for four months to replace a fragile monolithic platform with a new microservice-based platform, saving $120k a year while improving availability and maintainability.",
+        "Built a React Native application for Airstream's Smart platform; led mobile development and authored custom native plugins for unique connectivity scenarios.",
+        "Built tooling and test frameworks for code quality (type-checking, linting, unit testing) and regression/UX testing (Storybook, screenshot diffing, Detox E2E).",
+        "Architected an end-to-end \"checklist service\" as a fully tested Micronaut microservice with CRUD support and a performance-optimized client API."
+      ],
+      "technology": ["React Native", "TypeScript", "Java", "Swift", "Kotlin", "Micronaut", "PostgreSQL", "Azure", "MQTT", "HomeKit"]
+    },
+    {
+      "company": "Belkin International",
+      "role": "Senior Software Engineer",
+      "start_date": "2018-11",
+      "end_date": "2019-07",
+      "achievements": [
+        "Extended a Cordova mobile application, built React Native and Flutter proof-of-concept apps, and created a test automation framework."
+      ]
+    },
+    {
+      "company": "UpTop",
+      "role": "Product Development Manager",
+      "start_date": "2018-06",
+      "end_date": "2018-11",
+      "achievements": [
+        "Delivered a React Native application for TERRA Staffing and an Alexa skill for TD Bank."
+      ]
+    },
+    {
+      "company": "UpTop",
+      "role": "Development Team Lead",
+      "start_date": "2016-04",
+      "end_date": "2018-06",
+      "achievements": [
+        "Added value as an individual contributor (averaging 120% billable utilization) while supporting business goals to build a full-stack development team which grew as large as 12 developers.",
+        "Successfully delivered 13 web and hybrid mobile application projects for clients including Microsoft, Premera, Capital One, Belkin, and Entertainment Partners.",
+        "Led architecture shift from server-rendered ASP.NET MVC to Web API + Angular on Microsoft's Cloud Launchpad portal, decoupling frontend and backend concerns.",
+        "Served as lead mobile developer on the Belkin Linksys consumer app, with the team delivering on schedule for the CES launch window."
+      ],
+      "technology": ["ASP.NET Core", "C#", "Node", "MS SQL", "Azure", "AWS", "React", "Angular 2+", "PHP", "WordPress", "Elasticsearch"]
+    },
+    {
+      "company": "UpTop",
+      "role": "Software Developer",
+      "start_date": "2015-07",
+      "end_date": "2016-04",
+      "achievements": [
+        "Finished three client projects (each estimated between 4 and 6 months) early and under budget."
+      ]
+    }
+  ]
+}

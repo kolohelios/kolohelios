@@ -78,6 +78,7 @@ fn run(check: bool) -> Result<(), String> {
     if check {
         let tmp = tempfile::TempDir::new().map_err(|e| format!("tempdir: {e}"))?;
         write_pages(tmp.path(), &pages)?;
+        copy_static_assets(tmp.path())?;
         run_tailwindcss(tmp.path())?;
         let drift = diff_dirs(tmp.path(), &committed)?;
         if !drift.is_empty() {
@@ -91,13 +92,52 @@ fn run(check: bool) -> Result<(), String> {
         }
         println!("build-site --check: dist/ matches generated build");
     } else {
+        // Wipe dist/ before each build so renames in templates/,
+        // chart/, or data/ don't leave orphaned files behind that
+        // the drift check would later catch.
+        if committed.exists() {
+            std::fs::remove_dir_all(&committed)
+                .map_err(|e| format!("remove_dir_all dist/: {e}"))?;
+        }
         std::fs::create_dir_all(&committed).map_err(|e| format!("create_dir_all dist/: {e}"))?;
         write_pages(&committed, &pages)?;
+        copy_static_assets(&committed)?;
         run_tailwindcss(&committed)?;
         println!(
-            "build-site: wrote {} page(s) + style.css to dist/",
+            "build-site: wrote {} page(s) + style.css + static assets to dist/",
             pages.len()
         );
+    }
+    Ok(())
+}
+
+/// Copy `chart/` (D3 vendor bundle + the timeline JS) and every
+/// JSON under `data/` into the dist tree so the served paths
+/// `/chart/*` and `/data/*` resolve. Plain `cp -r` semantics —
+/// content drives drift, not mtimes.
+fn copy_static_assets(root: &Path) -> Result<(), String> {
+    copy_tree(Path::new("chart"), &root.join("chart"))?;
+    copy_tree(Path::new("data"), &root.join("data"))?;
+    Ok(())
+}
+
+fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() {
+        return Err(format!("source does not exist: {}", src.display()));
+    }
+    std::fs::create_dir_all(dst).map_err(|e| format!("create_dir_all {}: {e}", dst.display()))?;
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| format!("read_dir {}: {e}", src.display()))?
+        .flatten()
+    {
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_tree(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)
+                .map_err(|e| format!("copy {} -> {}: {e}", from.display(), to.display()))?;
+        }
     }
     Ok(())
 }

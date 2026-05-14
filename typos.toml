@@ -4,6 +4,10 @@ extend-exclude = [
   "**/result/",
   "*.lock",
   "**/*.lock",
+  # Vendored third-party JS minified bundles trip the typos
+  # check on mangled identifiers (e.g. `pn`, `ue`). The bytes
+  # are authoritative from upstream; don't scan them.
+  "**/vendor/*.min.js",
 ]
 
 [default.extend-words]
