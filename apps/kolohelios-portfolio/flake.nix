@@ -35,31 +35,40 @@
           }
         );
 
-      # `selectLatestNightlyWith` picks the latest nightly date for which
-      # *every* requested component is available — base profile,
-      # extensions, AND the `wasm32-unknown-unknown` rust-std. The
-      # naive `rust-bin.nightly.latest.default.override` resolves each
-      # component's "latest" independently, so when upstream lands a
-      # newer wasm rust-std before a newer default profile (or vice
-      # versa), the combined toolchain ends up with `rustc` from one
-      # date and the wasm stdlib from another. `rustc --print sysroot`
-      # then points at the base toolchain (no wasm), and worker-build's
-      # fresh-install probe fails with "wasm32-unknown-unknown target
-      # not found in sysroot". See #403 and run
-      # https://github.com/kolohelios/kolohelios/actions/runs/25882388549.
+      # Diagnostic pin for #403. `wrangler deploy` was failing in CI
+      # because `rustc --print sysroot` returned the April-29 nightly
+      # toolchain even though our dev-shell drv closure only references
+      # the May-11 nightly (verified locally with
+      # `nix-store -q --requisites` on the linux drv). PR #414 switched
+      # `nightly.latest.default.override` to `selectLatestNightlyWith`,
+      # but that turned out to be a no-op against the currently pinned
+      # `rust-overlay` rev — both expressions produce the same
+      # `outPath`. So the April-29 toolchain is entering the CI
+      # environment from somewhere outside our flake's declared
+      # closure; the source is unknown.
+      #
+      # Pinning the date explicitly removes rust-overlay's
+      # date-selection logic from the equation. If CI now passes, the
+      # previous `.latest`-driven setup was non-deterministic in CI and
+      # this pin is a workable fix. If CI still fails the same way, the
+      # April-29 toolchain enters from outside our flake entirely
+      # (e.g. a runner-level rustup install we aren't suppressing) and
+      # the investigation moves off the toolchain expression.
+      #
+      # `wasm32-unknown-unknown` stays in `targets` so `cargo check
+      # --target wasm32-unknown-unknown` (the wasm-check recipe) and
+      # any local `worker-build --release` invocation both find the
+      # stdlib regardless.
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.selectLatestNightlyWith (
-          toolchain:
-          toolchain.default.override {
-            extensions = [
-              "rust-src"
-              "rust-analyzer"
-              "llvm-tools-preview"
-            ];
-            targets = [ "wasm32-unknown-unknown" ];
-          }
-        );
+        pkgs.rust-bin.nightly."2026-05-11".default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "llvm-tools-preview"
+          ];
+          targets = [ "wasm32-unknown-unknown" ];
+        };
     in
     {
       devShells = forEachSupportedSystem (
