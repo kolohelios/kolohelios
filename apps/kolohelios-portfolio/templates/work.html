@@ -4,10 +4,27 @@
 <article class="space-y-12">
   <header>
     <h1 class="text-3xl font-semibold tracking-tight">Work history</h1>
-    <p class="mt-2 text-stone-600 dark:text-stone-400">
-      The chart visualization for this data lands in <a class="underline hover:no-underline" href="https://github.com/kolohelios/kolohelios/issues/192">#192</a>.
-    </p>
   </header>
+
+  <section aria-labelledby="career-arc-heading" class="space-y-4">
+    <h2 id="career-arc-heading" class="text-xl font-semibold tracking-tight">Career trajectory</h2>
+    <p class="text-sm text-stone-600 dark:text-stone-400">
+      Seniority, affiliations, industries, clients, and active technologies on
+      a shared time axis. Hover or tap to read the slice at any year; the
+      chart auto-pans when the cursor approaches its edges. Click any section
+      header to expand or collapse it.
+    </p>
+    <div class="career-arc-scroll overflow-x-auto rounded border border-stone-200 dark:border-stone-800">
+      <svg id="career-arc"
+           class="block text-stone-900 dark:text-stone-100"
+           role="img"
+           aria-label="Career trajectory: seniority, companies, industries, clients, and technologies over time"
+           data-url="/data/career-arc.json"></svg>
+    </div>
+    <div id="career-arc-detail"
+         class="rounded border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+         aria-live="polite"></div>
+  </section>
 
   {% for entry in entries %}
   <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
@@ -49,4 +66,6 @@
     </p>
   </section>
 </article>
+<script src="/chart/vendor/d3.v7.min.js" defer></script>
+<script src="/chart/career-arc.js" defer></script>
 {% endblock %}

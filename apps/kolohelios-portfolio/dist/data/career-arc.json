@@ -1,0 +1,149 @@
+{
+  "_comment": "Career-arc data from the LinkedIn export. Companies, industries, and seniority transitions are accurate; tech-in-use ranges are still placeholder guesses (especially the pre-2015 entries — refine when authoring real values). Note the 2014 pivot from business/sales back to engineering: the seniority drops from Manager to Developer as a deliberate restart of the engineering track.",
+  "timespan": { "start": "1997-03", "end": "2026-06" },
+  "seniority": {
+    "tracks": ["IC", "Lead", "Manager"],
+    "levels": ["Junior", "Senior", "Principal"],
+    "transitions": [
+      { "date": "1997-03", "track": "IC", "level": "Junior", "note": "Pacific Int'l, Shipping Clerk / Webmaster (part-time)" },
+      { "date": "1999-07", "track": "Manager", "level": null, "note": "Pacific Int'l, Project Manager / IT Manager" },
+      { "date": "2005-06", "track": "Manager", "level": null, "note": "Marmot LLC, President (self-employed)" },
+      { "date": "2006-06", "track": "Manager", "level": null, "note": "TMF, General Manager" },
+      { "date": "2007-09", "track": "Manager", "level": null, "note": "Allied Steel, Project Manager" },
+      { "date": "2007-12", "track": "IC", "level": "Senior", "note": "Pro CNC, Sales Engineer (business-track IC)" },
+      { "date": "2012-01", "track": "Manager", "level": null, "note": "Pro CNC, VP Sales and Marketing" },
+      { "date": "2014-01", "track": "Manager", "level": null, "note": "Trulife, Corporate Development Manager" },
+      { "date": "2014-04", "track": "IC", "level": "Junior", "note": "Self-employed, Fullstack — pivot back to engineering" },
+      { "date": "2015-07", "track": "IC", "level": "Junior", "note": "UpTop, Software Developer" },
+      { "date": "2016-04", "track": "Lead", "level": "Senior", "note": "UpTop, Development Team Lead" },
+      { "date": "2018-06", "track": "Manager", "level": null, "note": "UpTop, Product Development Manager" },
+      { "date": "2018-11", "track": "IC", "level": "Senior", "note": "Belkin, Senior Software Engineer (IC return)" },
+      { "date": "2019-07", "track": "IC", "level": "Senior", "note": "Bluehawk Consulting, Full-Stack for Buddy" },
+      { "date": "2020-01", "track": "IC", "level": "Senior", "note": "Buddy Technologies, Software Engineer" },
+      { "date": "2021-12", "track": "Lead", "level": "Senior", "note": "Whitepages, Lead Sr. Software Engineer" },
+      { "date": "2022-08", "track": "Manager", "level": null, "note": "Whitepages, Engineering Manager" },
+      { "date": "2023-06", "track": "IC", "level": "Principal", "note": "Whitepages, Principal Engineer" }
+    ]
+  },
+  "companies": [
+    { "name": "Pacific Int'l Tool and Shear", "start": "1997-03", "end": "2005-06" },
+    { "name": "Marmot LLC", "start": "2005-06", "end": "2006-06" },
+    { "name": "TMF", "start": "2006-06", "end": "2007-09" },
+    { "name": "Allied Steel Fabricators", "start": "2007-09", "end": "2007-12" },
+    { "name": "Pro CNC", "start": "2007-12", "end": "2014-01" },
+    { "name": "Trulife", "start": "2014-01", "end": "2015-03" },
+    { "name": "Self Employed", "start": "2014-04", "end": "2015-07" },
+    { "name": "UpTop", "start": "2015-07", "end": "2018-11" },
+    { "name": "Belkin International", "start": "2018-11", "end": "2019-07" },
+    { "name": "Bluehawk Consulting", "start": "2019-07", "end": "2020-01" },
+    { "name": "Buddy Technologies (LIFX)", "start": "2020-01", "end": "2021-12" },
+    { "name": "Whitepages", "start": "2021-12", "end": "2026-06" }
+  ],
+  "industries": [
+    { "name": "Industrial automation", "start": "1997-03", "end": "2005-06" },
+    { "name": "Manufacturing consulting", "start": "2005-06", "end": "2007-09" },
+    { "name": "Manufacturing — sales / business", "start": "2007-09", "end": "2014-04" },
+    { "name": "Self-employed engineer", "start": "2014-04", "end": "2015-07" },
+    { "name": "Digital agency / consulting", "start": "2015-07", "end": "2018-11" },
+    { "name": "Consumer electronics", "start": "2018-11", "end": "2019-07" },
+    { "name": "Connected products (IoT)", "start": "2019-07", "end": "2021-12" },
+    { "name": "Consumer search / data platforms", "start": "2021-12", "end": "2026-06" }
+  ],
+  "clients": [
+    { "name": "Microsoft", "via": "UpTop", "start": "2016-01", "end": "2018-03" },
+    { "name": "Premera", "via": "UpTop", "start": "2016-06", "end": "2017-12" },
+    { "name": "Capital One", "via": "UpTop", "start": "2017-01", "end": "2018-03" },
+    { "name": "Belkin (Linksys)", "via": "UpTop", "start": "2017-09", "end": "2018-10" },
+    { "name": "Entertainment Partners", "via": "UpTop", "start": "2017-06", "end": "2018-06" },
+    { "name": "Buddy Technologies", "via": "Bluehawk Consulting", "start": "2019-07", "end": "2020-01" },
+    { "name": "Airstream", "via": "Buddy Technologies (LIFX)", "start": "2020-01", "end": "2021-06" }
+  ],
+  "tech_categories": [
+    {
+      "name": "Languages",
+      "items": [
+        { "name": "HTML / CSS", "ranges": [{ "start": "1997-03", "end": "2026-06" }] },
+        { "name": "JavaScript", "ranges": [{ "start": "1997-03", "end": "2026-06" }] },
+        { "name": "ASP / classic web", "ranges": [{ "start": "1997-03", "end": "2005-06" }] },
+        { "name": "VBScript / VBA", "ranges": [{ "start": "1999-07", "end": "2008-06" }] },
+        { "name": "Python (embedded)", "ranges": [{ "start": "2014-04", "end": "2015-07" }] },
+        { "name": "C#", "ranges": [{ "start": "2015-07", "end": "2018-11" }] },
+        { "name": "TypeScript", "ranges": [{ "start": "2017-06", "end": "2026-06" }] },
+        { "name": "Java", "ranges": [{ "start": "2017-01", "end": "2022-03" }] },
+        { "name": "Swift", "ranges": [{ "start": "2018-11", "end": "2022-03" }] },
+        { "name": "Kotlin", "ranges": [{ "start": "2019-07", "end": "2024-06" }] },
+        { "name": "Objective-C", "ranges": [{ "start": "2021-10", "end": "2022-03" }] },
+        { "name": "Python", "ranges": [{ "start": "2024-07", "end": "2026-06" }] },
+        { "name": "Scala", "ranges": [{ "start": "2025-07", "end": "2026-06" }] },
+        { "name": "Rust", "ranges": [{ "start": "2024-07", "end": "2026-06" }] },
+        { "name": "CUE", "ranges": [{ "start": "2024-07", "end": "2026-06" }] }
+      ]
+    },
+    {
+      "name": "Industrial / CAD",
+      "items": [
+        { "name": "3D CAD", "ranges": [{ "start": "1999-07", "end": "2014-04" }] },
+        { "name": "CNC programming", "ranges": [{ "start": "1999-07", "end": "2014-04" }] },
+        { "name": "Emerson controls", "ranges": [{ "start": "1999-07", "end": "2005-06" }] },
+        { "name": "3D printing", "ranges": [{ "start": "2001-01", "end": "2014-04" }] }
+      ]
+    },
+    {
+      "name": "Systems / IT",
+      "items": [
+        { "name": "Windows Server", "ranges": [{ "start": "1999-07", "end": "2007-09" }] },
+        { "name": "Active Directory", "ranges": [{ "start": "1999-07", "end": "2007-09" }] },
+        { "name": "Exchange", "ranges": [{ "start": "2006-06", "end": "2007-09" }] },
+        { "name": "Networking / TCP-IP", "ranges": [{ "start": "1999-07", "end": "2007-09" }] }
+      ]
+    },
+    {
+      "name": "Embedded / Hardware",
+      "items": [
+        { "name": "Arduino", "ranges": [{ "start": "2014-04", "end": "2015-07" }] },
+        { "name": "XBee / radios", "ranges": [{ "start": "2014-04", "end": "2015-07" }] }
+      ]
+    },
+    {
+      "name": "Cloud",
+      "items": [
+        { "name": "Azure", "ranges": [{ "start": "2015-07", "end": "2021-12" }] },
+        { "name": "AWS", "ranges": [{ "start": "2017-01", "end": "2026-06" }] },
+        { "name": "Kubernetes", "ranges": [{ "start": "2023-07", "end": "2026-06" }] },
+        { "name": "Helm", "ranges": [{ "start": "2023-07", "end": "2024-06" }] },
+        { "name": "Cloudflare", "ranges": [{ "start": "2022-04", "end": "2026-06" }] }
+      ]
+    },
+    {
+      "name": "Build",
+      "items": [
+        { "name": "Nix", "ranges": [{ "start": "2024-07", "end": "2026-06" }] },
+        { "name": "Docker", "ranges": [{ "start": "2017-01", "end": "2026-06" }] },
+        { "name": "Jenkins CI", "ranges": [{ "start": "2025-07", "end": "2026-06" }] }
+      ]
+    },
+    {
+      "name": "Data",
+      "items": [
+        { "name": "MS SQL Server", "ranges": [{ "start": "2002-06", "end": "2018-11" }] },
+        { "name": "MySQL", "ranges": [{ "start": "1998-01", "end": "2002-06" }] },
+        { "name": "PostgreSQL", "ranges": [{ "start": "2019-07", "end": "2026-06" }] },
+        { "name": "PySpark", "ranges": [{ "start": "2024-07", "end": "2025-06" }] },
+        { "name": "Databricks", "ranges": [{ "start": "2024-07", "end": "2026-06" }] },
+        { "name": "Delta Lake", "ranges": [{ "start": "2025-07", "end": "2026-06" }] },
+        { "name": "Parquet", "ranges": [{ "start": "2025-07", "end": "2026-06" }] },
+        { "name": "MCP", "ranges": [{ "start": "2025-07", "end": "2026-06" }] }
+      ]
+    },
+    {
+      "name": "Frontend / mobile",
+      "items": [
+        { "name": "Angular 2+", "ranges": [{ "start": "2016-04", "end": "2018-11" }] },
+        { "name": "React", "ranges": [{ "start": "2016-04", "end": "2024-06" }] },
+        { "name": "React Native", "ranges": [{ "start": "2018-11", "end": "2022-08" }] },
+        { "name": "Vue.js", "ranges": [{ "start": "2022-04", "end": "2023-06" }] },
+        { "name": "Cordova", "ranges": [{ "start": "2018-11", "end": "2019-07" }] }
+      ]
+    }
+  ]
+}

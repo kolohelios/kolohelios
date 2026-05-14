@@ -1,3 +1,42 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom SVG fill colors for the career-arc chart.
+ *
+ * The chart JS (chart/career-arc.js) sets these as `class` on SVG
+ * elements at runtime. Tailwind's content scanner only walks
+ * dist/**\/*.html, so `fill-stone-*` utilities referenced only from
+ * the JS would be tree-shaken out of the output CSS — the bg mask
+ * would render as the default black fill. Defining the rules here
+ * outside @layer keeps them in every build.
+ *
+ * Palette mirrors the stone-* scale Tailwind uses elsewhere:
+ *   bg     — stone-50 / stone-950 (matches the page background)
+ *   muted  — stone-500 (legible in both modes; no dark variant)
+ *   text   — stone-700 / stone-300 (default label color)
+ *   strong — stone-900 / stone-50 (high-contrast labels over color)
+ */
+.ca-bg { fill: #fafaf9; }
+.ca-muted { fill: #78716c; }
+.ca-text { fill: #44403c; }
+.ca-strong { fill: #1c1917; }
+@media (prefers-color-scheme: dark) {
+  .ca-bg { fill: #0c0a09; }
+  .ca-text { fill: #d6d3d1; }
+  .ca-strong { fill: #fafaf9; }
+}
+
+/* Track colors for the seniority arc — applied to <path> and
+ * <circle> elements so a single composite line can change color
+ * at track transitions. IC uses the default text color so it
+ * reads as "default state"; Lead and Manager get distinct hues
+ * that still read as muted next to the chart background. */
+.ca-track-ic { stroke: #44403c; fill: #44403c; }
+.ca-track-lead { stroke: #d97706; fill: #d97706; }
+.ca-track-mgr { stroke: #a855f7; fill: #a855f7; }
+@media (prefers-color-scheme: dark) {
+  .ca-track-ic { stroke: #d6d3d1; fill: #d6d3d1; }
+  .ca-track-lead { stroke: #f59e0b; fill: #f59e0b; }
+  .ca-track-mgr { stroke: #c084fc; fill: #c084fc; }
+}
