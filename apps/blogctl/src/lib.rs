@@ -2,6 +2,7 @@ pub mod cli;
 pub mod commands;
 pub mod error;
 pub mod kind;
+pub mod openrouter;
 pub mod post;
 pub mod slug;
 pub mod stage;
