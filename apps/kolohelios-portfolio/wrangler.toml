@@ -9,3 +9,16 @@ compatibility_date = "2026-05-01"
 # so the installed binary is visible to the build step.
 [build]
 command = "cargo install -q worker-build --locked && worker-build --release"
+
+# Workers Static Assets: CF serves files from `./dist/` directly at
+# the edge, bypassing the Worker for matched paths. Cache rules
+# (managed by `infra/cloudflare-deploy`) apply to these responses,
+# so the catch-all HTML rule from #190 finally engages — without
+# this block, Worker-generated responses never enter the cache
+# phase and the ruleset no-ops.
+#
+# Unmatched paths fall through to the Worker (`main` above). The
+# stub in `src/lib.rs` returns 404 today; dynamic handlers (e.g.
+# `/api/*` for #193's contact form) slot in there.
+[assets]
+directory = "./dist"
