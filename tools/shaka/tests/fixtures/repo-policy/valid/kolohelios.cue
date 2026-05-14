@@ -7,6 +7,7 @@ package repopolicy
 		merge:               false
 		squash:              false
 		deleteBranchOnMerge: true
+		autoMerge:           true
 	}
 	issues: true
 	branchProtection: {

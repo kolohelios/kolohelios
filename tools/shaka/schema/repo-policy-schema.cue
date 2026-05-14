@@ -7,6 +7,10 @@ package repopolicy
 		merge:               bool
 		squash:              bool
 		deleteBranchOnMerge: bool
+		// `allow_auto_merge` on the repo. Required for
+		// `gh pr merge --auto` to queue (used by the lock-bump workflows
+		// and #57's `shaka repo send` follow-up).
+		autoMerge: bool
 	}
 	// Omit any optional field below to opt the audit out of that
 	// dimension — useful for personal repos that don't enable issues,

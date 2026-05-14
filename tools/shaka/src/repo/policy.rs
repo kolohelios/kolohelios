@@ -40,6 +40,7 @@ pub struct MergePolicy {
     pub merge: bool,
     pub squash: bool,
     pub delete_branch_on_merge: bool,
+    pub auto_merge: bool,
 }
 
 #[derive(Debug, Deserialize)]
