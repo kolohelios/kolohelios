@@ -1,0 +1,19 @@
+package domain
+
+// Stand-in for the real registry, scoped to the hostnames this
+// fixture's project.cue files use (subdomains of kolohelios.com).
+// The regex disjunction accepts both apex and subdomain, so a single
+// zone entry covers `kolohelios.com`, `a.kolohelios.com`, and
+// `b.kolohelios.com`.
+
+import "strings"
+
+domains: [string]: {}
+
+domains: "kolohelios.com": {}
+
+#KnownHostnames: or([
+	for k, _ in domains {
+		=~"(^|\\.)\(strings.Replace(k, ".", "\\.", -1))$"
+	},
+])
