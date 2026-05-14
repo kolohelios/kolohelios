@@ -40,7 +40,9 @@
 #     known gap tracked in #377.
 #   - Child secrets resolved by `op run` (e.g. CLOUDFLARE_API_TOKEN)
 #     are not auto-masked by GH Actions — only the SA token itself is.
-#     #378 tracks the wrapper that closes that gap.
+#     `shaka ci mask-and-run` registers them with `::add-mask::` before
+#     execing the consumer, so any value op resolves shows as `***` in
+#     the log even if a consumer prints it.
 #
 # `wrangler secret put` for declared Worker runtime secrets is not
 # implemented in v1 — portfolio has none today, and the idempotence
@@ -122,7 +124,7 @@ jobs:
         # next step can grep it without re-running wrangler.
         run: |
           cp .env.example .env
-          nix develop . --command op run --env-file=.env -- \
+          nix develop . --command shaka ci mask-and-run --env-file=.env -- \
             wrangler deploy \
             ${{ inputs.verify_only && '--dry-run' || '' }} \
             ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
