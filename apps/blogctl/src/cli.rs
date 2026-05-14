@@ -1,6 +1,8 @@
+use std::io;
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 use crate::commands;
 use crate::error::Result;
@@ -91,6 +93,8 @@ pub enum Command {
         #[command(subcommand)]
         action: AiAction,
     },
+    #[command(hide = true)]
+    Completions { shell: Shell },
 }
 
 #[derive(Subcommand, Debug)]
@@ -146,6 +150,12 @@ pub fn dispatch(cmd: Command) -> Result<()> {
         Command::Ai { action } => match action {
             AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
         },
+        Command::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut io::stdout());
+            Ok(())
+        }
     }
 }
 
@@ -203,6 +213,7 @@ mod tests {
                 "--model",
                 "openai/gpt-4o-mini",
             ],
+            vec!["blogctl", "completions", "bash"],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }

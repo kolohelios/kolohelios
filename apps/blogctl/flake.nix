@@ -54,6 +54,13 @@
             version = "0.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+            postInstall = ''
+              installShellCompletion --cmd blogctl \
+                --bash <($out/bin/blogctl completions bash) \
+                --fish <($out/bin/blogctl completions fish) \
+                --zsh  <($out/bin/blogctl completions zsh)
+            '';
           };
         }
       );
