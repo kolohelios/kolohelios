@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 
+mod audit_workflows;
 mod gate;
 mod generate;
 mod mask_and_run;
@@ -25,6 +26,11 @@ pub enum CiCommand {
         #[arg(long)]
         check: bool,
     },
+    /// Assert every file under `.github/workflows/` is either generated
+    /// or in the hand-authored allowlist. Catches new workflows that
+    /// bypass `generate-workflows`.
+    #[command(name = "audit-workflows")]
+    AuditWorkflows,
     /// Run a command under `op run`, registering each resolved-secret value
     /// with GitHub Actions log masking first (`::add-mask::<value>`).
     ///
@@ -48,6 +54,7 @@ pub fn run(cmd: CiCommand) {
     match cmd {
         CiCommand::Gate { needs } => gate::run(needs),
         CiCommand::GenerateWorkflows { check } => generate::run(check),
+        CiCommand::AuditWorkflows => audit_workflows::run(),
         CiCommand::MaskAndRun { env_file, args } => mask_and_run::run(env_file, args),
     }
 }
