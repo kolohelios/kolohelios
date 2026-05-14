@@ -1,0 +1,67 @@
+{
+  "nodes": {
+    "kolohelios-nix": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1778790527,
+        "narHash": "sha256-qw2utY3ZmYQZeYVuuQqcMkpm1TVdO+2w1wS6erPxMLs=",
+        "rev": "50df6b57ba3e174c8bc347b52a57de900731053e",
+        "revCount": 264,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/kolohelios-nix/0.1.264%2Brev-50df6b57ba3e174c8bc347b52a57de900731053e/019e2831-6939-76f3-9c31-0751299f1de6/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/kolohelios/kolohelios-nix/%2A.tar.gz"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1777077449,
+        "narHash": "sha256-AIiMJiqvGrN4HyLEbKAoCSRRYn0rnlW5VbKNIMIYqm4=",
+        "rev": "a4bf06618f0b5ee50f14ed8f0da77d34ecc19160",
+        "revCount": 911667,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.2511.911667%2Brev-a4bf06618f0b5ee50f14ed8f0da77d34ecc19160/019dcae8-75b0-71d1-abd5-feab9658f0fa/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/NixOS/nixpkgs/0"
+      }
+    },
+    "root": {
+      "inputs": {
+        "kolohelios-nix": "kolohelios-nix",
+        "nixpkgs": [
+          "kolohelios-nix",
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778728594,
+        "narHash": "sha256-+gIOsOzqWNfn+ThCXBQGcLHVEnaGQW59XjghE9JUIYk=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "83a17ebffcfacb17b49e1b5e9dc15eed07936648",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
