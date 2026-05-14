@@ -79,26 +79,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      # `nix flake check` for infra/devbox evaluates the full NixOS system
-      # closure and exhausts the runner's ~14GB free /. Pruning preinstalled
-      # toolchains alone (jlumbroso/free-disk-space) reclaimed ~25GB but
-      # still wasn't enough — the closure pulled clang and OOMed. Instead,
-      # carve an LVM volume out of the runner's unallocated disk + the
-      # freed tool space and mount it at /nix before nix installs.
-      # Yields ~75GB at /nix.
-      - name: Maximize disk for /nix
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 1024
-          temp-reserve-mb: 100
-          swap-size-mb: 1024
-          overprovision-lvm: true
-          remove-dotnet: true
-          remove-android: true
-          remove-haskell: true
-          remove-codeql: true
-          remove-docker-images: true
-          build-mount-path: /nix
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
