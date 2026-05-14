@@ -10,4 +10,5 @@ package project
 			purpose: "Terraform remote state for the generated Cloudflare deploy attachments (Worker custom domains, future targets)"
 		},
 	]
+	ci: apply: reusable_workflow: "./.github/workflows/tf-apply.yml"
 }
