@@ -1,4 +1,7 @@
-use clap::{Parser, Subcommand};
+use std::io;
+
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 mod ci;
 mod commit;
@@ -38,6 +41,8 @@ enum Commands {
         #[command(subcommand)]
         command: commit::CommitCommand,
     },
+    #[command(hide = true)]
+    Completions { shell: Shell },
     /// Generate per-project deploy Terraform from `deploy:` blocks in
     /// each project.cue (Worker custom domains, future targets)
     Deploy {
@@ -111,6 +116,11 @@ fn main() {
         }
         Commands::Ci { command } => ci::run(command),
         Commands::Commit { command } => commit::run(command),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut io::stdout());
+        }
         Commands::Deploy { command } => deploy::run(command),
         Commands::Domain { command } => domain::run(command),
         Commands::Issue { command } => issue::run(command),
