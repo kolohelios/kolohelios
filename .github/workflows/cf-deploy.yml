@@ -19,6 +19,15 @@
 # failure modes that slip past dry-run are apply-time CF API
 # outages and the literal upload itself.
 #
+# `script_name_override: <name>` deploys to that Worker script
+# name instead of the one in `wrangler.toml`. Use for PR preview
+# deploys — pair with a name like `<project>-pr-${{ pr.number }}`
+# so each PR gets its own ephemeral Worker (cleanup is the
+# caller's responsibility, typically a `pull_request: closed`
+# job that runs `wrangler delete`). Output `worker_url` exposes
+# the `*.workers.dev` URL so the caller can post / update a PR
+# comment without re-parsing wrangler output itself.
+#
 # Threat-model assumptions (worth revisiting if any of these change):
 #
 #   - This workflow is invoked only via `workflow_call` from callers
@@ -50,10 +59,19 @@ on:
         required: false
         type: boolean
         default: false
+      script_name_override:
+        description: "If non-empty, deploys to this Worker script name instead of the one in wrangler.toml (via wrangler --name). Use for PR preview deploys; caller is responsible for cleanup."
+        required: false
+        type: string
+        default: ""
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN:
         description: "1Password Service Account token used by `op run` to resolve `.env` references"
         required: true
+    outputs:
+      worker_url:
+        description: "The *.workers.dev URL the Worker was deployed to. Empty in verify_only mode."
+        value: ${{ jobs.deploy.outputs.worker_url }}
 
 jobs:
   deploy:
@@ -66,6 +84,8 @@ jobs:
       contents: read
     env:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+    outputs:
+      worker_url: ${{ steps.parse-url.outputs.worker_url }}
     steps:
       - name: verify OP_SERVICE_ACCOUNT_TOKEN
         # `required: true` above catches "caller didn't pass it";
@@ -84,6 +104,7 @@ jobs:
           flakehub: true
       - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
+        id: wrangler
         working-directory: ${{ inputs.project_dir }}
         # `.env` is gitignored; copy from the in-repo example so the
         # `op run` invocation finds the file. `.env.example` already
@@ -94,7 +115,32 @@ jobs:
         # `wrangler.toml` validation, CF API authentication, account
         # and scope checks. Strictly stronger than a bare `op run
         # -- true` credential probe.
+        #
+        # `--name <override>` (script_name_override mode) deploys to
+        # an alternate Worker name without touching `wrangler.toml`.
+        # `tee` mirrors stdout to a file so the URL parser in the
+        # next step can grep it without re-running wrangler.
         run: |
           cp .env.example .env
           nix develop . --command op run --env-file=.env -- \
-            wrangler deploy ${{ inputs.verify_only && '--dry-run' || '' }}
+            wrangler deploy \
+            ${{ inputs.verify_only && '--dry-run' || '' }} \
+            ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
+            2>&1 | tee /tmp/wrangler-output.log
+          # `tee` masks the inner exit code; restore it explicitly.
+          exit "${PIPESTATUS[0]}"
+      - name: parse worker URL
+        id: parse-url
+        # Skipped in verify-only mode; nothing was deployed, no URL
+        # to extract. Grep the first `https://*.workers.dev` line
+        # from wrangler stdout — stable across recent wrangler
+        # versions; if the format ever shifts, this step fails the
+        # job rather than silently emitting an empty URL.
+        if: ${{ ! inputs.verify_only }}
+        run: |
+          url=$(grep -oE 'https://[^[:space:]]+\.workers\.dev' /tmp/wrangler-output.log | head -1)
+          if [[ -z "$url" ]]; then
+            echo "::error::could not parse worker URL from wrangler output (format change?)"
+            exit 1
+          fi
+          echo "worker_url=$url" >> "$GITHUB_OUTPUT"
