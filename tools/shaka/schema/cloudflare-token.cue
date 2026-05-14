@@ -56,6 +56,7 @@ package cloudflare_token
 	"Account Settings:Read" |
 	"Account:Cloudflare Pages:Edit" |
 	"Account:Workers Scripts:Edit" |
+	"Zone:Cache Rules:Edit" |
 	"Zone:Zone:Edit" |
 	"Zone:DNS:Edit" |
 	"User:API Tokens:Edit"
