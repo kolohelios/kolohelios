@@ -7,6 +7,7 @@ pub mod post;
 pub mod slug;
 pub mod stage;
 pub mod storage;
+pub mod sync;
 pub mod target;
 
 pub use error::{Error, Result};

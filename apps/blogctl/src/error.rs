@@ -126,6 +126,20 @@ pub enum Error {
 
     #[error("OpenRouter response contained no choices")]
     OpenrouterEmptyResponse,
+
+    #[error("could not invoke `{command}`: {source}")]
+    JjInvoke {
+        command: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("`{command}` failed (exit {status}): {stderr}")]
+    JjCommandFailed {
+        command: String,
+        status: i32,
+        stderr: String,
+    },
 }
 
 impl Error {
