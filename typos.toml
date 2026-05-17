@@ -14,3 +14,4 @@ extend-exclude = [
 # Add false-positive overrides as they're discovered. Keep entries
 # justified with a brief comment so future readers know why each one is
 # pinned.
+AKS = "AKS" # Azure Kubernetes Service
