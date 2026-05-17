@@ -117,7 +117,11 @@ pub fn run(repo_arg: Option<String>, fix: bool) {
     }
 
     if let Some(rs) = &policy.rulesets {
-        let checks = check_rulesets(&repo, rs);
+        let expected_checks = policy
+            .branch_protection
+            .as_ref()
+            .map(|bp| bp.required_checks.as_slice());
+        let checks = check_rulesets(&repo, rs, expected_checks);
         print_group("Rulesets", &checks);
         has_failure |= checks.iter().any(|c| c.status == Status::Fail);
     }
@@ -412,7 +416,11 @@ fn fix_branch_protection(repo: &str, checks: &[Check], bp: &BranchProtectionPoli
 
 // ── Rulesets ───────────────────────────────────────────────────
 
-fn check_rulesets(repo: &str, policy: &RulesetsPolicy) -> Vec<Check> {
+fn check_rulesets(
+    repo: &str,
+    policy: &RulesetsPolicy,
+    expected_checks: Option<&[String]>,
+) -> Vec<Check> {
     let rulesets = match gh::api_get(&format!("/repos/{repo}/rulesets")) {
         Ok(Value::Array(arr)) => arr,
         Ok(_) => return vec![Check::warn("Rulesets", "unexpected response format")],
@@ -442,6 +450,7 @@ fn check_rulesets(repo: &str, policy: &RulesetsPolicy) -> Vec<Check> {
     let mut has_deletion = false;
     let mut has_non_ff = false;
     let mut has_status_checks = false;
+    let mut observed_check_contexts: Vec<String> = Vec::new();
 
     for rs in &active {
         let id = rs["id"].as_u64().unwrap_or(0);
@@ -451,7 +460,18 @@ fn check_rulesets(repo: &str, policy: &RulesetsPolicy) -> Vec<Check> {
                     match rule["type"].as_str() {
                         Some("deletion") => has_deletion = true,
                         Some("non_fast_forward") => has_non_ff = true,
-                        Some("required_status_checks") => has_status_checks = true,
+                        Some("required_status_checks") => {
+                            has_status_checks = true;
+                            if let Some(contexts) =
+                                rule["parameters"]["required_status_checks"].as_array()
+                            {
+                                for entry in contexts {
+                                    if let Some(ctx) = entry["context"].as_str() {
+                                        observed_check_contexts.push(ctx.to_string());
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -482,6 +502,31 @@ fn check_rulesets(repo: &str, policy: &RulesetsPolicy) -> Vec<Check> {
             "present",
             "missing",
         ));
+        // Cross-check the ruleset's required-check contexts against the
+        // expected list (sourced from `branchProtection.requiredChecks`).
+        // Without an expected list the audit cannot tell whether the
+        // ruleset contexts match policy intent, so it surfaces the policy
+        // gap rather than silently passing.
+        match expected_checks {
+            Some(want) if !want.is_empty() => {
+                let want_set: std::collections::BTreeSet<&str> =
+                    want.iter().map(String::as_str).collect();
+                let observed_set: std::collections::BTreeSet<&str> =
+                    observed_check_contexts.iter().map(String::as_str).collect();
+                checks.push(bool_check(
+                    "Ruleset status check contexts",
+                    want_set == observed_set,
+                    &checks_summary(want),
+                    &format!("expected {:?}, got {:?}", want, observed_check_contexts),
+                ));
+            }
+            _ => {
+                checks.push(Check::fail(
+                    "Ruleset status check contexts",
+                    "policy.rulesets.requireStatusChecks is true but policy.branchProtection.requiredChecks is empty or absent",
+                ));
+            }
+        }
     }
 
     checks
