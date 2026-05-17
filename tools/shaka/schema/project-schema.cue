@@ -45,6 +45,70 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	cache?:       #CacheRules
 }
 
+// Publication target for a `#CiBuild` job. Each variant emits a
+// different post-`nix build` step in the generated `main.yaml` job:
+// `flakehub` runs `DeterminateSystems/flakehub-push`; `artifact` runs
+// `actions/upload-artifact`. Exactly one variant must apply.
+#PublishFlakehub: {
+	kind:       "flakehub"
+	name:       string & =~"^[a-z][a-z0-9-]+/[a-z][a-z0-9-]+$"
+	visibility: "public" | "private"
+	rolling:    bool
+}
+
+#PublishArtifact: {
+	kind:             "artifact"
+	name:             string & !=""
+	path:             string & !=""
+	retentionDays:    int & >=1 & <=90
+	compressionLevel: int & >=0 & <=9
+}
+
+// Cross-repo notification fired after a successful publish step.
+// Authenticated as the `kolohelios-bot` GitHub App; the auth wiring
+// is fixed in the generator, this block only declares the target.
+#Dispatch: {
+	repo:      string & =~"^[a-z][a-z0-9-]+/[a-z][a-z0-9-]+$"
+	eventType: string & !=""
+}
+
+// CI build job for a project. The generated `main.yaml` gets a
+// `build-<jobId>` job that runs after `preflight`, builds via
+// `nix build` (or `nix flake check` when `nixCommand: "check"`), and
+// publishes per `publish`. `dorny/paths-filter` gates the job to PRs
+// that touch this project's path.
+//
+// The `<slot>/<name>` filesystem location of the project drives the
+// build command's path and the FlakeHub `directory` — those aren't
+// duplicated here.
+#CiBuild: {
+	// Key in the `dorny/paths-filter` map and in `changes.outputs.*`.
+	// Usually matches the project name; historically diverged for
+	// `infra/devbox` (filterKey "image") so the field stays explicit.
+	filterKey: string & =~"^[a-z][a-z0-9-]*$"
+
+	// Job identifier — generated job is `build-<jobId>`. Same drift
+	// from project name as `filterKey` (devbox → "image").
+	jobId: string & =~"^[a-z][a-z0-9-]*$"
+
+	// Displayed as `Build <displayName>` in the GitHub UI.
+	displayName: string & !=""
+
+	// `nix build` for derivations; `nix flake check` for lib-only
+	// flakes (e.g. `kolohelios-nix`) where eval is the goal and there
+	// is no build output to publish — the FlakeHub push uploads the
+	// flake source itself.
+	nixCommand: *"build" | "check"
+
+	// Optional attr selector: `nix build ./<slot>/<name>#<attr>`.
+	// Used by `infra/devbox` for `#linodeImage`.
+	attr?: string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"
+
+	publish: #PublishFlakehub | #PublishArtifact
+
+	dispatch?: [...#Dispatch]
+}
+
 // Where a project serves content. Decoupled from `#Deploy` (which is
 // the implementation detail of how the attachment lands) so future
 // projects that register a hostname without an active deploy block
@@ -79,6 +143,9 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 			fail: number & >=0 & <=100
 		}
 	}
+	ci?: {
+		build?: #CiBuild
+	}
 } | {
 	// Rust crate that compiles to wasm32-unknown-unknown and ships
 	// as a Cloudflare Worker. Coverage is optional because cargo-llvm-cov
@@ -110,9 +177,13 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		apply?: {
 			reusable_workflow: =~"^\\./\\.github/workflows/[a-z0-9-]+\\.ya?ml$"
 		}
+		build?: #CiBuild
 	}
 } | {
 	kind: "nix-lib"
+	ci?: {
+		build?: #CiBuild
+	}
 } | {
 	// Pandoc-rendered document project. Source `*.md` files are
 	// rendered to same-named `*.pdf` (via tectonic) and `*.docx` (via
