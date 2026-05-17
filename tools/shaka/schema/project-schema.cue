@@ -113,4 +113,13 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	}
 } | {
 	kind: "nix-lib"
+} | {
+	// Pandoc-rendered document project. Source `*.md` files are
+	// rendered to same-named `*.pdf` (via tectonic) and `*.docx` (via
+	// pandoc's native writer). The generated artifacts are committed,
+	// and `just validate` re-renders to a temp dir and byte-compares
+	// against the committed outputs — drift fails CI. Builds are made
+	// byte-reproducible via `SOURCE_DATE_EPOCH=0` and a pinned nix
+	// closure for the toolchain.
+	kind: "document"
 })

@@ -211,6 +211,85 @@ whitespace-check:
 validate: nix-fmt-check whitespace-check
 "#;
 
+// Pandoc-rendered document project. Each `*.md` at the project root
+// produces a same-named `*.pdf` (tectonic engine) and `*.docx` (pandoc
+// native writer). Generated artifacts are committed; `drift-check`
+// re-renders to a temp dir and byte-compares, so a stale commit fails
+// CI cleanly. Reproducibility is via `SOURCE_DATE_EPOCH=0` (pandoc and
+// tectonic both honor it for PDF metadata and docx zip timestamps).
+const DOCUMENT_TEMPLATE: &str = r#"# `README.md` is project documentation (required by the `readme-present`
+# audit rule), not a deliverable; the build glob skips it.
+build-pdf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    for md in *.md; do
+        [ "$md" = "README.md" ] && continue
+        out="${md%.md}.pdf"
+        echo "  building $out"
+        SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=tectonic -o "$out"
+    done
+
+build-docx:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    for md in *.md; do
+        [ "$md" = "README.md" ] && continue
+        out="${md%.md}.docx"
+        echo "  building $out"
+        SOURCE_DATE_EPOCH=0 pandoc "$md" -o "$out"
+    done
+
+build: build-pdf build-docx
+
+drift-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    drift=0
+    for md in *.md; do
+        [ "$md" = "README.md" ] && continue
+        for ext in pdf docx; do
+            out="${md%.md}.$ext"
+            if [ ! -f "$out" ]; then
+                echo "  MISSING $out (run \`just build\` and commit)"
+                drift=$((drift + 1))
+                continue
+            fi
+            if [ "$ext" = "pdf" ]; then
+                SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=tectonic -o "$tmpdir/$out"
+            else
+                SOURCE_DATE_EPOCH=0 pandoc "$md" -o "$tmpdir/$out"
+            fi
+            if cmp -s "$out" "$tmpdir/$out"; then
+                echo "  ok      $out"
+            else
+                echo "  DRIFT   $out (committed differs from source)"
+                drift=$((drift + 1))
+            fi
+        done
+    done
+    if [ "$drift" -gt 0 ]; then
+        echo >&2
+        echo "error: $drift output(s) drifted from source — run \`just build\` and commit the result" >&2
+        exit 1
+    fi
+
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
+    nix flake check
+
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: drift-check nix-fmt-check flake-check whitespace-check
+"#;
+
 #[derive(Deserialize)]
 struct ProjectMeta {
     #[allow(dead_code)]
@@ -291,6 +370,7 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
             .to_string(),
         ),
         "nix-lib" => Some(NIX_LIB_TEMPLATE.to_string()),
+        "document" => Some(DOCUMENT_TEMPLATE.to_string()),
         _ => None,
     }
 }
@@ -506,6 +586,15 @@ mod tests {
     }
 
     #[test]
+    fn template_for_document_returns_document_template() {
+        let dir = tmp_project("document");
+        assert_eq!(
+            template_for("document", dir.path()).as_deref(),
+            Some(DOCUMENT_TEMPLATE)
+        );
+    }
+
+    #[test]
     fn template_for_unknown_kind_returns_none() {
         let dir = tmp_project("unknown");
         assert!(template_for("python", dir.path()).is_none());
@@ -528,6 +617,7 @@ mod tests {
             INFRA_TEMPLATE_WITH_TF,
             INFRA_TEMPLATE_WITH_TF_BARE,
             INFRA_TEMPLATE_NO_TF,
+            DOCUMENT_TEMPLATE,
         ] {
             assert!(tpl.contains("whitespace-check:"));
             assert!(tpl.contains("../../tools/shaka/bin/shaka whitespace check"));
@@ -547,6 +637,7 @@ mod tests {
             INFRA_TEMPLATE_WITH_TF,
             INFRA_TEMPLATE_WITH_TF_BARE,
             INFRA_TEMPLATE_NO_TF,
+            DOCUMENT_TEMPLATE,
         ] {
             assert!(tpl.contains("nix-fmt-check:"));
             assert!(tpl.contains("nix fmt -- --check"));
@@ -688,5 +779,44 @@ mod tests {
     #[test]
     fn infra_no_tf_template_validate_chain() {
         assert!(INFRA_TEMPLATE_NO_TF.contains("validate: nix-fmt-check whitespace-check\n"));
+    }
+
+    #[test]
+    fn document_template_renders_pdf_via_tectonic() {
+        assert!(DOCUMENT_TEMPLATE.contains("build-pdf:"));
+        assert!(DOCUMENT_TEMPLATE.contains("--pdf-engine=tectonic"));
+    }
+
+    #[test]
+    fn document_template_renders_docx_natively() {
+        assert!(DOCUMENT_TEMPLATE.contains("build-docx:"));
+    }
+
+    #[test]
+    fn document_template_pins_source_date_epoch_for_reproducibility() {
+        // SOURCE_DATE_EPOCH=0 is what makes drift detection work — both
+        // pandoc and tectonic honor it for PDF metadata / docx zip
+        // timestamps, so identical .md input → byte-identical output.
+        assert!(DOCUMENT_TEMPLATE.contains("SOURCE_DATE_EPOCH=0 pandoc"));
+    }
+
+    #[test]
+    fn document_template_drift_check_compares_against_committed_outputs() {
+        assert!(DOCUMENT_TEMPLATE.contains("drift-check:"));
+        assert!(DOCUMENT_TEMPLATE.contains("cmp -s"));
+    }
+
+    #[test]
+    fn document_template_validate_chain_runs_drift_check() {
+        assert!(DOCUMENT_TEMPLATE
+            .contains("validate: drift-check nix-fmt-check flake-check whitespace-check\n"));
+    }
+
+    #[test]
+    fn document_template_skips_readme() {
+        // README.md is the project's documentation (required by audit)
+        // and shouldn't render as a deliverable. Without the skip, every
+        // document project would produce stray README.pdf/.docx outputs.
+        assert!(DOCUMENT_TEMPLATE.contains(r#"[ "$md" = "README.md" ] && continue"#));
     }
 }
