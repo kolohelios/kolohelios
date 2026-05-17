@@ -35,6 +35,8 @@ pub struct Config {
     pub defaults: Defaults,
     #[serde(default)]
     pub themes: BTreeMap<String, ThemeConfig>,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 /// Workdir-wide defaults. Currently just the theme `blogctl new` selects
@@ -66,6 +68,44 @@ pub struct ThemeConfig {
     pub prompts: BTreeMap<String, String>,
 }
 
+/// VCS auto-sync settings. Controls whether write-shaped blogctl
+/// commands commit-and-push through `jj` after the file write.
+///
+/// Defaults: `enabled = true`, `remote = "origin"`, `bookmark = "main"`.
+/// `enabled = false` is the global kill switch for ephemeral workdirs
+/// or CI test runs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyncConfig {
+    #[serde(default = "default_sync_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_sync_remote")]
+    pub remote: String,
+    #[serde(default = "default_sync_bookmark")]
+    pub bookmark: String,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_sync_enabled(),
+            remote: default_sync_remote(),
+            bookmark: default_sync_bookmark(),
+        }
+    }
+}
+
+fn default_sync_enabled() -> bool {
+    true
+}
+
+fn default_sync_remote() -> String {
+    "origin".to_string()
+}
+
+fn default_sync_bookmark() -> String {
+    "main".to_string()
+}
+
 impl Config {
     pub const CURRENT_VERSION: u32 = 1;
 
@@ -78,6 +118,7 @@ impl Config {
             version: Self::CURRENT_VERSION,
             defaults: Defaults::default(),
             themes,
+            sync: SyncConfig::default(),
         }
     }
 }
@@ -570,6 +611,71 @@ mod tests {
         let cfg = repo.read_config().unwrap();
         assert_eq!(cfg.defaults.theme, DEFAULT_THEME);
         assert!(cfg.themes.is_empty());
+    }
+
+    #[test]
+    fn init_seeds_sync_defaults() {
+        let (_tmp, repo) = fresh_repo();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.sync.enabled);
+        assert_eq!(cfg.sync.remote, "origin");
+        assert_eq!(cfg.sync.bookmark, "main");
+    }
+
+    #[test]
+    fn config_without_sync_table_back_fills_defaults() {
+        // Pre-`[sync]` workdir: config has no sync table at all.
+        // Parse must succeed and yield the default SyncConfig so older
+        // workdirs keep working transparently.
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        fs::write(repo.workdir().config_path(), "version = 1\n").unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(cfg.sync, SyncConfig::default());
+    }
+
+    #[test]
+    fn config_with_partial_sync_table_back_fills_per_field_defaults() {
+        // User sets `enabled = false` but leaves remote/bookmark out.
+        // Each missing field should fall back to its own default.
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        fs::write(
+            repo.workdir().config_path(),
+            "version = 1\n[sync]\nenabled = false\n",
+        )
+        .unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert!(!cfg.sync.enabled);
+        assert_eq!(cfg.sync.remote, "origin");
+        assert_eq!(cfg.sync.bookmark, "main");
+    }
+
+    #[test]
+    fn config_with_custom_sync_values_round_trips() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let raw = concat!(
+            "version = 1\n",
+            "[sync]\n",
+            "enabled = true\n",
+            "remote = \"upstream\"\n",
+            "bookmark = \"trunk\"\n",
+        );
+        fs::write(repo.workdir().config_path(), raw).unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.sync.enabled);
+        assert_eq!(cfg.sync.remote, "upstream");
+        assert_eq!(cfg.sync.bookmark, "trunk");
     }
 
     #[test]
