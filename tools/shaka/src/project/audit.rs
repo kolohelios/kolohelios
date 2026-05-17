@@ -41,6 +41,7 @@ pub enum ProjectKind {
     RustWorker,
     Infra,
     NixLib,
+    Document,
 }
 
 impl ProjectKind {
