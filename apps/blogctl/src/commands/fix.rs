@@ -17,7 +17,8 @@ use crate::commands::doctor::{self, Finding};
 use crate::error::{Error, Result};
 use crate::post::Post;
 use crate::stage::Stage;
-use crate::storage::Workdir;
+use crate::storage::{Repository, Workdir};
+use crate::sync::{self, Jj, SyncOptions};
 
 /// Per-finding plan entry — either we'll attempt a repair or we'll
 /// skip with a reason. The order in `plan()` doubles as the apply
@@ -253,7 +254,7 @@ where
     Ok(())
 }
 
-pub fn run(workdir: PathBuf, dry_run: bool) -> Result<()> {
+pub fn run(jj: &dyn Jj, workdir: PathBuf, dry_run: bool, no_sync: bool) -> Result<()> {
     let wd = Workdir::new(&workdir);
     let findings = doctor::audit(&wd)?;
     if findings.is_empty() {
@@ -262,11 +263,42 @@ pub fn run(workdir: PathBuf, dry_run: bool) -> Result<()> {
     }
 
     let plan = plan(findings);
-    let outcomes = apply(&wd, plan, OffsetDateTime::now_utc(), dry_run);
+    // Count repairs that will actually touch the workdir — skips
+    // never write anything, so a plan of all-Skip needs no sync wrap.
+    let attempted = plan
+        .iter()
+        .filter(|r| !matches!(r, Repair::Skip { .. }))
+        .count();
+
+    if dry_run || attempted == 0 {
+        // Dry-run or skip-only plan: no file changes happen, so no
+        // sync. Print outcomes and return.
+        let outcomes = apply(&wd, plan, OffsetDateTime::now_utc(), dry_run);
+        for outcome in &outcomes {
+            println!("{outcome}");
+        }
+        let remaining = outcomes
+            .iter()
+            .filter(|o| !matches!(o, Outcome::Fixed(_)))
+            .count();
+        return if remaining == 0 {
+            Ok(())
+        } else {
+            Err(Error::WorkdirUnhealthy(remaining))
+        };
+    }
+
+    let repo = Repository::open(wd.clone())?;
+    let config = repo.read_config()?;
+    let opts = SyncOptions::from_config(&config.sync, no_sync);
+    let message = format!("chore: fix workdir ({attempted} findings)");
+
+    let outcomes = sync::commit_and_push(jj, &workdir, &opts, &message, || {
+        Ok(apply(&wd, plan, OffsetDateTime::now_utc(), false))
+    })?;
     for outcome in &outcomes {
         println!("{outcome}");
     }
-
     let remaining = outcomes
         .iter()
         .filter(|o| !matches!(o, Outcome::Fixed(_)))
@@ -289,6 +321,7 @@ mod tests {
     use crate::kind::Kind;
     use crate::post::PostMetadata;
     use crate::storage::{Repository, DEFAULT_THEME};
+    use crate::sync::FakeJj;
 
     fn fixture_post(slug: &str, stage: Stage) -> Post {
         Post::new(
@@ -529,7 +562,9 @@ mod tests {
         )
         .unwrap();
 
-        run(tmp.path().to_path_buf(), false).unwrap();
+        // Disable sync via --no-sync (workdir isn't a jj repo).
+        let jj = FakeJj::new();
+        run(&jj, tmp.path().to_path_buf(), false, true).unwrap();
         // doctor should now be clean.
         assert!(doctor::audit(&workdir).unwrap().is_empty());
     }
@@ -539,7 +574,8 @@ mod tests {
         let (tmp, _workdir) = fresh_workdir();
         // A skipped-only finding: stray entry.
         fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
-        let err = run(tmp.path().to_path_buf(), false).unwrap_err();
+        let jj = FakeJj::new();
+        let err = run(&jj, tmp.path().to_path_buf(), false, true).unwrap_err();
         assert!(matches!(err, Error::WorkdirUnhealthy(_)));
     }
 }

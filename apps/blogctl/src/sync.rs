@@ -8,6 +8,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use crate::error::{Error, Result};
+use crate::storage::SyncConfig;
 
 const JJ: &str = "jj";
 
@@ -259,6 +260,133 @@ impl Jj for RealJj {
             }))
         }
     }
+}
+
+/// Per-invocation sync state: a `SyncConfig` (from `.blog-os.toml`)
+/// plus the per-command `--no-sync` flag. Built once at the entry of
+/// each write-shaped command and passed to `commit_and_push`.
+#[derive(Debug, Clone)]
+pub struct SyncOptions {
+    pub config: SyncConfig,
+    pub no_sync_flag: bool,
+}
+
+impl SyncOptions {
+    pub fn from_config(config: &SyncConfig, no_sync_flag: bool) -> Self {
+        Self {
+            config: config.clone(),
+            no_sync_flag,
+        }
+    }
+
+    /// Use built-in defaults — for `init`, which runs before
+    /// `.blog-os.toml` exists.
+    pub fn with_defaults(no_sync_flag: bool) -> Self {
+        Self {
+            config: SyncConfig::default(),
+            no_sync_flag,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.config.enabled && !self.no_sync_flag
+    }
+}
+
+/// Orchestrate one write-shaped blogctl command's commit-and-push:
+///
+/// 1. `status` — if `jj` is missing or workdir isn't a repo, warn to
+///    stderr, then just run `write` and return.
+/// 2. `fetch` — pull the latest `<remote>`. Fetch failure (offline,
+///    no remote configured) warns and skips the rebase, then proceeds
+///    with `new_change` / write / push as usual; push may also fail,
+///    that's fine.
+/// 3. `rebase_onto_remote` — rebase `@` onto `<bookmark>@<remote>`.
+///    Conflicts are a hard error: the user must resolve before
+///    blogctl can continue, otherwise we'd push a conflicted commit.
+/// 4. `new_change(message)` — empty change with the deterministic
+///    template-built message.
+/// 5. `write` — runs the caller's write closure inside the new
+///    change. `jj` auto-snapshots the resulting working-copy state.
+/// 6. `set_bookmark_to_head` — advance the bookmark to `@`.
+/// 7. `push` — best-effort. `Failed` warns to stderr; the command
+///    still exits 0 because the commit is safely local.
+///
+/// If `opts.is_active()` is false (`enabled = false` or `--no-sync`),
+/// the entire jj orchestration is skipped — `write` runs and returns
+/// whatever it produced.
+pub fn commit_and_push<F, T>(
+    jj: &dyn Jj,
+    workdir: &Path,
+    opts: &SyncOptions,
+    message: &str,
+    write: F,
+) -> Result<T>
+where
+    F: FnOnce() -> Result<T>,
+{
+    if !opts.is_active() {
+        return write();
+    }
+
+    match jj.status(workdir)? {
+        Status::Ok => {}
+        Status::JjNotInstalled => {
+            eprintln!("warning: `jj` not on PATH; skipping VCS sync (file write only)");
+            return write();
+        }
+        Status::NotAJjRepo => {
+            eprintln!(
+                "warning: {} is not a `jj` repo; skipping VCS sync (file write only)",
+                workdir.display(),
+            );
+            eprintln!("hint: run `jj git init --colocate` in this workdir to enable sync");
+            return write();
+        }
+    }
+
+    let fetch_ok = match jj.fetch(workdir, &opts.config.remote) {
+        Ok(()) => true,
+        Err(e) => {
+            // Offline, unconfigured remote, or transient network failure.
+            // Skip the rebase and continue — push may also fail, but
+            // the working copy will still be committed locally.
+            eprintln!(
+                "warning: fetch from {} failed: {e}; skipping rebase",
+                opts.config.remote
+            );
+            false
+        }
+    };
+
+    if fetch_ok {
+        match jj.rebase_onto_remote(workdir, &opts.config.bookmark, &opts.config.remote)? {
+            RebaseOutcome::Clean => {}
+            RebaseOutcome::Conflicted => {
+                return Err(Error::SyncRebaseConflict {
+                    bookmark: opts.config.bookmark.clone(),
+                    remote: opts.config.remote.clone(),
+                });
+            }
+        }
+    }
+
+    jj.new_change(workdir, message)?;
+    let result = write()?;
+    jj.set_bookmark_to_head(workdir, &opts.config.bookmark)?;
+
+    match jj.push(workdir, &opts.config.remote, &opts.config.bookmark)? {
+        PushOutcome::Pushed | PushOutcome::NothingToPush => {}
+        PushOutcome::Failed(reason) => {
+            eprintln!(
+                "warning: push to {}/{} failed: {reason}",
+                opts.config.remote, opts.config.bookmark,
+            );
+            eprintln!("hint: commit is local; retry with `jj git push` when ready");
+        }
+    }
+
+    Ok(result)
 }
 
 /// Shell `jj <args>` in `workdir`, treating any non-zero exit as a
@@ -532,5 +660,113 @@ mod tests {
             jj.rebase_onto_remote(&wd(), "main", "origin").unwrap(),
             RebaseOutcome::Conflicted
         );
+    }
+
+    fn active_opts() -> SyncOptions {
+        SyncOptions::with_defaults(false)
+    }
+
+    #[test]
+    fn commit_and_push_runs_full_flow_in_order() {
+        let jj = FakeJj::new();
+        let executed = std::cell::Cell::new(false);
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        })
+        .unwrap();
+        assert!(executed.get());
+        let calls = jj.calls();
+        assert_eq!(calls.len(), 6, "got: {calls:?}");
+        assert!(matches!(calls[0], Call::Status { .. }));
+        assert!(matches!(calls[1], Call::Fetch { .. }));
+        assert!(matches!(calls[2], Call::Rebase { .. }));
+        assert!(matches!(
+            calls[3],
+            Call::NewChange { ref message, .. } if message == "msg"
+        ));
+        assert!(matches!(calls[4], Call::SetBookmark { .. }));
+        assert!(matches!(calls[5], Call::Push { .. }));
+    }
+
+    #[test]
+    fn commit_and_push_skips_jj_when_disabled() {
+        let jj = FakeJj::new();
+        let mut opts = active_opts();
+        opts.config.enabled = false;
+        let executed = std::cell::Cell::new(false);
+        commit_and_push(&jj, &wd(), &opts, "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        })
+        .unwrap();
+        assert!(executed.get(), "write must run even when sync is disabled");
+        assert!(jj.calls().is_empty(), "no jj calls when sync is disabled");
+    }
+
+    #[test]
+    fn commit_and_push_skips_jj_when_no_sync_flag_set() {
+        let jj = FakeJj::new();
+        let opts = SyncOptions::with_defaults(true);
+        commit_and_push(&jj, &wd(), &opts, "msg", || Ok::<(), Error>(())).unwrap();
+        assert!(jj.calls().is_empty());
+    }
+
+    #[test]
+    fn commit_and_push_skips_jj_calls_when_jj_not_installed() {
+        let jj = FakeJj::new().with_status(Status::JjNotInstalled);
+        let executed = std::cell::Cell::new(false);
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        })
+        .unwrap();
+        assert!(executed.get(), "write still runs even without jj");
+        // Only the initial status check should have fired.
+        assert_eq!(jj.calls().len(), 1);
+        assert!(matches!(jj.calls()[0], Call::Status { .. }));
+    }
+
+    #[test]
+    fn commit_and_push_skips_jj_calls_when_not_a_jj_repo() {
+        let jj = FakeJj::new().with_status(Status::NotAJjRepo);
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || Ok::<(), Error>(())).unwrap();
+        assert_eq!(jj.calls().len(), 1);
+    }
+
+    #[test]
+    fn commit_and_push_hard_fails_on_rebase_conflict() {
+        let jj = FakeJj::new().with_rebase_outcome(RebaseOutcome::Conflicted);
+        let executed = std::cell::Cell::new(false);
+        let err = commit_and_push(&jj, &wd(), &active_opts(), "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        })
+        .unwrap_err();
+        assert!(matches!(err, Error::SyncRebaseConflict { .. }));
+        assert!(
+            !executed.get(),
+            "write must NOT run when rebase produced conflicts"
+        );
+        let calls = jj.calls();
+        // Status, Fetch, Rebase — then bail.
+        assert_eq!(calls.len(), 3);
+        assert!(!calls
+            .iter()
+            .any(|c| matches!(c, Call::NewChange { .. } | Call::Push { .. })));
+    }
+
+    #[test]
+    fn commit_and_push_succeeds_when_push_fails_best_effort() {
+        let jj = FakeJj::new().with_push_outcome(PushOutcome::Failed("non-FF".into()));
+        let executed = std::cell::Cell::new(false);
+        let result = commit_and_push(&jj, &wd(), &active_opts(), "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        });
+        assert!(result.is_ok(), "push failure must NOT fail the command");
+        assert!(executed.get(), "write must still have run");
+        // Full call sequence happened, including push.
+        assert_eq!(jj.calls().len(), 6);
     }
 }
