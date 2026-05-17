@@ -7,14 +7,17 @@ use crate::kind::Kind;
 use crate::post::{Post, PostMetadata};
 use crate::stage::Stage;
 use crate::storage::{Repository, Workdir};
+use crate::sync::{self, Jj, SyncOptions};
 use crate::{slug, Error};
 
 pub fn run(
+    jj: &dyn Jj,
     title: String,
     workdir: PathBuf,
     slug_override: Option<String>,
     kind: Kind,
     theme: Option<String>,
+    no_sync: bool,
 ) -> Result<()> {
     if title.trim().is_empty() {
         return Err(Error::EmptyTitle(title));
@@ -35,22 +38,31 @@ pub fn run(
         });
     }
 
-    let now = OffsetDateTime::now_utc();
-    let metadata = PostMetadata {
-        title,
-        slug: resolved_slug.clone(),
-        kind,
-        theme: resolved_theme,
-        status: Stage::Concept,
-        created_at: now,
-        updated_at: now,
-        tags: vec![],
-        todoist_task_id: None,
-        history_checked: false,
-        targets: vec![],
-    };
-    let post = Post::new(metadata, "");
-    let path = repo.create_post(&post)?;
+    let message = format!(
+        "post({}): draft \"{}\"",
+        resolved_slug,
+        title.replace('"', "\\\"")
+    );
+    let opts = SyncOptions::from_config(&config.sync, no_sync);
+
+    let path = sync::commit_and_push(jj, &workdir, &opts, &message, || {
+        let now = OffsetDateTime::now_utc();
+        let metadata = PostMetadata {
+            title,
+            slug: resolved_slug.clone(),
+            kind,
+            theme: resolved_theme,
+            status: Stage::Concept,
+            created_at: now,
+            updated_at: now,
+            tags: vec![],
+            todoist_task_id: None,
+            history_checked: false,
+            targets: vec![],
+        };
+        let post = Post::new(metadata, "");
+        repo.create_post(&post)
+    })?;
     println!("created {}", path.display());
     Ok(())
 }

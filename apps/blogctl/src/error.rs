@@ -140,6 +140,11 @@ pub enum Error {
         status: i32,
         stderr: String,
     },
+
+    #[error(
+        "rebase of @ onto {bookmark}@{remote} produced conflicts — resolve via `jj` before re-running blogctl"
+    )]
+    SyncRebaseConflict { bookmark: String, remote: String },
 }
 
 impl Error {

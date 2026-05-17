@@ -8,6 +8,7 @@ use crate::commands;
 use crate::error::Result;
 use crate::kind::Kind;
 use crate::openrouter;
+use crate::sync::{Jj, RealJj};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -25,6 +26,9 @@ pub enum Command {
     Init {
         #[arg(long, value_name = "PATH")]
         workdir: PathBuf,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
     },
     /// Create a new post in the `concept` stage.
     New {
@@ -43,6 +47,9 @@ pub enum Command {
         /// `defaults.theme`; must be declared in `[themes.*]`.
         #[arg(long)]
         theme: Option<String>,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
     },
     /// List every post in the workdir, grouped by stage.
     List {
@@ -60,12 +67,18 @@ pub enum Command {
         slug: String,
         #[arg(long, value_name = "PATH")]
         workdir: PathBuf,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
     },
     /// Move a post one stage back.
     Demote {
         slug: String,
         #[arg(long, value_name = "PATH")]
         workdir: PathBuf,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
     },
     /// Manage the generated workdir `README.md`.
     Readme {
@@ -87,6 +100,9 @@ pub enum Command {
         /// Print the plan without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
     },
     /// LLM interaction subcommands.
     Ai {
@@ -120,33 +136,55 @@ pub enum ReadmeAction {
     Regenerate {
         #[arg(long, value_name = "PATH")]
         workdir: PathBuf,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
     },
 }
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    dispatch(cli.command)
+    let jj = RealJj;
+    dispatch_with_jj(cli.command, &jj)
 }
 
-pub fn dispatch(cmd: Command) -> Result<()> {
+/// Dispatch with a caller-provided `Jj` impl. Tests use this entry
+/// point with a `FakeJj` to assert on the sync call sequence without
+/// shelling out to a real `jj` binary.
+pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
     match cmd {
-        Command::Init { workdir } => commands::init::run(workdir),
+        Command::Init { workdir, no_sync } => commands::init::run(jj, workdir, no_sync),
         Command::New {
             title,
             workdir,
             slug,
             kind,
             theme,
-        } => commands::new::run(title, workdir, slug, kind, theme),
+            no_sync,
+        } => commands::new::run(jj, title, workdir, slug, kind, theme, no_sync),
         Command::List { workdir } => commands::list::run(workdir),
         Command::Show { slug, workdir } => commands::show::run(slug, workdir),
-        Command::Promote { slug, workdir } => commands::promote::run(slug, workdir),
-        Command::Demote { slug, workdir } => commands::demote::run(slug, workdir),
+        Command::Promote {
+            slug,
+            workdir,
+            no_sync,
+        } => commands::promote::run(jj, slug, workdir, no_sync),
+        Command::Demote {
+            slug,
+            workdir,
+            no_sync,
+        } => commands::demote::run(jj, slug, workdir, no_sync),
         Command::Readme { action } => match action {
-            ReadmeAction::Regenerate { workdir } => commands::readme::regenerate(workdir),
+            ReadmeAction::Regenerate { workdir, no_sync } => {
+                commands::readme::regenerate(jj, workdir, no_sync)
+            }
         },
         Command::Doctor { workdir } => commands::doctor::run(workdir),
-        Command::Fix { workdir, dry_run } => commands::fix::run(workdir, dry_run),
+        Command::Fix {
+            workdir,
+            dry_run,
+            no_sync,
+        } => commands::fix::run(jj, workdir, dry_run, no_sync),
         Command::Ai { action } => match action {
             AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
         },
@@ -168,6 +206,7 @@ mod tests {
     fn cli_parses_each_subcommand() {
         for args in [
             vec!["blogctl", "init", "--workdir", "/tmp/wd"],
+            vec!["blogctl", "init", "--workdir", "/tmp/wd", "--no-sync"],
             vec!["blogctl", "new", "Hello", "--workdir", "/tmp/wd"],
             vec![
                 "blogctl",
@@ -196,14 +235,47 @@ mod tests {
                 "--theme",
                 "parable",
             ],
+            vec![
+                "blogctl",
+                "new",
+                "Hello",
+                "--workdir",
+                "/tmp/wd",
+                "--no-sync",
+            ],
             vec!["blogctl", "list", "--workdir", "/tmp/wd"],
             vec!["blogctl", "show", "hello", "--workdir", "/tmp/wd"],
             vec!["blogctl", "promote", "hello", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "promote",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--no-sync",
+            ],
             vec!["blogctl", "demote", "hello", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "demote",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--no-sync",
+            ],
             vec!["blogctl", "readme", "regenerate", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "readme",
+                "regenerate",
+                "--workdir",
+                "/tmp/wd",
+                "--no-sync",
+            ],
             vec!["blogctl", "doctor", "--workdir", "/tmp/wd"],
             vec!["blogctl", "fix", "--workdir", "/tmp/wd"],
             vec!["blogctl", "fix", "--workdir", "/tmp/wd", "--dry-run"],
+            vec!["blogctl", "fix", "--workdir", "/tmp/wd", "--no-sync"],
             vec!["blogctl", "ai", "ping", "hello"],
             vec![
                 "blogctl",
