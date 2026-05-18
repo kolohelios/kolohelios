@@ -26,6 +26,8 @@ struct Ci {
     apply: Option<CiApply>,
     #[serde(default)]
     build: Option<super::main_workflow::CiBuild>,
+    #[serde(default)]
+    deploy: Option<super::worker_deploy_workflow::CiDeploy>,
 }
 
 #[derive(Deserialize)]
@@ -68,10 +70,21 @@ pub fn run(check: bool) {
             }
             if let Some(build) = ci.build {
                 build_specs.push(super::main_workflow::MainBuildSpec {
-                    project_dir: stripped_dir,
+                    project_dir: stripped_dir.clone(),
                     project_name: meta.name.clone(),
                     build,
                 });
+            }
+            if let Some(deploy) = ci.deploy {
+                let spec = super::worker_deploy_workflow::WorkerDeploySpec {
+                    project_dir: stripped_dir,
+                    project_name: meta.name.clone(),
+                    deploy,
+                };
+                let workflow = super::worker_deploy_workflow::build(&spec);
+                let target =
+                    PathBuf::from(".github/workflows").join(format!("{}-deploy.yml", meta.name));
+                items.push((target, workflow::emit(&workflow)));
             }
         }
     }
@@ -123,6 +136,8 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
     jobs.insert(
         "apply".to_string(),
         Job::ReusableCall(ReusableCall {
+            needs: super::workflow::Needs::Multiple(vec![]),
+            if_: None,
             uses: apply.reusable_workflow.clone(),
             with,
             secrets,
