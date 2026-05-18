@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use crate::classifications::Classifications;
 use crate::error::{Error, Result};
 use crate::kind::Kind;
 use crate::stage::Stage;
@@ -39,6 +40,13 @@ pub struct PostMetadata {
     /// Default `[]` keeps existing files parsing unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<TargetEntry>,
+    /// Structured tag dimensions (format, hook, tone, audience,
+    /// strategic role, theme). Sits alongside the free-form `tags`
+    /// list. Defaults to empty; skipped from serialization when no
+    /// dimension has a value so posts predating the field stay
+    /// quiet in their frontmatter.
+    #[serde(default, skip_serializing_if = "Classifications::is_empty")]
+    pub classifications: Classifications,
 }
 
 fn default_theme() -> String {
@@ -195,6 +203,7 @@ mod tests {
             todoist_task_id: None,
             history_checked: false,
             targets: vec![],
+            classifications: Default::default(),
         }
     }
 
@@ -492,6 +501,92 @@ Body.
                 published_at: None,
             },
         ];
+        let original = Post::new(metadata, "Body.\n");
+        let rendered = original.render().unwrap();
+        let reparsed = parse(&rendered).unwrap();
+        assert_eq!(reparsed.metadata, original.metadata);
+    }
+
+    #[test]
+    fn parse_classifications_from_frontmatter() {
+        let raw = r#"---
+title: "T"
+slug: t
+kind: post
+theme: standard
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+classifications:
+  format: thesis
+  hook: contradiction
+  theme:
+    - ambiguity
+    - delivery
+---
+
+body
+"#;
+        let post = parse(raw).unwrap();
+        assert_eq!(
+            post.metadata.classifications.format.as_deref(),
+            Some("thesis")
+        );
+        assert_eq!(
+            post.metadata.classifications.hook.as_deref(),
+            Some("contradiction")
+        );
+        assert_eq!(post.metadata.classifications.theme.len(), 2);
+        // Dimensions not set in YAML stay at their defaults.
+        assert!(post.metadata.classifications.tone.is_none());
+        assert!(post.metadata.classifications.audience.is_none());
+        assert!(post.metadata.classifications.strategic_role.is_none());
+    }
+
+    #[test]
+    fn parse_omitted_classifications_defaults_to_empty() {
+        // Pre-#433 frontmatter — no classifications: key at all.
+        let raw = r#"---
+title: "Pre-classifications"
+slug: pre-classifications
+kind: post
+theme: standard
+status: concept
+created_at: 2026-05-03T00:00:00Z
+updated_at: 2026-05-03T00:00:00Z
+tags: []
+---
+
+body
+"#;
+        let post = parse(raw).unwrap();
+        assert!(post.metadata.classifications.is_empty());
+    }
+
+    #[test]
+    fn render_omits_empty_classifications_from_yaml() {
+        let metadata = fixture_metadata();
+        assert!(metadata.classifications.is_empty());
+        let post = Post::new(metadata, "Body.\n");
+        let rendered = post.render().unwrap();
+        assert!(
+            !rendered.contains("classifications"),
+            "empty classifications must be skipped in output: {rendered}"
+        );
+    }
+
+    #[test]
+    fn render_round_trips_post_with_classifications() {
+        let mut metadata = fixture_metadata();
+        metadata.classifications = Classifications {
+            format: Some("thesis".into()),
+            hook: Some("contradiction".into()),
+            tone: Some("sharp".into()),
+            audience: Some("engineering".into()),
+            strategic_role: Some("career-brand".into()),
+            theme: vec!["ambiguity".into(), "delivery".into()],
+        };
         let original = Post::new(metadata, "Body.\n");
         let rendered = original.render().unwrap();
         let reparsed = parse(&rendered).unwrap();

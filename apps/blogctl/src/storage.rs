@@ -178,7 +178,10 @@ pub enum AuditedPost {
     Parsed {
         dir_stage: Stage,
         path: PathBuf,
-        post: Post,
+        // Boxed because `Post` carries `PostMetadata`, which (with
+        // classifications + targets + tags) is large; an unboxed
+        // variant bloats every enum slot by the same amount.
+        post: Box<Post>,
     },
     ParseFailed {
         dir_stage: Stage,
@@ -461,7 +464,7 @@ impl Repository {
                     Ok(post) => out.push(AuditedPost::Parsed {
                         dir_stage: stage,
                         path,
-                        post,
+                        post: Box::new(post),
                     }),
                     Err(error) => out.push(AuditedPost::ParseFailed {
                         dir_stage: stage,
@@ -554,6 +557,7 @@ mod tests {
                 todoist_task_id: None,
                 history_checked: false,
                 targets: vec![],
+                classifications: Default::default(),
             },
             "body\n",
         )

@@ -304,6 +304,7 @@ mod tests {
                 todoist_task_id: None,
                 history_checked: false,
                 targets: vec![],
+                classifications: Default::default(),
             },
             "body\n",
         )
