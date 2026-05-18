@@ -1,3 +1,4 @@
+pub mod classifications;
 pub mod cli;
 pub mod commands;
 pub mod error;
@@ -10,6 +11,7 @@ pub mod storage;
 pub mod sync;
 pub mod target;
 
+pub use classifications::Classifications;
 pub use error::{Error, Result};
 pub use kind::Kind;
 pub use post::{Post, PostMetadata};
