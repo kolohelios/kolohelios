@@ -418,6 +418,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "hcl-edit",
+ "indexmap",
  "serde",
  "serde_json",
  "serde_yaml_ng",

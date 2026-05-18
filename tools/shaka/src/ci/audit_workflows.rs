@@ -25,7 +25,6 @@ const HAND_AUTHORED: &[&str] = &[
     "tf-apply.yml",
     "cf-deploy.yml",
     // Per-project workflows pending migration (sub-issues of #43)
-    "main.yaml",
     "kolohelios-portfolio-deploy.yml",
     // Repo-event-driven
     "auto-rebase-prs.yaml",
@@ -44,6 +43,8 @@ struct ProjectMeta {
 struct Ci {
     #[serde(default)]
     apply: Option<serde_json::Value>,
+    #[serde(default)]
+    build: Option<serde_json::Value>,
 }
 
 pub fn run() {
@@ -117,7 +118,7 @@ fn audit() -> Result<(), Vec<PathBuf>> {
 }
 
 /// Filenames the generator would emit for the current project set.
-/// Sourced from each project.cue's `ci.apply` block; extend as new
+/// Sourced from each project.cue's `ci:` block; extend as new
 /// generated-workflow kinds land (e.g. `ci.deploy` → `<name>-deploy.yml`).
 fn generated_filenames() -> Vec<String> {
     let schema_path = match schema_check::write_schema() {
@@ -125,14 +126,24 @@ fn generated_filenames() -> Vec<String> {
         Err(_) => return Vec::new(),
     };
     let mut out = Vec::new();
+    let mut any_build = false;
     for project_dir in schema_check::discover(Path::new(".")) {
         if let Ok(meta) = read_meta(&schema_path, &project_dir) {
             if let Some(ci) = meta.ci {
                 if ci.apply.is_some() {
                     out.push(format!("{}-apply.yml", meta.name));
                 }
+                if ci.build.is_some() {
+                    any_build = true;
+                }
             }
         }
+    }
+    // `main.yaml` is generated as a single file aggregating every
+    // project with `ci.build`. Account for it when any project
+    // declares the block.
+    if any_build {
+        out.push("main.yaml".to_string());
     }
     out
 }
