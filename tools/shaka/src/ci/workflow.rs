@@ -90,6 +90,10 @@ pub enum Job {
 
 #[derive(Serialize, Debug)]
 pub struct ReusableCall {
+    #[serde(skip_serializing_if = "Needs::is_empty")]
+    pub needs: Needs,
+    #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
+    pub if_: Option<String>,
     pub uses: String,
     pub with: BTreeMap<String, String>,
     pub secrets: BTreeMap<String, String>,
@@ -214,6 +218,8 @@ mod tests {
                 m.insert(
                     "apply".to_string(),
                     Job::ReusableCall(ReusableCall {
+                        needs: Needs::Multiple(vec![]),
+                        if_: None,
                         uses: "./.github/workflows/tf-apply.yml".into(),
                         with: {
                             let mut w = BTreeMap::new();
