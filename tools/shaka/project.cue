@@ -11,4 +11,17 @@ package project
 			fail: 20
 		}
 	}
+	ci: {
+		build: {
+			filterKey:   "shaka"
+			jobId:       "shaka"
+			displayName: "shaka"
+			publish: {
+				kind:       "flakehub"
+				name:       "kolohelios/shaka"
+				visibility: "public"
+				rolling:    true
+			}
+		}
+	}
 }
