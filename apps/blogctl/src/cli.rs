@@ -179,7 +179,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 commands::readme::regenerate(jj, workdir, no_sync)
             }
         },
-        Command::Doctor { workdir } => commands::doctor::run(workdir),
+        Command::Doctor { workdir } => commands::doctor::run(jj, workdir),
         Command::Fix {
             workdir,
             dry_run,

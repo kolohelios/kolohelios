@@ -52,6 +52,7 @@ pub enum SkipReason {
     StrayEntry,
     ConfigMissing,
     ConfigUnparsable,
+    UnpushedCommits,
 }
 
 impl fmt::Display for SkipReason {
@@ -63,6 +64,9 @@ impl fmt::Display for SkipReason {
             Self::StrayEntry => "manual: review the file and remove or relocate it",
             Self::ConfigMissing => "manual: run `blogctl init` or restore .blog-os.toml",
             Self::ConfigUnparsable => "manual: edit .blog-os.toml by hand",
+            Self::UnpushedCommits => {
+                "manual: investigate auto-push (network? auth? wrong bookmark name?)"
+            }
         };
         f.write_str(s)
     }
@@ -115,6 +119,10 @@ pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
             f @ Finding::ConfigUnparsable { .. } => skips.push(Repair::Skip {
                 finding: f,
                 reason: SkipReason::ConfigUnparsable,
+            }),
+            f @ Finding::UnpushedCommitsStale { .. } => skips.push(Repair::Skip {
+                finding: f,
+                reason: SkipReason::UnpushedCommits,
             }),
         }
     }

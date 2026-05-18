@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
+use time::OffsetDateTime;
+
 use crate::error::{Error, Result};
 use crate::storage::SyncConfig;
 
@@ -45,6 +47,17 @@ pub enum RebaseOutcome {
     /// Rebase completed but produced conflict markers — the user must
     /// resolve via `jj` before blogctl can proceed.
     Conflicted,
+}
+
+/// Summary of commits on `<bookmark>` that are not yet on
+/// `<bookmark>@<remote>`. Surfaced by `doctor` to catch the case
+/// where auto-push has been silently failing for a while.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnpushedSummary {
+    /// How many commits are on the local bookmark but not the remote.
+    pub count: usize,
+    /// Hours since the oldest of those commits was authored.
+    pub oldest_age_hours: i64,
 }
 
 /// The `jj` operations blogctl needs. Behind a trait so tests can swap
@@ -96,6 +109,19 @@ pub trait Jj: Send + Sync {
     /// creation on the remote (`--allow-new`). Push is best-effort —
     /// see `PushOutcome`.
     fn push(&self, workdir: &Path, remote: &str, bookmark: &str) -> Result<PushOutcome>;
+
+    /// Summarize commits on `<bookmark>` that are not yet on
+    /// `<bookmark>@<remote>`. Returns `None` when there are no
+    /// unpushed commits or when the remote ref doesn't exist (a
+    /// brand-new bookmark before its first successful push). `now`
+    /// is injected so tests are deterministic.
+    fn unpushed_summary(
+        &self,
+        workdir: &Path,
+        bookmark: &str,
+        remote: &str,
+        now: OffsetDateTime,
+    ) -> Result<Option<UnpushedSummary>>;
 }
 
 /// Real `jj` binary. Each method shells out via `std::process::Command`;
@@ -259,6 +285,50 @@ impl Jj for RealJj {
                 stderr
             }))
         }
+    }
+
+    fn unpushed_summary(
+        &self,
+        workdir: &Path,
+        bookmark: &str,
+        remote: &str,
+        now: OffsetDateTime,
+    ) -> Result<Option<UnpushedSummary>> {
+        // Revset: commits reachable from <bookmark> but not from
+        // <bookmark>@<remote>. Template prints unix epoch seconds for
+        // each commit's author timestamp, one per line.
+        let revset = format!("{bookmark}@{remote}..{bookmark}");
+        let template = "author.timestamp().format(\"%s\") ++ \"\\n\"";
+        let out = Command::new(JJ)
+            .args(["log", "-r", revset.as_str(), "--no-graph", "-T", template])
+            .current_dir(workdir)
+            .output()
+            .map_err(|source| Error::JjInvoke {
+                command: format!("{JJ} log -r {revset} -T <author-ts>"),
+                source,
+            })?;
+        if !out.status.success() {
+            // Usually means <bookmark>@<remote> doesn't exist yet
+            // (first push pending). Treat as "no unpushed-from-remote
+            // info"; doctor's other findings will still surface real
+            // problems.
+            return Ok(None);
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let mut timestamps: Vec<i64> = stdout
+            .lines()
+            .filter_map(|s| s.trim().parse::<i64>().ok())
+            .collect();
+        if timestamps.is_empty() {
+            return Ok(None);
+        }
+        timestamps.sort_unstable();
+        let oldest = OffsetDateTime::from_unix_timestamp(timestamps[0]).unwrap_or(now);
+        let age = now - oldest;
+        Ok(Some(UnpushedSummary {
+            count: timestamps.len(),
+            oldest_age_hours: age.whole_hours(),
+        }))
     }
 }
 
@@ -427,6 +497,7 @@ struct FakeState {
     status: Option<Status>,
     rebase_outcome: Option<RebaseOutcome>,
     push_outcome: Option<PushOutcome>,
+    unpushed_summary: Option<Option<UnpushedSummary>>,
 }
 
 /// One recorded call against `FakeJj`. Tests pop these and assert.
@@ -457,6 +528,11 @@ pub enum Call {
         remote: String,
         bookmark: String,
     },
+    UnpushedSummary {
+        workdir: PathBuf,
+        bookmark: String,
+        remote: String,
+    },
 }
 
 impl FakeJj {
@@ -482,6 +558,14 @@ impl FakeJj {
     /// `PushOutcome::Pushed` when unset.
     pub fn with_push_outcome(self, o: PushOutcome) -> Self {
         self.inner.lock().unwrap().push_outcome = Some(o);
+        self
+    }
+
+    /// Force `unpushed_summary()` to return `s`. Default is
+    /// `Ok(None)` (no unpushed commits) when unset. Pass
+    /// `Some(Some(summary))` for a positive result.
+    pub fn with_unpushed_summary(self, s: Option<UnpushedSummary>) -> Self {
+        self.inner.lock().unwrap().unpushed_summary = Some(s);
         self
     }
 
@@ -547,6 +631,22 @@ impl Jj for FakeJj {
             bookmark: bookmark.to_string(),
         });
         Ok(s.push_outcome.clone().unwrap_or(PushOutcome::Pushed))
+    }
+
+    fn unpushed_summary(
+        &self,
+        workdir: &Path,
+        bookmark: &str,
+        remote: &str,
+        _now: OffsetDateTime,
+    ) -> Result<Option<UnpushedSummary>> {
+        let mut s = self.inner.lock().unwrap();
+        s.calls.push(Call::UnpushedSummary {
+            workdir: workdir.to_path_buf(),
+            bookmark: bookmark.to_string(),
+            remote: remote.to_string(),
+        });
+        Ok(s.unpushed_summary.clone().unwrap_or(None))
     }
 }
 
