@@ -10,6 +10,7 @@ pub mod stage;
 pub mod storage;
 pub mod sync;
 pub mod target;
+pub mod taxonomy;
 
 pub use classifications::Classifications;
 pub use error::{Error, Result};
@@ -18,3 +19,4 @@ pub use post::{Post, PostMetadata};
 pub use stage::Stage;
 pub use storage::{Repository, Workdir};
 pub use target::{Target, TargetEntry, TargetStatus};
+pub use taxonomy::{Dimension, Taxonomy};

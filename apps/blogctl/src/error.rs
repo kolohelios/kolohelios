@@ -150,6 +150,17 @@ pub enum Error {
         "`blogctl {0}` is not yet implemented (CLI surface only; behavior lands in a follow-up)"
     )]
     Unimplemented(&'static str),
+
+    #[error(
+        "invalid classification in {path}: {dimension}={value:?} is not in the taxonomy. allowed values: {}",
+        allowed.join(", "),
+    )]
+    InvalidClassification {
+        path: PathBuf,
+        dimension: String,
+        value: String,
+        allowed: Vec<String>,
+    },
 }
 
 impl Error {

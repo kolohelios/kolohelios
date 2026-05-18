@@ -11,6 +11,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::taxonomy::{Taxonomy, Violation};
+
 /// One classification per dimension. Every field is optional or
 /// defaulted so older posts (predating this field) parse transparently
 /// via `#[serde(default)]` on `PostMetadata::classifications`.
@@ -59,6 +61,70 @@ impl Classifications {
             && self.audience.is_none()
             && self.strategic_role.is_none()
             && self.theme.is_empty()
+    }
+
+    /// Enumerate every value not allowed by `taxonomy`. Dimensions
+    /// the taxonomy doesn't declare are skipped silently — that lets
+    /// the user phase a dimension in or out of `.blog-os.toml`
+    /// without invalidating posts in the meantime.
+    ///
+    /// Returns every violation in one pass (doctor consumes the
+    /// full list); fail-fast callers wrap this in
+    /// `validate(&Taxonomy)`.
+    pub fn violations(&self, taxonomy: &Taxonomy) -> Vec<Violation> {
+        let mut out = Vec::new();
+        for (name, opt) in self.single_valued_entries() {
+            let Some(value) = opt else { continue };
+            let Some(dim) = taxonomy.dimension(name) else {
+                continue;
+            };
+            if !dim.allows(value) {
+                out.push(Violation {
+                    dimension: name.to_string(),
+                    value: value.to_string(),
+                    allowed: dim.values.clone(),
+                });
+            }
+        }
+        for (name, values) in self.multi_valued_entries() {
+            let Some(dim) = taxonomy.dimension(name) else {
+                continue;
+            };
+            for value in values {
+                if !dim.allows(value) {
+                    out.push(Violation {
+                        dimension: name.to_string(),
+                        value: value.clone(),
+                        allowed: dim.values.clone(),
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    /// Convenience: `Ok(())` when every classified value is allowed,
+    /// `Err` on the first violation. Repository load paths use this;
+    /// doctor uses `violations()` directly to enumerate.
+    pub fn validate(&self, taxonomy: &Taxonomy) -> Result<(), Violation> {
+        match self.violations(taxonomy).into_iter().next() {
+            Some(v) => Err(v),
+            None => Ok(()),
+        }
+    }
+
+    fn single_valued_entries(&self) -> [(&'static str, Option<&str>); 5] {
+        [
+            ("format", self.format.as_deref()),
+            ("hook", self.hook.as_deref()),
+            ("tone", self.tone.as_deref()),
+            ("audience", self.audience.as_deref()),
+            ("strategic_role", self.strategic_role.as_deref()),
+        ]
+    }
+
+    fn multi_valued_entries(&self) -> [(&'static str, &[String]); 1] {
+        [("theme", &self.theme)]
     }
 }
 
@@ -146,5 +212,74 @@ mod tests {
         let yaml = serde_yaml_ng::to_string(&c).unwrap();
         let back: Classifications = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn validate_accepts_every_v1_value() {
+        let c = full();
+        let t = Taxonomy::current_v1();
+        assert_eq!(c.violations(&t), vec![]);
+        assert!(c.validate(&t).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_typo_in_single_valued_dimension() {
+        let c = Classifications {
+            format: Some("thesys".into()),
+            ..Default::default()
+        };
+        let t = Taxonomy::current_v1();
+        let err = c.validate(&t).expect_err("should reject typo");
+        assert_eq!(err.dimension, "format");
+        assert_eq!(err.value, "thesys");
+        // Error carries the allowed list — it's its own cheat sheet.
+        assert!(err.allowed.contains(&"thesis".to_string()));
+    }
+
+    #[test]
+    fn validate_rejects_unknown_theme_element() {
+        // Only the bad element shows up — the good one is silent.
+        let c = Classifications {
+            theme: vec!["ambiguity".into(), "made-up".into()],
+            ..Default::default()
+        };
+        let v = c.violations(&Taxonomy::current_v1());
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].dimension, "theme");
+        assert_eq!(v[0].value, "made-up");
+    }
+
+    #[test]
+    fn violations_lists_every_bad_value_in_one_pass() {
+        let c = Classifications {
+            format: Some("madeup-format".into()),
+            tone: Some("madeup-tone".into()),
+            theme: vec!["madeup-theme".into()],
+            ..Default::default()
+        };
+        let v = c.violations(&Taxonomy::current_v1());
+        assert_eq!(v.len(), 3);
+        let dims: Vec<&str> = v.iter().map(|x| x.dimension.as_str()).collect();
+        assert!(dims.contains(&"format"));
+        assert!(dims.contains(&"tone"));
+        assert!(dims.contains(&"theme"));
+    }
+
+    #[test]
+    fn validate_silent_on_dimensions_taxonomy_does_not_declare() {
+        // Empty taxonomy — nothing to validate against, nothing to reject.
+        let c = full();
+        let t = Taxonomy::default();
+        assert!(c.violations(&t).is_empty());
+        assert!(c.validate(&t).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_unset_dimensions_even_with_taxonomy() {
+        // A post that hasn't been classified yet — every dim is None —
+        // must validate cleanly against any taxonomy.
+        let c = Classifications::default();
+        let t = Taxonomy::current_v1();
+        assert!(c.validate(&t).is_ok());
     }
 }

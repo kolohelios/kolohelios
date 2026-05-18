@@ -69,6 +69,14 @@ pub enum Finding {
         bookmark: String,
         remote: String,
     },
+    /// A classification value on `path` is not in the workdir's
+    /// declared taxonomy (`[classifications.<dimension>]`).
+    InvalidClassification {
+        path: PathBuf,
+        dimension: String,
+        value: String,
+        allowed: Vec<String>,
+    },
 }
 
 impl fmt::Display for Finding {
@@ -133,6 +141,17 @@ impl fmt::Display for Finding {
             } => write!(
                 f,
                 "{count} unpushed commit(s) on {bookmark}; oldest is {oldest_age_hours}h old (auto-push to {remote} may be failing silently)",
+            ),
+            Self::InvalidClassification {
+                path,
+                dimension,
+                value,
+                allowed,
+            } => write!(
+                f,
+                "invalid classification in {}: {dimension}={value:?} is not in the taxonomy (allowed: {})",
+                path.display(),
+                allowed.join(", "),
             ),
         }
     }
@@ -204,6 +223,18 @@ pub fn audit(workdir: &Workdir) -> Result<Vec<Finding>> {
                             path: path.clone(),
                             theme: meta.theme.clone(),
                             known: cfg.themes.keys().cloned().collect(),
+                        });
+                    }
+                    // Run taxonomy validation per dimension and emit
+                    // one finding per violation — doctor enumerates,
+                    // unlike Repository::load which fail-fasts.
+                    let taxonomy = crate::taxonomy::Taxonomy::new(cfg.classifications.clone());
+                    for v in meta.classifications.violations(&taxonomy) {
+                        findings.push(Finding::InvalidClassification {
+                            path: path.clone(),
+                            dimension: v.dimension,
+                            value: v.value,
+                            allowed: v.allowed,
                         });
                     }
                 }
@@ -497,6 +528,77 @@ mod tests {
         assert!(findings
             .iter()
             .any(|f| matches!(f, Finding::StrayEntry { .. })));
+    }
+
+    #[test]
+    fn audit_flags_invalid_classifications_per_dimension() {
+        let (tmp, workdir) = fresh_workdir();
+        let mut post = fixture_post("multi-bad", Stage::Concept);
+        // Two bad single-valued dims + one bad theme element.
+        post.metadata.classifications.format = Some("not-a-format".into());
+        post.metadata.classifications.tone = Some("brisk".into());
+        post.metadata.classifications.theme.push("ambiguity".into()); // good
+        post.metadata
+            .classifications
+            .theme
+            .push("made-up-theme".into()); // bad
+        fs::write(
+            tmp.path().join("concepts/multi-bad.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        let invalid: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| matches!(f, Finding::InvalidClassification { .. }))
+            .collect();
+        assert_eq!(
+            invalid.len(),
+            3,
+            "expected one finding per bad value: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn audit_silent_on_classifications_when_taxonomy_is_empty() {
+        // Wipe the taxonomy in the config; doctor should accept any
+        // classification value (permissive on undeclared dimensions).
+        let (tmp, workdir) = fresh_workdir();
+        // Erase `[classifications.*]` by writing a minimal config.
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            "version = 1\n[themes.standard]\n",
+        )
+        .unwrap();
+
+        let mut post = fixture_post("anything", Stage::Concept);
+        post.metadata.classifications.format = Some("whatever-i-want".into());
+        fs::write(
+            tmp.path().join("concepts/anything.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        assert!(!findings
+            .iter()
+            .any(|f| matches!(f, Finding::InvalidClassification { .. })));
+    }
+
+    #[test]
+    fn invalid_classification_finding_lists_allowed_values() {
+        let f = Finding::InvalidClassification {
+            path: PathBuf::from("concepts/typo.md"),
+            dimension: "format".into(),
+            value: "thesys".into(),
+            allowed: vec!["thesis".into(), "essay".into()],
+        };
+        let rendered = format!("{f}");
+        assert!(rendered.contains("thesys"));
+        assert!(rendered.contains("thesis"));
+        assert!(rendered.contains("essay"));
+        assert!(rendered.contains("format"));
     }
 
     #[test]
