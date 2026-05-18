@@ -493,12 +493,14 @@ Body.
                 status: TargetStatus::Published,
                 url: Some("https://www.linkedin.com/posts/example".into()),
                 published_at: Some(datetime!(2026-05-08 14:32:00 UTC)),
+                metrics: None,
             },
             TargetEntry {
                 name: Target::Blog,
                 status: TargetStatus::Planned,
                 url: None,
                 published_at: None,
+                metrics: None,
             },
         ];
         let original = Post::new(metadata, "Body.\n");
@@ -574,6 +576,29 @@ body
             !rendered.contains("classifications"),
             "empty classifications must be skipped in output: {rendered}"
         );
+    }
+
+    #[test]
+    fn render_round_trips_post_with_target_metrics() {
+        use crate::target::{Target, TargetEntry, TargetMetrics, TargetStatus};
+        let mut metadata = fixture_metadata();
+        metadata.targets = vec![TargetEntry {
+            name: Target::Linkedin,
+            status: TargetStatus::Published,
+            url: Some("https://www.linkedin.com/posts/example".into()),
+            published_at: Some(datetime!(2026-05-08 14:32:00 UTC)),
+            metrics: Some(TargetMetrics {
+                impressions: 1842,
+                reactions: 67,
+                comments: 14,
+                reposts: 5,
+                sampled_at: datetime!(2026-05-14 00:00:00 UTC),
+            }),
+        }];
+        let original = Post::new(metadata, "Body.\n");
+        let rendered = original.render().unwrap();
+        let reparsed = parse(&rendered).unwrap();
+        assert_eq!(reparsed.metadata, original.metadata);
     }
 
     #[test]

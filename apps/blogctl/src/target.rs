@@ -92,6 +92,23 @@ impl FromStr for TargetStatus {
     }
 }
 
+/// Performance numbers observed for a target at a point in time.
+/// Held on `TargetEntry` rather than the post root because the same
+/// post on LinkedIn vs. a blog will have different numbers.
+///
+/// `sampled_at` is when these counts were last refreshed (a manual
+/// `metrics update` action) — older samples grow stale. Engagement
+/// rate and post age are derived in the analytics module, not stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetMetrics {
+    pub impressions: u64,
+    pub reactions: u64,
+    pub comments: u64,
+    pub reposts: u64,
+    #[serde(with = "time::serde::rfc3339")]
+    pub sampled_at: OffsetDateTime,
+}
+
 /// One entry in a post's `targets:` list. `url` and `published_at` are
 /// required when `status == Published` and optional otherwise; the
 /// invariant is enforced at parse time, not by the type.
@@ -107,6 +124,11 @@ pub struct TargetEntry {
         skip_serializing_if = "Option::is_none"
     )]
     pub published_at: Option<OffsetDateTime>,
+    /// Latest observed metrics for this target. `None` while the
+    /// target has never been measured (the common state for drafts
+    /// and for posts on a venue without analytics surfaced yet).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<TargetMetrics>,
 }
 
 #[cfg(test)]
@@ -185,5 +207,57 @@ mod tests {
         // skip_serializing_if drops the empty optional fields entirely
         assert!(!rendered.contains("url"));
         assert!(!rendered.contains("published_at"));
+        assert!(!rendered.contains("metrics"));
+    }
+
+    #[test]
+    fn target_metrics_round_trip() {
+        let raw = concat!(
+            "impressions: 1842\n",
+            "reactions: 67\n",
+            "comments: 14\n",
+            "reposts: 5\n",
+            "sampled_at: 2026-05-14T00:00:00Z\n",
+        );
+        let parsed: TargetMetrics = serde_yaml_ng::from_str(raw).unwrap();
+        assert_eq!(parsed.impressions, 1842);
+        assert_eq!(parsed.reactions, 67);
+        assert_eq!(parsed.comments, 14);
+        assert_eq!(parsed.reposts, 5);
+
+        let rendered = serde_yaml_ng::to_string(&parsed).unwrap();
+        let reparsed: TargetMetrics = serde_yaml_ng::from_str(&rendered).unwrap();
+        assert_eq!(reparsed, parsed);
+    }
+
+    #[test]
+    fn target_entry_with_metrics_round_trips() {
+        let raw = concat!(
+            "name: linkedin\n",
+            "status: published\n",
+            "url: https://www.linkedin.com/posts/x\n",
+            "published_at: 2026-05-08T14:32:00Z\n",
+            "metrics:\n",
+            "  impressions: 1842\n",
+            "  reactions: 67\n",
+            "  comments: 14\n",
+            "  reposts: 5\n",
+            "  sampled_at: 2026-05-14T00:00:00Z\n",
+        );
+        let parsed: TargetEntry = serde_yaml_ng::from_str(raw).unwrap();
+        let m = parsed.metrics.as_ref().expect("metrics present");
+        assert_eq!(m.impressions, 1842);
+
+        let rendered = serde_yaml_ng::to_string(&parsed).unwrap();
+        let reparsed: TargetEntry = serde_yaml_ng::from_str(&rendered).unwrap();
+        assert_eq!(reparsed, parsed);
+    }
+
+    #[test]
+    fn target_entry_without_metrics_parses_unchanged() {
+        // Pre-#433 frontmatter — no `metrics:` key on the target.
+        let raw = "name: blog\nstatus: planned\n";
+        let parsed: TargetEntry = serde_yaml_ng::from_str(raw).unwrap();
+        assert!(parsed.metrics.is_none());
     }
 }
