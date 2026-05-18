@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use indexmap::IndexMap;
 use serde::Deserialize;
 
 use crate::project::schema_check;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 use super::workflow::{
-    self, Concurrency, Empty, Job, On, PermissionLevel, Permissions, PushTrigger, ReusableCall,
-    Workflow,
+    self, CancelInProgress, Concurrency, Empty, Job, On, PermissionLevel, Permissions, PushTrigger,
+    ReusableCall, Workflow,
 };
 
 #[derive(Deserialize)]
@@ -23,6 +24,8 @@ struct ProjectMeta {
 struct Ci {
     #[serde(default)]
     apply: Option<CiApply>,
+    #[serde(default)]
+    build: Option<super::main_workflow::CiBuild>,
 }
 
 #[derive(Deserialize)]
@@ -40,6 +43,7 @@ pub fn run(check: bool) {
     };
 
     let mut items: Vec<(PathBuf, String)> = Vec::new();
+    let mut build_specs: Vec<super::main_workflow::MainBuildSpec> = Vec::new();
     for project_dir in schema_check::discover(Path::new(".")) {
         let meta = match read_meta(&schema_path, &project_dir) {
             Ok(m) => m,
@@ -51,6 +55,10 @@ pub fn run(check: bool) {
                 std::process::exit(1);
             }
         };
+        let stripped_dir = project_dir
+            .strip_prefix("./")
+            .unwrap_or(&project_dir)
+            .to_path_buf();
         if let Some(ci) = meta.ci {
             if let Some(apply) = ci.apply {
                 let workflow = build_apply_workflow(&meta.name, &project_dir, &apply);
@@ -58,9 +66,24 @@ pub fn run(check: bool) {
                     PathBuf::from(".github/workflows").join(format!("{}-apply.yml", meta.name));
                 items.push((target, workflow::emit(&workflow)));
             }
+            if let Some(build) = ci.build {
+                build_specs.push(super::main_workflow::MainBuildSpec {
+                    project_dir: stripped_dir,
+                    project_name: meta.name.clone(),
+                    build,
+                });
+            }
         }
     }
     items.sort_by(|a, b| a.0.cmp(&b.0));
+
+    if !build_specs.is_empty() {
+        let main_workflow = super::main_workflow::build(&build_specs);
+        items.push((
+            PathBuf::from(".github/workflows/main.yaml"),
+            workflow::emit(&main_workflow),
+        ));
+    }
 
     if check {
         check_drift(&items);
@@ -96,7 +119,7 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
         "${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}".to_string(),
     );
 
-    let mut jobs = BTreeMap::new();
+    let mut jobs = IndexMap::new();
     jobs.insert(
         "apply".to_string(),
         Job::ReusableCall(ReusableCall {
@@ -127,7 +150,7 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
         }),
         concurrency: Some(Concurrency {
             group: format!("{name}-apply"),
-            cancel_in_progress: "false".to_string(),
+            cancel_in_progress: CancelInProgress::Bool(false),
         }),
         jobs,
     }

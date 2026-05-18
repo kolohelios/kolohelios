@@ -5,6 +5,7 @@ use clap::Subcommand;
 mod audit_workflows;
 mod gate;
 mod generate;
+mod main_workflow;
 mod mask_and_run;
 mod workflow;
 

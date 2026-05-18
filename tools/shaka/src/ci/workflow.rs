@@ -1,8 +1,13 @@
 use std::collections::BTreeMap;
 
+use indexmap::IndexMap;
 use serde::Serialize;
 use serde_yaml_ng::Value;
 
+/// `IndexMap` preserves the insertion order of jobs so generated
+/// workflows read top-to-bottom in a deliberate sequence
+/// (e.g. `changes → preflight → build-* → gate`). `BTreeMap` would
+/// alphabetize, which obscures that flow.
 #[derive(Serialize, Debug)]
 pub struct Workflow {
     pub name: String,
@@ -11,7 +16,7 @@ pub struct Workflow {
     pub permissions: Option<Permissions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub concurrency: Option<Concurrency>,
-    pub jobs: BTreeMap<String, Job>,
+    pub jobs: IndexMap<String, Job>,
 }
 
 #[derive(Serialize, Debug, Default)]
@@ -58,18 +63,26 @@ pub enum PermissionLevel {
 }
 
 /// `cancel-in-progress` may be a literal bool or a templated GitHub
-/// expression (`${{ ... }}`). Modeled as a string so callers can emit
-/// either; YAML parses both forms as the same field value.
+/// expression (`${{ ... }}`). Untagged disjunction so both forms emit
+/// as the right YAML shape — bool gets `true`/`false`, expression
+/// gets the bare `${{ ... }}` text. `actionlint` rejects quoted
+/// strings here.
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+pub enum CancelInProgress {
+    Bool(bool),
+    Expression(String),
+}
+
 #[derive(Serialize, Debug)]
 pub struct Concurrency {
     pub group: String,
     #[serde(rename = "cancel-in-progress")]
-    pub cancel_in_progress: String,
+    pub cancel_in_progress: CancelInProgress,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
-#[allow(dead_code)] // Inline jobs are first consumed by the main.yaml emitter (next commit).
 pub enum Job {
     ReusableCall(ReusableCall),
     Inline(InlineJob),
@@ -87,7 +100,6 @@ pub struct ReusableCall {
 /// Actions; serde_yaml_ng emits them as the matching YAML shape.
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
-#[allow(dead_code)] // First consumer is the main.yaml emitter (next commit).
 pub enum Needs {
     Single(String),
     Multiple(Vec<String>),
@@ -103,7 +115,6 @@ impl Needs {
 }
 
 #[derive(Serialize, Debug)]
-#[allow(dead_code)] // First consumer is the main.yaml emitter (next commit).
 pub struct InlineJob {
     pub name: String,
     #[serde(skip_serializing_if = "Needs::is_empty")]
@@ -127,14 +138,12 @@ pub struct InlineJob {
 /// block in either form.
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
-#[allow(dead_code)] // First consumer is the main.yaml emitter (next commit).
 pub enum Step {
     Action(ActionStep),
     Run(RunStep),
 }
 
 #[derive(Serialize, Debug)]
-#[allow(dead_code)] // First consumer is the main.yaml emitter (next commit).
 pub struct ActionStep {
     pub uses: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -152,9 +161,11 @@ pub struct ActionStep {
 }
 
 #[derive(Serialize, Debug)]
-#[allow(dead_code)] // First consumer is the main.yaml emitter (next commit).
 pub struct RunStep {
-    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
     pub if_: Option<String>,
     pub run: String,
@@ -196,10 +207,10 @@ mod tests {
             }),
             concurrency: Some(Concurrency {
                 group: format!("{name}-apply"),
-                cancel_in_progress: "false".to_string(),
+                cancel_in_progress: CancelInProgress::Bool(false),
             }),
             jobs: {
-                let mut m = BTreeMap::new();
+                let mut m = IndexMap::new();
                 m.insert(
                     "apply".to_string(),
                     Job::ReusableCall(ReusableCall {
@@ -262,7 +273,7 @@ mod tests {
 
     #[test]
     fn inline_job_with_action_step_emits_runs_on() {
-        let mut jobs = BTreeMap::new();
+        let mut jobs = IndexMap::new();
         jobs.insert(
             "preflight".to_string(),
             Job::Inline(InlineJob {
