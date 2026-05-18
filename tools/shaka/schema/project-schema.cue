@@ -109,6 +109,29 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	dispatch?: [...#Dispatch]
 }
 
+// CI deploy job for a Cloudflare Worker project. The generator emits
+// `.github/workflows/<name>-deploy.yml` wrapping the shared
+// `cf-deploy.yml` reusable workflow: verify (PR), preview (PR), comment
+// (PR), and deploy (push:main). The `cleanup` job that runs on
+// pull_request:closed stays in a hand-authored sibling
+// `<name>-cleanup.yml` — its trigger and concern don't overlap with
+// the rest of the deploy lifecycle.
+//
+// The `<slot>/<name>` filesystem location of the project drives the
+// `project_dir` input to the reusable workflow; not duplicated here.
+#CiDeploy: {
+	// Reusable workflow this project's deploy delegates to. Must match
+	// the cf-deploy.yml form for the generated verify/preview/deploy
+	// jobs to make sense.
+	reusableWorkflow: =~"^\\./\\.github/workflows/[a-z0-9-]+\\.ya?ml$"
+
+	// PR preview Worker name template: the emitter generates
+	// `<previewScriptPrefix>-pr-${{ github.event.pull_request.number }}`
+	// as the `script_name_override` for the preview job and as the
+	// `--name` flag for the sibling cleanup workflow.
+	previewScriptPrefix: string & =~"^[a-z][a-z0-9-]*$"
+}
+
 // Where a project serves content. Decoupled from `#Deploy` (which is
 // the implementation detail of how the attachment lands) so future
 // projects that register a hostname without an active deploy block
@@ -163,6 +186,9 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		}
 	}
 	deploy?: #Deploy
+	ci?: {
+		deploy?: #CiDeploy
+	}
 } | {
 	kind: "infra"
 	// CI/CD workflow configuration. Workflow files under
