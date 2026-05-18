@@ -324,6 +324,24 @@ impl Repository {
     /// frontmatter status, or if any classification value is not in
     /// the workdir's taxonomy.
     pub fn load(&self, slug: &str) -> Result<(PostHandle, Post)> {
+        let (handle, post) = self.load_raw(slug)?;
+        let taxonomy = self.read_taxonomy()?;
+        if let Err(v) = post.metadata.classifications.validate(&taxonomy) {
+            return Err(Error::InvalidClassification {
+                path: handle.path.clone(),
+                dimension: v.dimension,
+                value: v.value,
+                allowed: v.allowed,
+            });
+        }
+        Ok((handle, post))
+    }
+
+    /// Like `load`, but skips taxonomy validation. The `classify`
+    /// command uses this so a post with stale/invalid classifications
+    /// can still be rewritten to a valid set — otherwise the very
+    /// tool meant to fix the problem would be blocked by it.
+    pub fn load_raw(&self, slug: &str) -> Result<(PostHandle, Post)> {
         let (stage, path) = self
             .locate(slug)?
             .ok_or_else(|| Error::PostNotFound(slug.to_string()))?;
@@ -334,15 +352,6 @@ impl Repository {
                 slug: slug.to_string(),
                 dir_stage: stage,
                 fm_stage: post.metadata.status,
-            });
-        }
-        let taxonomy = self.read_taxonomy()?;
-        if let Err(v) = post.metadata.classifications.validate(&taxonomy) {
-            return Err(Error::InvalidClassification {
-                path: path.clone(),
-                dimension: v.dimension,
-                value: v.value,
-                allowed: v.allowed,
             });
         }
         let handle = PostHandle {

@@ -310,6 +310,178 @@ fn doctor_does_not_surface_stale_finding_when_push_is_current() {
 }
 
 #[test]
+fn classify_drives_full_sync_with_changed_dimensions_in_message() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Hello".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+
+    let jj = FakeJj::new();
+    commands::classify::run(
+        &jj,
+        commands::classify::ClassifyArgs {
+            slug: "hello".into(),
+            workdir: path.clone(),
+            format: Some("thesis".into()),
+            hook: Some("contradiction".into()),
+            theme: vec!["ambiguity".into(), "delivery".into()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_full_sync_flow(&jj.calls(), "post(hello): classify (format,hook,theme)");
+
+    // And the post on disk now carries the new classifications.
+    let raw = fs::read_to_string(path.join("concepts/hello.md")).unwrap();
+    assert!(raw.contains("format: thesis"));
+    assert!(raw.contains("hook: contradiction"));
+    assert!(raw.contains("ambiguity"));
+    assert!(raw.contains("delivery"));
+}
+
+#[test]
+fn classify_with_invalid_value_fails_before_any_write() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Hi".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+
+    let pre = fs::read_to_string(path.join("concepts/hi.md")).unwrap();
+
+    let jj = FakeJj::new();
+    let err = commands::classify::run(
+        &jj,
+        commands::classify::ClassifyArgs {
+            slug: "hi".into(),
+            workdir: path.clone(),
+            format: Some("not-a-format".into()),
+            ..Default::default()
+        },
+    )
+    .expect_err("invalid value must hard-fail");
+    assert!(
+        matches!(err, blogctl::Error::InvalidClassification { ref dimension, .. } if dimension == "format"),
+        "got: {err:?}"
+    );
+
+    // File on disk is unchanged AND no jj calls fired.
+    let post = fs::read_to_string(path.join("concepts/hi.md")).unwrap();
+    assert_eq!(post, pre, "file must be untouched");
+    assert!(
+        jj.calls().is_empty(),
+        "jj must not be called: {:?}",
+        jj.calls()
+    );
+}
+
+#[test]
+fn classify_with_no_changes_skips_sync() {
+    // Set classifications once, then run classify again with the same
+    // values — nothing changes, so no commit, no push, no jj noise.
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Stable".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+
+    commands::classify::run(
+        &FakeJj::new(),
+        commands::classify::ClassifyArgs {
+            slug: "stable".into(),
+            workdir: path.clone(),
+            format: Some("thesis".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // Second invocation with the same value → no-op.
+    let jj = FakeJj::new();
+    commands::classify::run(
+        &jj,
+        commands::classify::ClassifyArgs {
+            slug: "stable".into(),
+            workdir: path.clone(),
+            format: Some("thesis".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        jj.calls().is_empty(),
+        "no-op classify must not call jj: {:?}",
+        jj.calls()
+    );
+}
+
+#[test]
+fn classify_can_repair_post_whose_existing_classification_is_invalid() {
+    // The user typo'd `format: thesys` in the past (or removed a value
+    // from the taxonomy). `classify` must still be able to load and
+    // rewrite the post — otherwise the only fix tool is blocked by
+    // the problem it's meant to fix.
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Repair".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    // Plant the typo by hand-editing the file (simulates a stale post).
+    let post_path = path.join("concepts/repair.md");
+    let raw = fs::read_to_string(&post_path).unwrap();
+    let with_typo = raw.replace(
+        "tags: []\n",
+        "tags: []\nclassifications:\n  format: thesys\n",
+    );
+    fs::write(&post_path, with_typo).unwrap();
+
+    // Now classify with a valid value — should succeed and overwrite.
+    let jj = FakeJj::new();
+    commands::classify::run(
+        &jj,
+        commands::classify::ClassifyArgs {
+            slug: "repair".into(),
+            workdir: path.clone(),
+            format: Some("thesis".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let fixed = fs::read_to_string(&post_path).unwrap();
+    assert!(fixed.contains("format: thesis"));
+    assert!(!fixed.contains("thesys"));
+}
+
+#[test]
 fn rebase_conflict_is_a_hard_error_and_aborts_the_write() {
     let (_tmp, path) = workdir();
     commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
