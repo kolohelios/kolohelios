@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod classifications;
 pub mod cli;
 pub mod commands;
@@ -12,6 +13,7 @@ pub mod sync;
 pub mod target;
 pub mod taxonomy;
 
+pub use analytics::DerivedMetrics;
 pub use classifications::Classifications;
 pub use error::{Error, Result};
 pub use kind::Kind;
