@@ -95,7 +95,10 @@ pub struct ReusableCall {
     #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
     pub if_: Option<String>,
     pub uses: String,
-    pub with: BTreeMap<String, String>,
+    /// Inputs to the reusable workflow. Values keep their YAML type
+    /// (string / bool / number) so a `type: boolean` input declared
+    /// in the callee receives `true` rather than `'true'`.
+    pub with: BTreeMap<String, Value>,
     pub secrets: BTreeMap<String, String>,
 }
 
@@ -120,7 +123,8 @@ impl Needs {
 
 #[derive(Serialize, Debug)]
 pub struct InlineJob {
-    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(skip_serializing_if = "Needs::is_empty")]
     pub needs: Needs,
     #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
@@ -223,7 +227,10 @@ mod tests {
                         uses: "./.github/workflows/tf-apply.yml".into(),
                         with: {
                             let mut w = BTreeMap::new();
-                            w.insert("project_dir".to_string(), project_dir.to_string());
+                            w.insert(
+                                "project_dir".to_string(),
+                                Value::String(project_dir.to_string()),
+                            );
                             w
                         },
                         secrets: {
@@ -283,7 +290,7 @@ mod tests {
         jobs.insert(
             "preflight".to_string(),
             Job::Inline(InlineJob {
-                name: "Preflight".to_string(),
+                name: Some("Preflight".to_string()),
                 needs: Needs::Single("changes".to_string()),
                 if_: None,
                 runs_on: "ubuntu-latest".to_string(),

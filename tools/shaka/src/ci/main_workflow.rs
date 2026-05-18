@@ -156,7 +156,7 @@ fn changes_job(specs: &[MainBuildSpec]) -> InlineJob {
     filter_with.insert("filters".to_string(), Value::String(filter_body));
 
     InlineJob {
-        name: "Detect changes".to_string(),
+        name: Some("Detect changes".to_string()),
         needs: Needs::Multiple(vec![]),
         if_: None,
         runs_on: "ubuntu-latest".to_string(),
@@ -255,7 +255,7 @@ fn preflight_job() -> InlineJob {
     );
 
     InlineJob {
-        name: "Preflight".to_string(),
+        name: Some("Preflight".to_string()),
         needs: Needs::Single("changes".to_string()),
         if_: None,
         runs_on: "ubuntu-latest".to_string(),
@@ -447,7 +447,7 @@ fn build_job(spec: &MainBuildSpec) -> InlineJob {
     }
 
     InlineJob {
-        name: format!("Build {}", spec.build.display_name),
+        name: Some(format!("Build {}", spec.build.display_name)),
         needs: Needs::Multiple(vec!["preflight".to_string(), "changes".to_string()]),
         if_: Some(if_cond),
         runs_on: "ubuntu-latest".to_string(),
@@ -537,7 +537,7 @@ fn gate_job(specs: &[MainBuildSpec]) -> InlineJob {
     nix_install_with.insert("flakehub".to_string(), Value::Bool(true));
 
     InlineJob {
-        name: "Gate".to_string(),
+        name: Some("Gate".to_string()),
         needs: Needs::Multiple(needs_list),
         if_: Some("always()".to_string()),
         runs_on: "ubuntu-latest".to_string(),

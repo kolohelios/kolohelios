@@ -124,7 +124,10 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
         .to_string();
 
     let mut with = BTreeMap::new();
-    with.insert("project_dir".to_string(), project_dir_str.clone());
+    with.insert(
+        "project_dir".to_string(),
+        serde_yaml_ng::Value::String(project_dir_str.clone()),
+    );
 
     let mut secrets = BTreeMap::new();
     secrets.insert(

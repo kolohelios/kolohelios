@@ -26,4 +26,10 @@ package project
 			bypassPaths: ["/api/"]
 		}
 	}
+	ci: {
+		deploy: {
+			reusableWorkflow:    "./.github/workflows/cf-deploy.yml"
+			previewScriptPrefix: "kolohelios-portfolio"
+		}
+	}
 }

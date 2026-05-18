@@ -122,7 +122,7 @@ fn changes_job(spec: &WorkerDeploySpec) -> InlineJob {
     filter_with.insert("filters".to_string(), Value::String(filter_body));
 
     InlineJob {
-        name: "Detect changes".to_string(),
+        name: Some("Detect changes".to_string()),
         needs: Needs::Multiple(vec![]),
         if_: None,
         runs_on: "ubuntu-latest".to_string(),
@@ -174,12 +174,12 @@ echo "ref=$BASE" >> "$GITHUB_OUTPUT"
 // ── verify / preview / deploy: cf-deploy.yml callers ─────────────────────
 
 fn verify_call(spec: &WorkerDeploySpec) -> ReusableCall {
-    let mut with: BTreeMap<String, String> = BTreeMap::new();
+    let mut with: BTreeMap<String, Value> = BTreeMap::new();
     with.insert(
         "project_dir".to_string(),
-        spec.project_dir.to_string_lossy().to_string(),
+        Value::String(spec.project_dir.to_string_lossy().to_string()),
     );
-    with.insert("verify_only".to_string(), "true".to_string());
+    with.insert("verify_only".to_string(), Value::Bool(true));
     ReusableCall {
         needs: Needs::Single("changes".to_string()),
         if_: Some(pr_gate()),
@@ -190,17 +190,17 @@ fn verify_call(spec: &WorkerDeploySpec) -> ReusableCall {
 }
 
 fn preview_call(spec: &WorkerDeploySpec) -> ReusableCall {
-    let mut with: BTreeMap<String, String> = BTreeMap::new();
+    let mut with: BTreeMap<String, Value> = BTreeMap::new();
     with.insert(
         "project_dir".to_string(),
-        spec.project_dir.to_string_lossy().to_string(),
+        Value::String(spec.project_dir.to_string_lossy().to_string()),
     );
     with.insert(
         "script_name_override".to_string(),
-        format!(
+        Value::String(format!(
             "{}-pr-${{{{ github.event.pull_request.number }}}}",
             spec.deploy.preview_script_prefix,
-        ),
+        )),
     );
     ReusableCall {
         needs: Needs::Multiple(vec!["changes".to_string(), "verify".to_string()]),
@@ -212,12 +212,12 @@ fn preview_call(spec: &WorkerDeploySpec) -> ReusableCall {
 }
 
 fn deploy_call(spec: &WorkerDeploySpec) -> ReusableCall {
-    let mut with: BTreeMap<String, String> = BTreeMap::new();
+    let mut with: BTreeMap<String, Value> = BTreeMap::new();
     with.insert(
         "project_dir".to_string(),
-        spec.project_dir.to_string_lossy().to_string(),
+        Value::String(spec.project_dir.to_string_lossy().to_string()),
     );
-    with.insert("verify_only".to_string(), "false".to_string());
+    with.insert("verify_only".to_string(), Value::Bool(false));
     // `workflow_dispatch` bypasses the changes filter so a manual
     // re-deploy isn't blocked by an unchanged push base. Real
     // `push: main` deploys still gate on the filter.
@@ -287,7 +287,8 @@ fi
     );
 
     InlineJob {
-        name: "comment".to_string(),
+        // Match the hand-authored shape — no display name on this job.
+        name: None,
         needs: Needs::Multiple(vec!["changes".to_string(), "preview".to_string()]),
         if_: Some(
             "github.event_name == 'pull_request' && needs.changes.outputs.portfolio == 'true'"
