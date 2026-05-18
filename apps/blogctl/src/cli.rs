@@ -9,6 +9,7 @@ use crate::error::Result;
 use crate::kind::Kind;
 use crate::openrouter;
 use crate::sync::{Jj, RealJj};
+use crate::target::Target;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -109,6 +110,67 @@ pub enum Command {
         #[command(subcommand)]
         action: AiAction,
     },
+    /// Set classification dimensions on a post (format, hook, tone,
+    /// audience, strategic-role, theme). Missing flags leave the
+    /// existing value alone; `--clear-<dim>` removes it.
+    Classify {
+        slug: String,
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        hook: Option<String>,
+        #[arg(long)]
+        tone: Option<String>,
+        #[arg(long)]
+        audience: Option<String>,
+        #[arg(long)]
+        strategic_role: Option<String>,
+        /// Comma-separated list of themes. Replaces the existing
+        /// theme list entirely.
+        #[arg(long, value_delimiter = ',')]
+        theme: Vec<String>,
+        #[arg(long)]
+        clear_format: bool,
+        #[arg(long)]
+        clear_hook: bool,
+        #[arg(long)]
+        clear_tone: bool,
+        #[arg(long)]
+        clear_audience: bool,
+        #[arg(long)]
+        clear_strategic_role: bool,
+        #[arg(long)]
+        clear_theme: bool,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
+    /// Per-target performance metrics (impressions, reactions,
+    /// comments, reposts).
+    Metrics {
+        #[command(subcommand)]
+        action: MetricsAction,
+    },
+    /// Walk every published post and fill in missing classifications
+    /// + metrics interactively, or batch-import from a JSON file.
+    Backfill {
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        /// Path to a JSON file of per-slug classifications/metrics
+        /// entries. When set, runs in non-interactive batch mode.
+        #[arg(long, value_name = "PATH")]
+        import: Option<PathBuf>,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
+    /// Analytics across classifications + metrics. Read-only.
+    Analytics {
+        #[command(subcommand)]
+        action: AnalyticsAction,
+    },
     #[command(hide = true)]
     Completions { shell: Shell },
 }
@@ -139,6 +201,87 @@ pub enum ReadmeAction {
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MetricsAction {
+    /// Set the latest observed metrics for a target on a post.
+    Update {
+        slug: String,
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        #[arg(long, value_enum)]
+        target: Target,
+        #[arg(long)]
+        impressions: u64,
+        #[arg(long)]
+        reactions: u64,
+        #[arg(long)]
+        comments: u64,
+        #[arg(long)]
+        reposts: u64,
+        /// RFC 3339 timestamp. Defaults to `now()` if omitted.
+        #[arg(long, value_name = "RFC3339")]
+        sampled_at: Option<String>,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
+    /// Print the latest metrics for every target on a post.
+    Show {
+        slug: String,
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AnalyticsAction {
+    /// Per-dimension counts and median engagement for every
+    /// classification value across the workdir.
+    Summary {
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        #[arg(long, value_enum)]
+        target: Option<Target>,
+        /// Limit to one dimension (e.g. `format`). Omit to report
+        /// every dimension.
+        #[arg(long)]
+        dimension: Option<String>,
+        /// Emit machine-readable JSON instead of formatted text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Pairwise crosstab of two dimensions plus their marginals.
+    Compare {
+        /// First dimension (e.g. `format`).
+        dim_a: String,
+        /// Second dimension (e.g. `hook`).
+        dim_b: String,
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        #[arg(long, value_enum)]
+        target: Option<Target>,
+        /// Suppress cells with fewer than this many posts from the
+        /// text output; JSON still includes them tagged `low_n`.
+        #[arg(long, default_value_t = 3)]
+        min_n: usize,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Surface heuristic patterns with explicit hedge language.
+    Recommendations {
+        #[arg(long, value_name = "PATH")]
+        workdir: PathBuf,
+        #[arg(long, value_enum)]
+        target: Option<Target>,
+        /// Posts-per-cell threshold for "high confidence" heuristics.
+        /// Below this count, observations are flagged as
+        /// "insufficient data".
+        #[arg(long, default_value_t = 5)]
+        min_n: usize,
     },
 }
 
@@ -187,6 +330,120 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
         } => commands::fix::run(jj, workdir, dry_run, no_sync),
         Command::Ai { action } => match action {
             AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
+        },
+        Command::Classify {
+            slug,
+            workdir,
+            format,
+            hook,
+            tone,
+            audience,
+            strategic_role,
+            theme,
+            clear_format,
+            clear_hook,
+            clear_tone,
+            clear_audience,
+            clear_strategic_role,
+            clear_theme,
+            no_sync,
+        } => commands::classify::run(
+            jj,
+            commands::classify::ClassifyArgs {
+                slug,
+                workdir,
+                format,
+                hook,
+                tone,
+                audience,
+                strategic_role,
+                theme,
+                clear_format,
+                clear_hook,
+                clear_tone,
+                clear_audience,
+                clear_strategic_role,
+                clear_theme,
+                no_sync,
+            },
+        ),
+        Command::Metrics { action } => match action {
+            MetricsAction::Update {
+                slug,
+                workdir,
+                target,
+                impressions,
+                reactions,
+                comments,
+                reposts,
+                sampled_at,
+                no_sync,
+            } => commands::metrics::update(
+                jj,
+                commands::metrics::UpdateArgs {
+                    slug,
+                    workdir,
+                    target,
+                    impressions,
+                    reactions,
+                    comments,
+                    reposts,
+                    sampled_at,
+                    no_sync,
+                },
+            ),
+            MetricsAction::Show { slug, workdir } => {
+                commands::metrics::show(commands::metrics::ShowArgs { slug, workdir })
+            }
+        },
+        Command::Backfill {
+            workdir,
+            import,
+            no_sync,
+        } => commands::backfill::run(
+            jj,
+            commands::backfill::BackfillArgs {
+                workdir,
+                import,
+                no_sync,
+            },
+        ),
+        Command::Analytics { action } => match action {
+            AnalyticsAction::Summary {
+                workdir,
+                target,
+                dimension,
+                json,
+            } => commands::analytics::summary(commands::analytics::SummaryArgs {
+                workdir,
+                target,
+                dimension,
+                json,
+            }),
+            AnalyticsAction::Compare {
+                dim_a,
+                dim_b,
+                workdir,
+                target,
+                min_n,
+                json,
+            } => commands::analytics::compare(commands::analytics::CompareArgs {
+                dim_a,
+                dim_b,
+                workdir,
+                target,
+                min_n,
+                json,
+            }),
+            AnalyticsAction::Recommendations {
+                workdir,
+                target,
+                min_n,
+            } => commands::analytics::recommendations(commands::analytics::RecommendationsArgs {
+                workdir,
+                target,
+                min_n,
+            }),
         },
         Command::Completions { shell } => {
             let mut cmd = Cli::command();
@@ -285,10 +542,221 @@ mod tests {
                 "--model",
                 "openai/gpt-4o-mini",
             ],
+            // classify — every dimension flag, both set and clear shapes.
+            vec!["blogctl", "classify", "hello", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "classify",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--format",
+                "thesis",
+                "--hook",
+                "contradiction",
+                "--tone",
+                "sharp",
+                "--audience",
+                "engineering",
+                "--strategic-role",
+                "career-brand",
+                "--theme",
+                "ambiguity,delivery",
+            ],
+            vec![
+                "blogctl",
+                "classify",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--clear-format",
+                "--clear-hook",
+                "--clear-tone",
+                "--clear-audience",
+                "--clear-strategic-role",
+                "--clear-theme",
+            ],
+            vec![
+                "blogctl",
+                "classify",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--no-sync",
+            ],
+            // metrics — update + show.
+            vec![
+                "blogctl",
+                "metrics",
+                "update",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--target",
+                "linkedin",
+                "--impressions",
+                "1842",
+                "--reactions",
+                "67",
+                "--comments",
+                "14",
+                "--reposts",
+                "5",
+            ],
+            vec![
+                "blogctl",
+                "metrics",
+                "update",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--target",
+                "linkedin",
+                "--impressions",
+                "1",
+                "--reactions",
+                "0",
+                "--comments",
+                "0",
+                "--reposts",
+                "0",
+                "--sampled-at",
+                "2026-05-14T00:00:00Z",
+                "--no-sync",
+            ],
+            vec![
+                "blogctl",
+                "metrics",
+                "show",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+            ],
+            // backfill — interactive + import.
+            vec!["blogctl", "backfill", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "backfill",
+                "--workdir",
+                "/tmp/wd",
+                "--import",
+                "/tmp/data.json",
+                "--no-sync",
+            ],
+            // analytics — every action.
+            vec!["blogctl", "analytics", "summary", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "analytics",
+                "summary",
+                "--workdir",
+                "/tmp/wd",
+                "--target",
+                "linkedin",
+                "--dimension",
+                "format",
+                "--json",
+            ],
+            vec![
+                "blogctl",
+                "analytics",
+                "compare",
+                "format",
+                "hook",
+                "--workdir",
+                "/tmp/wd",
+            ],
+            vec![
+                "blogctl",
+                "analytics",
+                "compare",
+                "format",
+                "hook",
+                "--workdir",
+                "/tmp/wd",
+                "--target",
+                "blog",
+                "--min-n",
+                "5",
+                "--json",
+            ],
+            vec![
+                "blogctl",
+                "analytics",
+                "recommendations",
+                "--workdir",
+                "/tmp/wd",
+            ],
+            vec![
+                "blogctl",
+                "analytics",
+                "recommendations",
+                "--workdir",
+                "/tmp/wd",
+                "--target",
+                "linkedin",
+                "--min-n",
+                "10",
+            ],
             vec!["blogctl", "completions", "bash"],
         ] {
             assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }
+    }
+
+    #[test]
+    fn metrics_update_rejects_unknown_target() {
+        let args = vec![
+            "blogctl",
+            "metrics",
+            "update",
+            "hello",
+            "--workdir",
+            "/tmp/wd",
+            "--target",
+            "mastodon",
+            "--impressions",
+            "1",
+            "--reactions",
+            "0",
+            "--comments",
+            "0",
+            "--reposts",
+            "0",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn metrics_update_requires_every_count_flag() {
+        // Missing --reactions, --comments, --reposts.
+        let args = vec![
+            "blogctl",
+            "metrics",
+            "update",
+            "hello",
+            "--workdir",
+            "/tmp/wd",
+            "--target",
+            "linkedin",
+            "--impressions",
+            "1",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn analytics_summary_rejects_unknown_target() {
+        let args = vec![
+            "blogctl",
+            "analytics",
+            "summary",
+            "--workdir",
+            "/tmp/wd",
+            "--target",
+            "twitter",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
     }
 
     #[test]

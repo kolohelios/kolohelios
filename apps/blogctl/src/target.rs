@@ -13,8 +13,13 @@ use crate::error::{Error, Result};
 
 /// A venue a post can be distributed to. Closed enum — adding a new
 /// venue is a deliberate code change, not a frontmatter typo away.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// `ValueEnum` is derived so `--target linkedin` parses natively at
+/// the clap layer; clap rejects unknown values with a helpful error
+/// rather than punting validation into the command body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
+#[clap(rename_all = "kebab-case")]
 pub enum Target {
     Linkedin,
     Blog,

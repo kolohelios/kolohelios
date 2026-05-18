@@ -145,6 +145,11 @@ pub enum Error {
         "rebase of @ onto {bookmark}@{remote} produced conflicts — resolve via `jj` before re-running blogctl"
     )]
     SyncRebaseConflict { bookmark: String, remote: String },
+
+    #[error(
+        "`blogctl {0}` is not yet implemented (CLI surface only; behavior lands in a follow-up)"
+    )]
+    Unimplemented(&'static str),
 }
 
 impl Error {
