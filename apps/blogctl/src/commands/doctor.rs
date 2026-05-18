@@ -12,6 +12,13 @@ use time::OffsetDateTime;
 use crate::error::{Error, Result};
 use crate::stage::Stage;
 use crate::storage::{AuditedPost, Config, ConfigStatus, Repository, StrayEntry, Workdir};
+use crate::sync::{Jj, Status};
+
+/// Threshold for flagging unpushed commits as stale. Past this age,
+/// the auto-push is probably failing silently (network gone bad,
+/// remote ref renamed, auth expired). `doctor` surfaces it; the
+/// user is expected to investigate (no auto-fix).
+pub const STALE_UNPUSHED_THRESHOLD_HOURS: i64 = 24;
 
 #[derive(Debug)]
 pub enum Finding {
@@ -52,6 +59,15 @@ pub enum Finding {
     StrayEntry {
         dir_stage: Stage,
         path: PathBuf,
+    },
+    /// Local commits on `<bookmark>` have not been pushed to
+    /// `<bookmark>@<remote>` for `oldest_age_hours`+, suggesting
+    /// auto-push has been silently failing.
+    UnpushedCommitsStale {
+        count: usize,
+        oldest_age_hours: i64,
+        bookmark: String,
+        remote: String,
     },
 }
 
@@ -108,6 +124,15 @@ impl fmt::Display for Finding {
                 "stray entry in {}/: {}",
                 dir_stage.dirname(),
                 path.display()
+            ),
+            Self::UnpushedCommitsStale {
+                count,
+                oldest_age_hours,
+                bookmark,
+                remote,
+            } => write!(
+                f,
+                "{count} unpushed commit(s) on {bookmark}; oldest is {oldest_age_hours}h old (auto-push to {remote} may be failing silently)",
             ),
         }
     }
@@ -199,8 +224,42 @@ pub fn audit(workdir: &Workdir) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-pub fn run(workdir: PathBuf) -> Result<()> {
-    let findings = audit(&Workdir::new(&workdir))?;
+/// Sync-state audit. Separate from `audit()` so the filesystem pass
+/// stays pure and `fix` (which only reads filesystem findings)
+/// continues to know nothing about VCS state. Returns an empty list
+/// when `jj` is unavailable or the workdir isn't a `jj` repo — those
+/// are not "findings" worth blocking on.
+pub fn sync_audit(workdir: &Workdir, jj: &dyn Jj, now: OffsetDateTime) -> Result<Vec<Finding>> {
+    let mut findings = Vec::new();
+    if !matches!(jj.status(workdir.root())?, Status::Ok) {
+        return Ok(findings);
+    }
+    let cfg = match Repository::unchecked(workdir.clone()).audit_config() {
+        ConfigStatus::Ok(cfg) => cfg,
+        // The config layer's own findings (Missing / Unparsable) are
+        // surfaced by `audit()` already; we can't read sync settings
+        // without a config, so nothing more to do here.
+        _ => return Ok(findings),
+    };
+    if let Some(summary) =
+        jj.unpushed_summary(workdir.root(), &cfg.sync.bookmark, &cfg.sync.remote, now)?
+    {
+        if summary.oldest_age_hours >= STALE_UNPUSHED_THRESHOLD_HOURS {
+            findings.push(Finding::UnpushedCommitsStale {
+                count: summary.count,
+                oldest_age_hours: summary.oldest_age_hours,
+                bookmark: cfg.sync.bookmark,
+                remote: cfg.sync.remote,
+            });
+        }
+    }
+    Ok(findings)
+}
+
+pub fn run(jj: &dyn Jj, workdir: PathBuf) -> Result<()> {
+    let wd = Workdir::new(&workdir);
+    let mut findings = audit(&wd)?;
+    findings.extend(sync_audit(&wd, jj, OffsetDateTime::now_utc())?);
     if findings.is_empty() {
         println!("workdir healthy: {}", workdir.display());
         return Ok(());
@@ -443,13 +502,91 @@ mod tests {
     fn run_returns_workdir_unhealthy_on_findings() {
         let (tmp, _workdir) = fresh_workdir();
         fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
-        let err = run(tmp.path().to_path_buf()).unwrap_err();
+        // FakeJj with NotAJjRepo: sync_audit is a no-op, so we only
+        // see the filesystem finding (the stray entry).
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        let err = run(&jj, tmp.path().to_path_buf()).unwrap_err();
         assert!(matches!(err, Error::WorkdirUnhealthy(n) if n >= 1));
     }
 
     #[test]
     fn run_returns_ok_on_clean_workdir() {
         let (tmp, _workdir) = fresh_workdir();
-        run(tmp.path().to_path_buf()).unwrap();
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        run(&jj, tmp.path().to_path_buf()).unwrap();
+    }
+
+    #[test]
+    fn sync_audit_returns_empty_when_jj_not_installed() {
+        let (_tmp, workdir) = fresh_workdir();
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::JjNotInstalled);
+        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn sync_audit_returns_empty_when_not_a_jj_repo() {
+        let (_tmp, workdir) = fresh_workdir();
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn sync_audit_returns_empty_when_no_unpushed_commits() {
+        let (_tmp, workdir) = fresh_workdir();
+        let jj = crate::sync::FakeJj::new().with_unpushed_summary(None);
+        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn sync_audit_returns_empty_when_unpushed_below_threshold() {
+        let (_tmp, workdir) = fresh_workdir();
+        let jj =
+            crate::sync::FakeJj::new().with_unpushed_summary(Some(crate::sync::UnpushedSummary {
+                count: 2,
+                oldest_age_hours: STALE_UNPUSHED_THRESHOLD_HOURS - 1,
+            }));
+        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert!(
+            findings.is_empty(),
+            "below-threshold age must not produce a finding"
+        );
+    }
+
+    #[test]
+    fn sync_audit_surfaces_unpushed_stale_at_threshold() {
+        let (_tmp, workdir) = fresh_workdir();
+        let jj =
+            crate::sync::FakeJj::new().with_unpushed_summary(Some(crate::sync::UnpushedSummary {
+                count: 3,
+                oldest_age_hours: STALE_UNPUSHED_THRESHOLD_HOURS,
+            }));
+        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(matches!(
+            findings[0],
+            Finding::UnpushedCommitsStale {
+                count: 3,
+                oldest_age_hours: h,
+                ..
+            } if h == STALE_UNPUSHED_THRESHOLD_HOURS
+        ));
+    }
+
+    #[test]
+    fn unpushed_stale_finding_displays_useful_message() {
+        let f = Finding::UnpushedCommitsStale {
+            count: 4,
+            oldest_age_hours: 72,
+            bookmark: "main".into(),
+            remote: "origin".into(),
+        };
+        let rendered = format!("{f}");
+        assert!(rendered.contains("4 unpushed commit"));
+        assert!(rendered.contains("72h"));
+        assert!(rendered.contains("main"));
+        assert!(rendered.contains("origin"));
     }
 }

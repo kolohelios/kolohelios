@@ -282,6 +282,34 @@ fn push_failure_does_not_fail_the_command() {
 }
 
 #[test]
+fn doctor_surfaces_stale_unpushed_commits_finding() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+
+    // Simulate "push has been failing for 48h" by having FakeJj
+    // report 3 unpushed commits, oldest 48h old.
+    let jj = FakeJj::new().with_unpushed_summary(Some(blogctl::sync::UnpushedSummary {
+        count: 3,
+        oldest_age_hours: 48,
+    }));
+    let err = commands::doctor::run(&jj, path).unwrap_err();
+    assert!(
+        matches!(err, blogctl::Error::WorkdirUnhealthy(n) if n == 1),
+        "expected WorkdirUnhealthy(1), got: {err:?}"
+    );
+}
+
+#[test]
+fn doctor_does_not_surface_stale_finding_when_push_is_current() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+
+    // No unpushed commits → no sync finding → doctor is happy.
+    let jj = FakeJj::new().with_unpushed_summary(None);
+    commands::doctor::run(&jj, path).expect("clean workdir should be healthy");
+}
+
+#[test]
 fn rebase_conflict_is_a_hard_error_and_aborts_the_write() {
     let (_tmp, path) = workdir();
     commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
