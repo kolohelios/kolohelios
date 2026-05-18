@@ -8,6 +8,7 @@ use time::OffsetDateTime;
 use crate::error::{Error, Result};
 use crate::post::{Post, PostMetadata};
 use crate::stage::Stage;
+use crate::taxonomy::{Dimension, Taxonomy};
 
 const CONFIG_FILE: &str = ".blog-os.toml";
 const README_FILE: &str = "README.md";
@@ -37,6 +38,12 @@ pub struct Config {
     pub themes: BTreeMap<String, ThemeConfig>,
     #[serde(default)]
     pub sync: SyncConfig,
+    /// Declarative classification taxonomy — the set of allowed
+    /// values per dimension. Loaded as `Taxonomy` and used to
+    /// validate `Classifications` at post-load time and from
+    /// `blogctl classify` before any write.
+    #[serde(default)]
+    pub classifications: BTreeMap<String, Dimension>,
 }
 
 /// Workdir-wide defaults. Currently just the theme `blogctl new` selects
@@ -119,6 +126,7 @@ impl Config {
             defaults: Defaults::default(),
             themes,
             sync: SyncConfig::default(),
+            classifications: Taxonomy::current_v1().to_btreemap(),
         }
     }
 }
@@ -272,6 +280,14 @@ impl Repository {
         toml::from_str(&raw).map_err(|source| Error::ConfigParse { path, source })
     }
 
+    /// Build a `Taxonomy` from the workdir's `[classifications.*]`
+    /// tables. The same call site used by `load`/`list` and by
+    /// `blogctl classify`.
+    pub fn read_taxonomy(&self) -> Result<Taxonomy> {
+        let config = self.read_config()?;
+        Ok(Taxonomy::new(config.classifications))
+    }
+
     /// Write the canonical README into the workdir. Returns `true` if
     /// the file was (over)written, `false` if a README already existed
     /// and `force` was false (init's path — preserves a user's
@@ -304,8 +320,9 @@ impl Repository {
     }
 
     /// Load a post by slug. Fails if the post is missing, if the slug
-    /// resolves in two stages, or if the directory disagrees with the
-    /// frontmatter status.
+    /// resolves in two stages, if the directory disagrees with the
+    /// frontmatter status, or if any classification value is not in
+    /// the workdir's taxonomy.
     pub fn load(&self, slug: &str) -> Result<(PostHandle, Post)> {
         let (stage, path) = self
             .locate(slug)?
@@ -319,6 +336,15 @@ impl Repository {
                 fm_stage: post.metadata.status,
             });
         }
+        let taxonomy = self.read_taxonomy()?;
+        if let Err(v) = post.metadata.classifications.validate(&taxonomy) {
+            return Err(Error::InvalidClassification {
+                path: path.clone(),
+                dimension: v.dimension,
+                value: v.value,
+                allowed: v.allowed,
+            });
+        }
         let handle = PostHandle {
             stage,
             path,
@@ -328,9 +354,10 @@ impl Repository {
     }
 
     /// Enumerate every post under the workdir, sorted by stage then slug.
-    /// Fails on any frontmatter or stage mismatch — consistent with the
-    /// "fail loudly" design constraint.
+    /// Fails on any frontmatter / stage / classification problem — consistent
+    /// with the "fail loudly" design constraint.
     pub fn list(&self) -> Result<Vec<PostHandle>> {
+        let taxonomy = self.read_taxonomy()?;
         let mut handles = Vec::new();
         for &stage in Stage::ALL {
             let dir = self.workdir.stage_dir(stage);
@@ -352,6 +379,14 @@ impl Repository {
                         slug: post.metadata.slug,
                         dir_stage: stage,
                         fm_stage: post.metadata.status,
+                    });
+                }
+                if let Err(v) = post.metadata.classifications.validate(&taxonomy) {
+                    return Err(Error::InvalidClassification {
+                        path: path.clone(),
+                        dimension: v.dimension,
+                        value: v.value,
+                        allowed: v.allowed,
                     });
                 }
                 handles.push(PostHandle {
@@ -973,5 +1008,91 @@ mod tests {
         assert_eq!(stray.len(), 1);
         assert!(stray[0].path.ends_with("archive"));
         assert_eq!(stray[0].dir_stage, Stage::Concept);
+    }
+
+    #[test]
+    fn init_seeds_v1_taxonomy() {
+        let (_tmp, repo) = fresh_repo();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.classifications.contains_key("format"));
+        assert!(cfg.classifications.contains_key("theme"));
+        // The seeded v1 set matches Taxonomy::current_v1().
+        assert_eq!(cfg.classifications, Taxonomy::current_v1().to_btreemap());
+    }
+
+    #[test]
+    fn read_taxonomy_builds_from_classifications_table() {
+        let (_tmp, repo) = fresh_repo();
+        let tax = repo.read_taxonomy().unwrap();
+        let format = tax.dimension("format").expect("format dim seeded");
+        assert!(format.allows("thesis"));
+        assert!(!format.allows("thesys"));
+    }
+
+    #[test]
+    fn config_without_classifications_table_back_fills_empty_map() {
+        // Pre-#437 config — no [classifications.*] tables at all.
+        // Reading must succeed; the resulting taxonomy is permissive
+        // (empty) so posts validate cleanly.
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        fs::write(repo.workdir().config_path(), "version = 1\n").unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.classifications.is_empty());
+        let tax = repo.read_taxonomy().unwrap();
+        assert!(tax.is_empty());
+    }
+
+    #[test]
+    fn load_rejects_post_with_invalid_classification() {
+        let (tmp, repo) = fresh_repo();
+        // Plant a post with `format: thesys` (typo) directly on disk.
+        // create_post would go through Post::new which doesn't
+        // validate — that's fine, we want to simulate a stale or
+        // hand-edited post.
+        let mut post = fixture_post("typo", Stage::Concept);
+        post.metadata.classifications.format = Some("thesys".into());
+        fs::write(tmp.path().join("concepts/typo.md"), post.render().unwrap()).unwrap();
+        let err = repo.load("typo").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::InvalidClassification { ref dimension, ref value, .. }
+                    if dimension == "format" && value == "thesys"
+            ),
+            "got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn list_rejects_workdir_with_invalid_classification() {
+        let (tmp, repo) = fresh_repo();
+        let mut post = fixture_post("typo", Stage::Concept);
+        post.metadata.classifications.tone = Some("snarky".into());
+        fs::write(tmp.path().join("concepts/typo.md"), post.render().unwrap()).unwrap();
+        let err = repo.list().unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::InvalidClassification { ref dimension, .. } if dimension == "tone"
+            ),
+            "got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn load_accepts_unclassified_post() {
+        let (tmp, repo) = fresh_repo();
+        let post = fixture_post("no-class", Stage::Concept);
+        fs::write(
+            tmp.path().join("concepts/no-class.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+        let (_handle, loaded) = repo.load("no-class").unwrap();
+        assert!(loaded.metadata.classifications.is_empty());
     }
 }

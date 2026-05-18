@@ -53,6 +53,7 @@ pub enum SkipReason {
     ConfigMissing,
     ConfigUnparsable,
     UnpushedCommits,
+    InvalidClassification,
 }
 
 impl fmt::Display for SkipReason {
@@ -66,6 +67,9 @@ impl fmt::Display for SkipReason {
             Self::ConfigUnparsable => "manual: edit .blog-os.toml by hand",
             Self::UnpushedCommits => {
                 "manual: investigate auto-push (network? auth? wrong bookmark name?)"
+            }
+            Self::InvalidClassification => {
+                "manual: `blogctl classify` to a valid value, or add it to the taxonomy"
             }
         };
         f.write_str(s)
@@ -123,6 +127,10 @@ pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
             f @ Finding::UnpushedCommitsStale { .. } => skips.push(Repair::Skip {
                 finding: f,
                 reason: SkipReason::UnpushedCommits,
+            }),
+            f @ Finding::InvalidClassification { .. } => skips.push(Repair::Skip {
+                finding: f,
+                reason: SkipReason::InvalidClassification,
             }),
         }
     }
