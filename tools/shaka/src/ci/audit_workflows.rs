@@ -24,8 +24,12 @@ const HAND_AUTHORED: &[&str] = &[
     // Reusable workflow_call templates
     "tf-apply.yml",
     "cf-deploy.yml",
-    // Per-project workflows pending migration (sub-issues of #43)
-    "kolohelios-portfolio-deploy.yml",
+    // Hand-authored sibling of the generated
+    // `kolohelios-portfolio-deploy.yml`: runs on `pull_request: closed`
+    // to delete the ephemeral preview Worker. Different trigger and
+    // project-specific wrangler invocation; not derivable from
+    // `ci.deploy` metadata.
+    "kolohelios-portfolio-cleanup.yml",
     // Repo-event-driven
     "auto-rebase-prs.yaml",
     "bump-kolohelios-nix.yaml",
@@ -45,6 +49,8 @@ struct Ci {
     apply: Option<serde_json::Value>,
     #[serde(default)]
     build: Option<serde_json::Value>,
+    #[serde(default)]
+    deploy: Option<serde_json::Value>,
 }
 
 pub fn run() {
@@ -135,6 +141,9 @@ fn generated_filenames() -> Vec<String> {
                 }
                 if ci.build.is_some() {
                     any_build = true;
+                }
+                if ci.deploy.is_some() {
+                    out.push(format!("{}-deploy.yml", meta.name));
                 }
             }
         }
