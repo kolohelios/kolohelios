@@ -109,24 +109,26 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
     Workflow {
         name: format!("{name} apply"),
         on: On {
-            push: PushTrigger {
+            pull_request: None,
+            push: Some(PushTrigger {
                 branches: vec!["main".to_string()],
                 paths: vec![
                     format!("{project_dir_str}/**"),
                     format!(".github/workflows/{name}-apply.yml"),
                     format!(".github/workflows/{reusable_filename}"),
                 ],
-            },
-            workflow_dispatch: Empty,
+            }),
+            workflow_dispatch: Some(Empty),
         },
-        permissions: Permissions {
+        permissions: Some(Permissions {
             id_token: Some(PermissionLevel::Write),
             contents: Some(PermissionLevel::Read),
-        },
-        concurrency: Concurrency {
+            pull_requests: None,
+        }),
+        concurrency: Some(Concurrency {
             group: format!("{name}-apply"),
-            cancel_in_progress: false,
-        },
+            cancel_in_progress: "false".to_string(),
+        }),
         jobs,
     }
 }
