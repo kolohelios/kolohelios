@@ -1,9 +1,13 @@
 pub mod ai;
+pub mod analytics;
+pub mod backfill;
+pub mod classify;
 pub mod demote;
 pub mod doctor;
 pub mod fix;
 pub mod init;
 pub mod list;
+pub mod metrics;
 pub mod new;
 pub mod promote;
 pub mod readme;
