@@ -26,12 +26,12 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1779153223,
+        "lastModified": 1779239710,
         "narHash": "sha256-aDrScWklbRGN2L3eMOJ7EA7d6vcwQejbU7S3xN//c00=",
-        "rev": "ae05f7462e92aed3667cf1a8e07662fd49edfd77",
-        "revCount": 307,
+        "rev": "9e6debb40afd5d6b5af0da03380fd588517a1084",
+        "revCount": 308,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/kolohelios/kolohelios-nix/0.1.307%2Brev-ae05f7462e92aed3667cf1a8e07662fd49edfd77/019e3dd2-f914-7801-9b97-61a73c1644a3/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/kolohelios-nix/0.1.308%2Brev-9e6debb40afd5d6b5af0da03380fd588517a1084/019e42fb-2945-73d3-9486-c9c98de34d0b/source.tar.gz"
       },
       "original": {
         "type": "tarball",
