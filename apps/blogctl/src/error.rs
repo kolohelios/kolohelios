@@ -111,6 +111,9 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    #[error("could not resolve current working directory: {0}")]
+    CurrentDirUnavailable(#[source] std::io::Error),
+
     #[error(
         "workdir unhealthy: {0} finding(s); run `blogctl fix` to repair the auto-correctable subset"
     )]

@@ -1,3 +1,4 @@
+use std::env;
 use std::io;
 use std::path::PathBuf;
 
@@ -5,11 +6,20 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
 use crate::commands;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::kind::Kind;
 use crate::openrouter;
 use crate::sync::{Jj, RealJj};
 use crate::target::Target;
+
+/// Resolve an optional `--workdir` to a concrete path, defaulting to
+/// the current working directory when the flag is omitted.
+fn workdir_or_pwd(workdir: Option<PathBuf>) -> Result<PathBuf> {
+    match workdir {
+        Some(p) => Ok(p),
+        None => env::current_dir().map_err(Error::CurrentDirUnavailable),
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -35,8 +45,9 @@ pub enum Command {
     New {
         /// Post title — slug is derived from this unless `--slug` is given.
         title: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         /// Override the auto-derived slug.
         #[arg(long)]
         slug: Option<String>,
@@ -54,20 +65,23 @@ pub enum Command {
     },
     /// List every post in the workdir, grouped by stage.
     List {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
     },
     /// Print a post's frontmatter and body.
     Show {
         slug: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
     },
     /// Move a post to the next workflow stage.
     Promote {
         slug: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -75,8 +89,9 @@ pub enum Command {
     /// Move a post one stage back.
     Demote {
         slug: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -89,15 +104,17 @@ pub enum Command {
     /// Audit a workdir for layout, frontmatter, and config problems.
     /// Exits non-zero if any finding is surfaced.
     Doctor {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
     },
     /// Apply doctor's auto-correctable repairs. Skipped findings
     /// remain non-zero so `fix` followed by `doctor` is a useful
     /// idempotency check.
     Fix {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         /// Print the plan without writing anything.
         #[arg(long)]
         dry_run: bool,
@@ -115,8 +132,9 @@ pub enum Command {
     /// existing value alone; `--clear-<dim>` removes it.
     Classify {
         slug: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         #[arg(long)]
         format: Option<String>,
         #[arg(long)]
@@ -156,8 +174,9 @@ pub enum Command {
     /// Walk every published post and fill in missing classifications
     /// + metrics interactively, or batch-import from a JSON file.
     Backfill {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         /// Path to a JSON file of per-slug classifications/metrics
         /// entries. When set, runs in non-interactive batch mode.
         #[arg(long, value_name = "PATH")]
@@ -196,8 +215,9 @@ pub enum ReadmeAction {
     /// baked into `blogctl`. Use after a `blogctl` upgrade to pick up
     /// template changes.
     Regenerate {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -209,8 +229,9 @@ pub enum MetricsAction {
     /// Set the latest observed metrics for a target on a post.
     Update {
         slug: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         #[arg(long, value_enum)]
         target: Target,
         #[arg(long)]
@@ -231,8 +252,9 @@ pub enum MetricsAction {
     /// Print the latest metrics for every target on a post.
     Show {
         slug: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
     },
 }
 
@@ -241,8 +263,9 @@ pub enum AnalyticsAction {
     /// Per-dimension counts and median engagement for every
     /// classification value across the workdir.
     Summary {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         #[arg(long, value_enum)]
         target: Option<Target>,
         /// Limit to one dimension (e.g. `format`). Omit to report
@@ -259,8 +282,9 @@ pub enum AnalyticsAction {
         dim_a: String,
         /// Second dimension (e.g. `hook`).
         dim_b: String,
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         #[arg(long, value_enum)]
         target: Option<Target>,
         /// Suppress cells with fewer than this many posts from the
@@ -273,8 +297,9 @@ pub enum AnalyticsAction {
     },
     /// Surface heuristic patterns with explicit hedge language.
     Recommendations {
+        /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
-        workdir: PathBuf,
+        workdir: Option<PathBuf>,
         #[arg(long, value_enum)]
         target: Option<Target>,
         /// Posts-per-cell threshold for "high confidence" heuristics.
@@ -304,30 +329,38 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             kind,
             theme,
             no_sync,
-        } => commands::new::run(jj, title, workdir, slug, kind, theme, no_sync),
-        Command::List { workdir } => commands::list::run(workdir),
-        Command::Show { slug, workdir } => commands::show::run(slug, workdir),
+        } => commands::new::run(
+            jj,
+            title,
+            workdir_or_pwd(workdir)?,
+            slug,
+            kind,
+            theme,
+            no_sync,
+        ),
+        Command::List { workdir } => commands::list::run(workdir_or_pwd(workdir)?),
+        Command::Show { slug, workdir } => commands::show::run(slug, workdir_or_pwd(workdir)?),
         Command::Promote {
             slug,
             workdir,
             no_sync,
-        } => commands::promote::run(jj, slug, workdir, no_sync),
+        } => commands::promote::run(jj, slug, workdir_or_pwd(workdir)?, no_sync),
         Command::Demote {
             slug,
             workdir,
             no_sync,
-        } => commands::demote::run(jj, slug, workdir, no_sync),
+        } => commands::demote::run(jj, slug, workdir_or_pwd(workdir)?, no_sync),
         Command::Readme { action } => match action {
             ReadmeAction::Regenerate { workdir, no_sync } => {
-                commands::readme::regenerate(jj, workdir, no_sync)
+                commands::readme::regenerate(jj, workdir_or_pwd(workdir)?, no_sync)
             }
         },
-        Command::Doctor { workdir } => commands::doctor::run(jj, workdir),
+        Command::Doctor { workdir } => commands::doctor::run(jj, workdir_or_pwd(workdir)?),
         Command::Fix {
             workdir,
             dry_run,
             no_sync,
-        } => commands::fix::run(jj, workdir, dry_run, no_sync),
+        } => commands::fix::run(jj, workdir_or_pwd(workdir)?, dry_run, no_sync),
         Command::Ai { action } => match action {
             AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
         },
@@ -351,7 +384,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             jj,
             commands::classify::ClassifyArgs {
                 slug,
-                workdir,
+                workdir: workdir_or_pwd(workdir)?,
                 format,
                 hook,
                 tone,
@@ -382,7 +415,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 jj,
                 commands::metrics::UpdateArgs {
                     slug,
-                    workdir,
+                    workdir: workdir_or_pwd(workdir)?,
                     target,
                     impressions,
                     reactions,
@@ -393,7 +426,10 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 },
             ),
             MetricsAction::Show { slug, workdir } => {
-                commands::metrics::show(commands::metrics::ShowArgs { slug, workdir })
+                commands::metrics::show(commands::metrics::ShowArgs {
+                    slug,
+                    workdir: workdir_or_pwd(workdir)?,
+                })
             }
         },
         Command::Backfill {
@@ -403,7 +439,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
         } => commands::backfill::run(
             jj,
             commands::backfill::BackfillArgs {
-                workdir,
+                workdir: workdir_or_pwd(workdir)?,
                 import,
                 no_sync,
             },
@@ -415,7 +451,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 dimension,
                 json,
             } => commands::analytics::summary(commands::analytics::SummaryArgs {
-                workdir,
+                workdir: workdir_or_pwd(workdir)?,
                 target,
                 dimension,
                 json,
@@ -430,7 +466,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             } => commands::analytics::compare(commands::analytics::CompareArgs {
                 dim_a,
                 dim_b,
-                workdir,
+                workdir: workdir_or_pwd(workdir)?,
                 target,
                 min_n,
                 json,
@@ -440,7 +476,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 target,
                 min_n,
             } => commands::analytics::recommendations(commands::analytics::RecommendationsArgs {
-                workdir,
+                workdir: workdir_or_pwd(workdir)?,
                 target,
                 min_n,
             }),
@@ -779,15 +815,52 @@ mod tests {
     }
 
     #[test]
-    fn workdir_is_required_for_every_subcommand() {
+    fn init_requires_explicit_workdir() {
+        // `init` creates the workdir layout; defaulting to PWD would
+        // scatter stage dirs into wherever the user happens to be.
+        // Every other subcommand defaults to PWD (see
+        // `workdir_defaults_to_pwd_when_omitted`).
+        assert!(Cli::try_parse_from(["blogctl", "init"]).is_err());
+    }
+
+    #[test]
+    fn workdir_defaults_to_pwd_when_omitted() {
+        // Every non-`init` subcommand should parse successfully without
+        // an explicit `--workdir`; the dispatcher resolves the missing
+        // value to `std::env::current_dir()` at run time.
         for args in [
-            vec!["blogctl", "init"],
             vec!["blogctl", "new", "Hello"],
             vec!["blogctl", "list"],
             vec!["blogctl", "show", "hello"],
+            vec!["blogctl", "promote", "hello"],
+            vec!["blogctl", "demote", "hello"],
+            vec!["blogctl", "readme", "regenerate"],
             vec!["blogctl", "doctor"],
+            vec!["blogctl", "fix"],
+            vec!["blogctl", "classify", "hello"],
+            vec![
+                "blogctl",
+                "metrics",
+                "update",
+                "hello",
+                "--target",
+                "linkedin",
+                "--impressions",
+                "1",
+                "--reactions",
+                "0",
+                "--comments",
+                "0",
+                "--reposts",
+                "0",
+            ],
+            vec!["blogctl", "metrics", "show", "hello"],
+            vec!["blogctl", "backfill"],
+            vec!["blogctl", "analytics", "summary"],
+            vec!["blogctl", "analytics", "compare", "format", "hook"],
+            vec!["blogctl", "analytics", "recommendations"],
         ] {
-            assert!(Cli::try_parse_from(args.clone()).is_err(), "{args:?}");
+            assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
         }
     }
 }
