@@ -54,6 +54,7 @@ pub enum SkipReason {
     ConfigUnparsable,
     UnpushedCommits,
     InvalidClassification,
+    JjUnavailable,
 }
 
 impl fmt::Display for SkipReason {
@@ -70,6 +71,9 @@ impl fmt::Display for SkipReason {
             }
             Self::InvalidClassification => {
                 "manual: `blogctl classify` to a valid value, or add it to the taxonomy"
+            }
+            Self::JjUnavailable => {
+                "manual: install jj and run `jj git init --colocate` in the workdir"
             }
         };
         f.write_str(s)
@@ -132,6 +136,12 @@ pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
                 finding: f,
                 reason: SkipReason::InvalidClassification,
             }),
+            f @ (Finding::JjNotInstalled | Finding::NotAJjRepo { .. }) => {
+                skips.push(Repair::Skip {
+                    finding: f,
+                    reason: SkipReason::JjUnavailable,
+                })
+            }
         }
     }
 
@@ -272,10 +282,22 @@ where
 
 pub fn run(jj: &dyn Jj, workdir: PathBuf, dry_run: bool, no_sync: bool) -> Result<()> {
     let wd = Workdir::new(&workdir);
-    let findings = doctor::audit(&wd)?;
+    let findings = doctor::full_audit(&wd, jj, OffsetDateTime::now_utc())?;
     if findings.is_empty() {
         println!("workdir healthy: {}", workdir.display());
         return Ok(());
+    }
+    // Refuse to write anything when `.jj` is unavailable — commit
+    // tracking is a hard precondition. `full_audit` short-circuits to
+    // exactly the jj finding, so we just print and bail.
+    if findings
+        .iter()
+        .any(|f| matches!(f, Finding::JjNotInstalled | Finding::NotAJjRepo { .. }))
+    {
+        for finding in &findings {
+            println!("{finding}");
+        }
+        return Err(Error::WorkdirUnhealthy(findings.len()));
     }
 
     let plan = plan(findings);
@@ -594,5 +616,27 @@ mod tests {
         let jj = FakeJj::new();
         let err = run(&jj, tmp.path().to_path_buf(), false, true).unwrap_err();
         assert!(matches!(err, Error::WorkdirUnhealthy(_)));
+    }
+
+    #[test]
+    fn run_refuses_to_write_when_jj_is_unavailable() {
+        // Plant a repairable finding (mismatched stage) plus a workdir
+        // with `Status::NotAJjRepo`. `full_audit` short-circuits to
+        // just the jj finding, and `run` must refuse to apply any
+        // repair — otherwise the rewrite would land without a commit
+        // trail.
+        let (tmp, _workdir) = fresh_workdir();
+        let mismatched = fixture_post("oops", Stage::Editing);
+        let path = tmp.path().join("concepts/oops.md");
+        let raw_before = mismatched.render().unwrap();
+        fs::write(&path, &raw_before).unwrap();
+
+        let jj = FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        let err = run(&jj, tmp.path().to_path_buf(), false, true).unwrap_err();
+        assert!(matches!(err, Error::WorkdirUnhealthy(1)));
+
+        // File must be untouched.
+        let raw_after = fs::read_to_string(&path).unwrap();
+        assert_eq!(raw_before, raw_after, "fix must not write when jj missing");
     }
 }

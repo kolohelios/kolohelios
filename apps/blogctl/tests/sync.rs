@@ -177,12 +177,24 @@ fn fix_drives_full_sync_with_finding_count_message() {
 
     let jj = FakeJj::new();
     commands::fix::run(&jj, path.clone(), false, false).unwrap();
-    // Exactly one repair attempted (the stage mismatch).
-    assert_full_sync_flow(&jj.calls(), "chore: fix workdir (1 findings)");
+    // `fix::run` calls full_audit first (Status + UnpushedSummary),
+    // then commit_and_push wraps the apply (canonical 6-call flow).
+    let calls = jj.calls();
+    assert!(
+        matches!(calls[0], Call::Status { .. }),
+        "first call must be the audit-gate Status, got: {:?}",
+        calls[0]
+    );
+    assert!(
+        matches!(calls[1], Call::UnpushedSummary { .. }),
+        "second call must be the audit's UnpushedSummary, got: {:?}",
+        calls[1]
+    );
+    assert_full_sync_flow(&calls[2..], "chore: fix workdir (1 findings)");
 }
 
 #[test]
-fn fix_dry_run_skips_sync_entirely() {
+fn fix_dry_run_skips_commit_and_push_but_still_audits() {
     let (_tmp, path) = workdir();
     commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
     fs::write(
@@ -207,11 +219,13 @@ fn fix_dry_run_skips_sync_entirely() {
 
     let jj = FakeJj::new();
     let _ = commands::fix::run(&jj, path, true, false);
-    assert!(
-        jj.calls().is_empty(),
-        "dry-run must not invoke jj: {:?}",
-        jj.calls()
-    );
+    // Dry-run skips commit_and_push but the audit gate still needs
+    // jj.status() (to decide whether to short-circuit) and
+    // sync_audit's unpushed_summary check. Two calls, no writes.
+    let calls = jj.calls();
+    assert_eq!(calls.len(), 2, "expected 2 audit calls, got: {calls:?}");
+    assert!(matches!(calls[0], Call::Status { .. }));
+    assert!(matches!(calls[1], Call::UnpushedSummary { .. }));
 }
 
 #[test]

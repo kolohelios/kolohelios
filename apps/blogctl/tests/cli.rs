@@ -38,6 +38,22 @@ fn workdir_arg(workdir: &Path) -> String {
     workdir.to_str().expect("workdir path utf-8").to_string()
 }
 
+/// Initialize the tempdir as a colocated `jj` repo so `doctor` and
+/// `fix` see `Status::Ok` from the sync layer. blogctl treats `.jj`
+/// as a hard precondition for those commands.
+fn jj_init(workdir: &Path) {
+    let out = Command::new("jj")
+        .args(["git", "init", "--colocate"])
+        .current_dir(workdir)
+        .output()
+        .expect("failed to spawn jj");
+    assert!(
+        out.status.success(),
+        "jj git init --colocate failed: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 #[test]
 fn init_creates_expected_layout() {
     let tmp = TempDir::new().unwrap();
@@ -278,9 +294,13 @@ fn new_rejects_unknown_theme_with_known_list() {
 fn doctor_reports_clean_workdir_with_zero_exit() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
+    jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd]), "init");
-    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
+    assert_success(
+        &run(&["new", "Hello", "--workdir", &wd, "--no-sync"]),
+        "new",
+    );
 
     let out = run(&["doctor", "--workdir", &wd]);
     assert_success(&out, "doctor (clean)");
@@ -291,16 +311,20 @@ fn doctor_reports_clean_workdir_with_zero_exit() {
 fn fix_repairs_stage_mismatch_and_leaves_workdir_clean() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
+    jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd]), "init");
-    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
+    assert_success(
+        &run(&["new", "Hello", "--workdir", &wd, "--no-sync"]),
+        "new",
+    );
     // Move the file from concepts/ to editing/ without rewriting
     // frontmatter — that's a stage mismatch fix can repair.
     let from = tmp.path().join("concepts/hello.md");
     let to = tmp.path().join("editing/hello.md");
     std::fs::rename(&from, &to).unwrap();
 
-    let fix_out = run(&["fix", "--workdir", &wd]);
+    let fix_out = run(&["fix", "--workdir", &wd, "--no-sync"]);
     assert_success(&fix_out, "fix");
     assert!(
         stdout(&fix_out).contains("fixed"),
@@ -321,9 +345,13 @@ fn fix_repairs_stage_mismatch_and_leaves_workdir_clean() {
 fn fix_dry_run_makes_no_changes() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
+    jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd]), "init");
-    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
+    assert_success(
+        &run(&["new", "Hello", "--workdir", &wd, "--no-sync"]),
+        "new",
+    );
     let from = tmp.path().join("concepts/hello.md");
     let to = tmp.path().join("editing/hello.md");
     std::fs::rename(&from, &to).unwrap();
@@ -339,10 +367,11 @@ fn fix_dry_run_makes_no_changes() {
 fn fix_exits_nonzero_when_skipped_findings_remain() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
-    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    jj_init(tmp.path());
+    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
     std::fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
 
-    let out = run(&["fix", "--workdir", &wd]);
+    let out = run(&["fix", "--workdir", &wd, "--no-sync"]);
     assert!(!out.status.success(), "expected non-zero exit");
     assert!(stdout(&out).contains("skipped"), "got: {}", stdout(&out));
 }
@@ -351,8 +380,9 @@ fn fix_exits_nonzero_when_skipped_findings_remain() {
 fn doctor_reports_findings_with_nonzero_exit() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
+    jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
     // Plant several distinct findings: stray file, removed stage dir.
     std::fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
     std::fs::remove_dir_all(tmp.path().join("editing")).unwrap();
@@ -366,4 +396,38 @@ fn doctor_reports_findings_with_nonzero_exit() {
         "got: {combined}"
     );
     assert!(combined.contains("workdir unhealthy"), "got: {combined}");
+}
+
+#[test]
+fn doctor_flags_missing_jj_repo() {
+    // No `jj_init` here — the workdir is intentionally not a jj repo.
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+
+    let out = run(&["doctor", "--workdir", &wd]);
+    assert!(!out.status.success(), "doctor should exit non-zero");
+    let combined = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(combined.contains("not a jj repo"), "got: {combined}");
+}
+
+#[test]
+fn fix_refuses_to_write_without_jj_repo() {
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
+    // Plant a repair-able stage mismatch — fix would normally land it.
+    let from = tmp.path().join("concepts/hello.md");
+    let to = tmp.path().join("editing/hello.md");
+    let raw_before = std::fs::read_to_string(&from).unwrap();
+    std::fs::rename(&from, &to).unwrap();
+
+    let out = run(&["fix", "--workdir", &wd]);
+    assert!(!out.status.success(), "fix should refuse without jj");
+    let combined = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(combined.contains("not a jj repo"), "got: {combined}");
+    // The repairable file must be untouched.
+    let raw_after = std::fs::read_to_string(&to).unwrap();
+    assert_eq!(raw_before, raw_after, "fix wrote without commit tracking");
 }
