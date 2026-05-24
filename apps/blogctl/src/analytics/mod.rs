@@ -7,5 +7,9 @@
 //! through this module rather than reinventing it inline.
 
 pub mod derived;
+pub mod percentile;
+pub mod summary;
 
 pub use derived::DerivedMetrics;
+pub use percentile::{percentiles_f64, percentiles_u64, Percentiles};
+pub use summary::{compute as summary, DimensionSummary, Summary, ValueSummary, LOW_N_THRESHOLD};
