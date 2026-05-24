@@ -161,6 +161,21 @@ pub enum Error {
         value: String,
         allowed: Vec<String>,
     },
+
+    #[error(
+        "target {target} is not on post {slug:?} — promote it via the targets editing flow before running `metrics update`"
+    )]
+    TargetNotInPost {
+        slug: String,
+        target: crate::target::Target,
+    },
+
+    #[error("invalid --sampled-at {value:?}: expected RFC 3339 timestamp ({source})")]
+    InvalidSampledAt {
+        value: String,
+        #[source]
+        source: time::error::Parse,
+    },
 }
 
 impl Error {
