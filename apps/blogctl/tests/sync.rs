@@ -481,6 +481,245 @@ fn classify_can_repair_post_whose_existing_classification_is_invalid() {
     assert!(!fixed.contains("thesys"));
 }
 
+/// Plant a TargetEntry on a post so `metrics update` has something
+/// to attach numbers to. Hand-edits the frontmatter directly (the
+/// "promote target to published" flow is out of #436's scope).
+fn add_published_linkedin_target(post_path: &std::path::Path) {
+    let raw = fs::read_to_string(post_path).unwrap();
+    let updated = raw.replace(
+        "tags: []\n",
+        concat!(
+            "tags: []\n",
+            "targets:\n",
+            "  - name: linkedin\n",
+            "    status: published\n",
+            "    url: https://www.linkedin.com/posts/example\n",
+            "    published_at: 2026-05-08T14:32:00Z\n",
+        ),
+    );
+    fs::write(post_path, updated).unwrap();
+}
+
+#[test]
+fn metrics_update_drives_full_sync_with_imp_int_message() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Stats".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    add_published_linkedin_target(&path.join("concepts/stats.md"));
+
+    let jj = FakeJj::new();
+    commands::metrics::update(
+        &jj,
+        commands::metrics::UpdateArgs {
+            slug: "stats".into(),
+            workdir: path.clone(),
+            target: blogctl::Target::Linkedin,
+            impressions: 1842,
+            reactions: 67,
+            comments: 14,
+            reposts: 5,
+            sampled_at: None,
+            no_sync: false,
+        },
+    )
+    .unwrap();
+    // int = 67 + 14 + 5 = 86.
+    assert_full_sync_flow(&jj.calls(), "post(stats): metrics linkedin imp=1842 int=86");
+    // And the numbers actually landed on disk.
+    let raw = fs::read_to_string(path.join("concepts/stats.md")).unwrap();
+    assert!(raw.contains("impressions: 1842"));
+    assert!(raw.contains("reactions: 67"));
+    assert!(raw.contains("comments: 14"));
+    assert!(raw.contains("reposts: 5"));
+    assert!(raw.contains("sampled_at:"));
+}
+
+#[test]
+fn metrics_update_with_sampled_at_override_uses_it() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Override".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    add_published_linkedin_target(&path.join("concepts/override.md"));
+
+    commands::metrics::update(
+        &FakeJj::new(),
+        commands::metrics::UpdateArgs {
+            slug: "override".into(),
+            workdir: path.clone(),
+            target: blogctl::Target::Linkedin,
+            impressions: 100,
+            reactions: 1,
+            comments: 0,
+            reposts: 0,
+            sampled_at: Some("2026-05-14T00:00:00Z".into()),
+            no_sync: false,
+        },
+    )
+    .unwrap();
+    let raw = fs::read_to_string(path.join("concepts/override.md")).unwrap();
+    assert!(
+        raw.contains("sampled_at: 2026-05-14T00:00:00Z"),
+        "expected exact override timestamp, got: {raw}"
+    );
+}
+
+#[test]
+fn metrics_update_fails_when_target_absent_no_sync_no_write() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Bare".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    // Note: no add_published_linkedin_target — the post has zero
+    // targets, so metrics update should hard-fail.
+
+    let post_path = path.join("concepts/bare.md");
+    let pre = fs::read_to_string(&post_path).unwrap();
+
+    let jj = FakeJj::new();
+    let err = commands::metrics::update(
+        &jj,
+        commands::metrics::UpdateArgs {
+            slug: "bare".into(),
+            workdir: path.clone(),
+            target: blogctl::Target::Linkedin,
+            impressions: 1,
+            reactions: 0,
+            comments: 0,
+            reposts: 0,
+            sampled_at: None,
+            no_sync: false,
+        },
+    )
+    .expect_err("missing target must hard-fail");
+    assert!(
+        matches!(err, blogctl::Error::TargetNotInPost { ref slug, .. } if slug == "bare"),
+        "got: {err:?}"
+    );
+
+    // File unchanged AND no jj calls fired.
+    let post = fs::read_to_string(&post_path).unwrap();
+    assert_eq!(post, pre);
+    assert!(jj.calls().is_empty(), "got: {:?}", jj.calls());
+}
+
+#[test]
+fn metrics_update_overwrites_existing_metrics() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Overwrite".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    add_published_linkedin_target(&path.join("concepts/overwrite.md"));
+
+    // First sample.
+    commands::metrics::update(
+        &FakeJj::new(),
+        commands::metrics::UpdateArgs {
+            slug: "overwrite".into(),
+            workdir: path.clone(),
+            target: blogctl::Target::Linkedin,
+            impressions: 100,
+            reactions: 5,
+            comments: 0,
+            reposts: 0,
+            sampled_at: Some("2026-05-10T00:00:00Z".into()),
+            no_sync: false,
+        },
+    )
+    .unwrap();
+
+    // Second sample (later). v1 has no history — second value wins.
+    commands::metrics::update(
+        &FakeJj::new(),
+        commands::metrics::UpdateArgs {
+            slug: "overwrite".into(),
+            workdir: path.clone(),
+            target: blogctl::Target::Linkedin,
+            impressions: 200,
+            reactions: 10,
+            comments: 1,
+            reposts: 0,
+            sampled_at: Some("2026-05-20T00:00:00Z".into()),
+            no_sync: false,
+        },
+    )
+    .unwrap();
+    let raw = fs::read_to_string(path.join("concepts/overwrite.md")).unwrap();
+    assert!(raw.contains("impressions: 200"));
+    assert!(raw.contains("sampled_at: 2026-05-20T00:00:00Z"));
+    assert!(!raw.contains("impressions: 100"));
+    assert!(!raw.contains("2026-05-10"));
+}
+
+#[test]
+fn metrics_show_is_read_only_no_sync() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Visible".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    add_published_linkedin_target(&path.join("concepts/visible.md"));
+
+    // show takes no Jj impl at all — it's a read-only command.
+    // Just call it and assert it succeeds; capturing stdout is
+    // brittle and not the load-bearing claim.
+    commands::metrics::show(commands::metrics::ShowArgs {
+        slug: "visible".into(),
+        workdir: path.clone(),
+    })
+    .unwrap();
+
+    // Sanity check: file on disk untouched.
+    let pre = fs::read_to_string(path.join("concepts/visible.md")).unwrap();
+    commands::metrics::show(commands::metrics::ShowArgs {
+        slug: "visible".into(),
+        workdir: path.clone(),
+    })
+    .unwrap();
+    let post = fs::read_to_string(path.join("concepts/visible.md")).unwrap();
+    assert_eq!(pre, post);
+}
+
 #[test]
 fn rebase_conflict_is_a_hard_error_and_aborts_the_write() {
     let (_tmp, path) = workdir();
