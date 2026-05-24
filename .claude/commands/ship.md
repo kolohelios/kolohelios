@@ -20,8 +20,16 @@ transitions (for example, parent advanced to a new `main@origin` commit,
 
 ### 1. Rebase on main@origin
 
-Run `shaka repo sync` (it does `jj git fetch` + rebase onto `main@origin`). If
-it errors with conflicts, stop, and report — the user resolves conflicts.
+Run `shaka repo sync` (it does `jj git fetch` + rebase onto `main@origin`).
+If it errors with conflicts, resolve them in place when the merge is
+mechanical and both sides' intent is unambiguous (for example: sibling
+tests added in the same spot, a new arm in a match expression, the
+same import added on both sides). After resolving, run `jj squash` to move
+the resolution into the conflicted commit, then surface a one-line
+summary of what you resolved so the user can spot-check. Stop and ask
+only when: both sides touched the same logical concern in incompatible
+ways, the resolution requires picking between competing semantics, or
+the conflict spans more than ~2 files or ~3 hunks.
 
 ### 2. Lint commits
 
@@ -88,7 +96,8 @@ let the user resolve it.
 
 Halt the workflow and report to the user when:
 
-- `shaka repo sync` hits a merge conflict
+- `shaka repo sync` hits a conflict that isn't a mechanical 2-or-3-way
+  merge (see Step 1 for the threshold)
 - `shaka commit lint` reports errors that aren't trivially auto-fixable
 - Self-review surfaces something unintentional
 - `shaka preflight` fails any check (including the conditional re-run inside
