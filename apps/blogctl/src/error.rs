@@ -162,6 +162,9 @@ pub enum Error {
         allowed: Vec<String>,
     },
 
+    #[error("could not serialize analytics summary to JSON: {0}")]
+    SummaryJson(#[source] serde_json::Error),
+
     #[error(
         "target {target} is not on post {slug:?} — promote it via the targets editing flow before running `metrics update`"
     )]
