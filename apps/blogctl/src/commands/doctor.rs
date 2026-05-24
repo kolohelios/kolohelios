@@ -22,6 +22,16 @@ pub const STALE_UNPUSHED_THRESHOLD_HOURS: i64 = 24;
 
 #[derive(Debug)]
 pub enum Finding {
+    /// The `jj` binary is not on `$PATH`. blogctl writes assume a
+    /// VC-tracked workdir; without `jj`, every change accumulates
+    /// silently with no commit trail.
+    JjNotInstalled,
+    /// The workdir exists but is not a `jj` repository. Same hazard
+    /// as `JjNotInstalled` — writes have no commit trail until the
+    /// user runs `jj git init --colocate` (or equivalent).
+    NotAJjRepo {
+        workdir: PathBuf,
+    },
     ConfigMissing,
     ConfigUnparsable {
         error: Error,
@@ -82,6 +92,15 @@ pub enum Finding {
 impl fmt::Display for Finding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::JjNotInstalled => write!(
+                f,
+                "jj is not installed: blogctl uses `jj` to commit every write — install jj and re-run"
+            ),
+            Self::NotAJjRepo { workdir } => write!(
+                f,
+                "not a jj repo: {} — run `jj git init --colocate` in the workdir to enable commit tracking",
+                workdir.display()
+            ),
             Self::ConfigMissing => write!(f, "config missing: .blog-os.toml does not exist"),
             Self::ConfigUnparsable { error } => write!(f, "config unparsable: {error}"),
             Self::StageDirMissing { stage } => {
@@ -256,15 +275,11 @@ pub fn audit(workdir: &Workdir) -> Result<Vec<Finding>> {
 }
 
 /// Sync-state audit. Separate from `audit()` so the filesystem pass
-/// stays pure and `fix` (which only reads filesystem findings)
-/// continues to know nothing about VCS state. Returns an empty list
-/// when `jj` is unavailable or the workdir isn't a `jj` repo — those
-/// are not "findings" worth blocking on.
+/// stays pure. Precondition: `jj.status()` returns `Status::Ok` —
+/// `full_audit` guarantees this gate before calling, so we don't
+/// re-query.
 pub fn sync_audit(workdir: &Workdir, jj: &dyn Jj, now: OffsetDateTime) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
-    if !matches!(jj.status(workdir.root())?, Status::Ok) {
-        return Ok(findings);
-    }
     let cfg = match Repository::unchecked(workdir.clone()).audit_config() {
         ConfigStatus::Ok(cfg) => cfg,
         // The config layer's own findings (Missing / Unparsable) are
@@ -287,10 +302,27 @@ pub fn sync_audit(workdir: &Workdir, jj: &dyn Jj, now: OffsetDateTime) -> Result
     Ok(findings)
 }
 
+/// Full audit: jj precondition + filesystem audit + sync audit.
+/// Short-circuits to a single `JjNotInstalled` or `NotAJjRepo`
+/// finding when `.jj` is unavailable — those are hard preconditions
+/// for blogctl, so further per-post checks would only add noise.
+pub fn full_audit(workdir: &Workdir, jj: &dyn Jj, now: OffsetDateTime) -> Result<Vec<Finding>> {
+    match jj.status(workdir.root())? {
+        Status::Ok => {
+            let mut findings = audit(workdir)?;
+            findings.extend(sync_audit(workdir, jj, now)?);
+            Ok(findings)
+        }
+        Status::JjNotInstalled => Ok(vec![Finding::JjNotInstalled]),
+        Status::NotAJjRepo => Ok(vec![Finding::NotAJjRepo {
+            workdir: workdir.root().to_path_buf(),
+        }]),
+    }
+}
+
 pub fn run(jj: &dyn Jj, workdir: PathBuf) -> Result<()> {
     let wd = Workdir::new(&workdir);
-    let mut findings = audit(&wd)?;
-    findings.extend(sync_audit(&wd, jj, OffsetDateTime::now_utc())?);
+    let findings = full_audit(&wd, jj, OffsetDateTime::now_utc())?;
     if findings.is_empty() {
         println!("workdir healthy: {}", workdir.display());
         return Ok(());
@@ -605,9 +637,9 @@ mod tests {
     fn run_returns_workdir_unhealthy_on_findings() {
         let (tmp, _workdir) = fresh_workdir();
         fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
-        // FakeJj with NotAJjRepo: sync_audit is a no-op, so we only
-        // see the filesystem finding (the stray entry).
-        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        // `Status::Ok` keeps the filesystem audit path live so the
+        // stray-entry finding actually surfaces.
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::Ok);
         let err = run(&jj, tmp.path().to_path_buf()).unwrap_err();
         assert!(matches!(err, Error::WorkdirUnhealthy(n) if n >= 1));
     }
@@ -615,24 +647,37 @@ mod tests {
     #[test]
     fn run_returns_ok_on_clean_workdir() {
         let (tmp, _workdir) = fresh_workdir();
-        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::Ok);
         run(&jj, tmp.path().to_path_buf()).unwrap();
     }
 
     #[test]
-    fn sync_audit_returns_empty_when_jj_not_installed() {
+    fn full_audit_short_circuits_on_jj_not_installed() {
         let (_tmp, workdir) = fresh_workdir();
         let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::JjNotInstalled);
-        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
-        assert!(findings.is_empty());
+        let findings = full_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(matches!(findings[0], Finding::JjNotInstalled));
     }
 
     #[test]
-    fn sync_audit_returns_empty_when_not_a_jj_repo() {
+    fn full_audit_short_circuits_on_not_a_jj_repo() {
         let (_tmp, workdir) = fresh_workdir();
+        // Plant a filesystem-level finding that would normally surface
+        // through `audit()` — short-circuit must suppress it.
+        fs::write(_tmp.path().join("concepts/.DS_Store"), "x").unwrap();
         let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
-        let findings = sync_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
-        assert!(findings.is_empty());
+        let findings = full_audit(&workdir, &jj, OffsetDateTime::now_utc()).unwrap();
+        assert_eq!(findings.len(), 1, "got: {findings:?}");
+        assert!(matches!(findings[0], Finding::NotAJjRepo { .. }));
+    }
+
+    #[test]
+    fn run_reports_not_a_jj_repo() {
+        let (tmp, _workdir) = fresh_workdir();
+        let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
+        let err = run(&jj, tmp.path().to_path_buf()).unwrap_err();
+        assert!(matches!(err, Error::WorkdirUnhealthy(1)));
     }
 
     #[test]
