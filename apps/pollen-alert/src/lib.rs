@@ -1,3 +1,5 @@
+pub mod scoring;
+
 use worker::{event, Context, Env, Request, Response, Result, ScheduleContext, ScheduledEvent};
 
 #[event(scheduled)]
