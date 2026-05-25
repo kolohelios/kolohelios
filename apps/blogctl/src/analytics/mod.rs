@@ -9,9 +9,13 @@
 pub mod compare;
 pub mod derived;
 pub mod percentile;
+pub mod recommendations;
 pub mod summary;
 
 pub use compare::{compute as compare, Cell, Comparison, Marginal};
 pub use derived::DerivedMetrics;
 pub use percentile::{percentiles_f64, percentiles_u64, Percentiles};
+pub use recommendations::{
+    compute as recommendations, Observation, Recommendations, CLOSING_REMINDER, FORBIDDEN_WORDS,
+};
 pub use summary::{compute as summary, DimensionSummary, Summary, ValueSummary, LOW_N_THRESHOLD};
