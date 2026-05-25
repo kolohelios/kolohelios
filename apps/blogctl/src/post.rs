@@ -62,10 +62,23 @@ pub struct PostMetadata {
 pub struct AiHistory {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub draft: Option<AiDraftRecord>,
+    /// Most-recent `blogctl refine` invocation. Overwrites on each
+    /// run — multi-pass history (a `Vec<AiRefineRecord>`) is deferred
+    /// per #506's scope. Earlier refines live in `jj` history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refine: Option<AiRefineRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AiDraftRecord {
+    pub prompt: String,
+    pub model: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub generated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiRefineRecord {
     pub prompt: String,
     pub model: String,
     #[serde(with = "time::serde::rfc3339")]

@@ -6,12 +6,12 @@
 //! directory rename, taxonomy mismatch) — gaps unit tests miss because
 //! each one stays inside one module's contract.
 //!
-//! The AI-touching path lands here too via `lifecycle_with_draft`,
-//! which drives `commands::draft` against a `mockito` server using the
-//! `OPENROUTER_API_BASE` seam (#474). Once the rest of the
-//! AI-integrated commands tracked in #483 land (`refine`,
-//! `final-edit`), they'll extend the same test rather than spawning
-//! new ones.
+//! The AI-touching path lands here too via `lifecycle_with_ai_commands`,
+//! which drives `commands::draft` and `commands::refine` against a
+//! `mockito` server using the `OPENROUTER_API_BASE` seam (#474). The
+//! `mock_chat_completion` helper makes adding the next AI command
+//! (`final-edit`, ... tracked in #483) one more line, not a copy of
+//! the JSON envelope.
 
 use std::env;
 use std::path::PathBuf;
@@ -19,7 +19,9 @@ use std::sync::Mutex;
 
 use tempfile::TempDir;
 
-use blogctl::commands::{self, classify::ClassifyArgs, draft::DraftArgs, metrics::UpdateArgs};
+use blogctl::commands::{
+    self, classify::ClassifyArgs, draft::DraftArgs, metrics::UpdateArgs, refine::RefineArgs,
+};
 use blogctl::error::Error;
 use blogctl::kind::Kind;
 use blogctl::stage::Stage;
@@ -34,29 +36,41 @@ use blogctl::target::{Target, TargetEntry, TargetStatus};
 // interfere with each other.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-const CANNED_DRAFT_REPLY: &str =
-    "## Drafted body\n\nFirst paragraph from the mock.\n\nSecond paragraph from the mock.\n";
-
-const CANNED_OPENROUTER_RESPONSE: &str = r###"{
-  "id": "gen-test-001",
-  "object": "chat.completion",
-  "model": "test-model",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "## Drafted body\n\nFirst paragraph from the mock.\n\nSecond paragraph from the mock.\n"
-      },
-      "finish_reason": "stop"
-    }
-  ]
-}"###;
-
 fn fresh_workdir() -> (TempDir, PathBuf) {
     let tmp = TempDir::new().expect("tempdir");
     let path = tmp.path().to_path_buf();
     (tmp, path)
+}
+
+/// Register a one-shot `/chat/completions` mock that returns `content`
+/// wrapped in an OpenRouter chat-completion envelope. Each call queues
+/// one canned reply; sequential AI commands consume them in
+/// registration order. Adding a new AI-touching command to the
+/// lifecycle test is one more `mock_chat_completion(&mut server, ...)`
+/// call rather than a new JSON literal.
+fn mock_chat_completion(server: &mut mockito::Server, content: &str) -> mockito::Mock {
+    let body = format!(
+        r###"{{
+  "id": "gen-test",
+  "object": "chat.completion",
+  "model": "test-model",
+  "choices": [
+    {{
+      "index": 0,
+      "message": {{ "role": "assistant", "content": {content_json} }},
+      "finish_reason": "stop"
+    }}
+  ]
+}}"###,
+        content_json = serde_json::to_string(content).expect("content is utf-8")
+    );
+    server
+        .mock("POST", "/chat/completions")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .expect(1)
+        .create()
 }
 
 fn promote_to_published(workdir: &PathBuf, slug: &str) {
@@ -180,20 +194,22 @@ fn lifecycle_init_new_classify_promote_metrics() {
     assert_eq!(m.reposts, 3);
 }
 
-/// Drive an `Ideation`-stage post through `commands::draft` against a
-/// `mockito` server. Asserts the body was replaced with the mock's
-/// reply and the `ai.draft` audit block was populated. Also asserts
-/// that drafting from a non-`Ideation` stage errors cleanly.
+const DRAFT_REPLY: &str =
+    "## Drafted body\n\nFirst paragraph from the mock.\n\nSecond paragraph from the mock.\n";
+const REFINE_REPLY: &str =
+    "## Refined body\n\nTighter first paragraph.\n\nTighter second paragraph.\n";
+
+/// Drive the AI-touching path of the lifecycle end-to-end against a
+/// `mockito` server: draft into an Ideation post, promote to Editing,
+/// refine. Asserts on body replacement and the `ai.draft` / `ai.refine`
+/// audit blocks. Also exercises the negative paths (draft from Concept,
+/// refine from Ideation) so the stage-gating regressions land here too.
 #[test]
-fn lifecycle_with_draft_uses_mocked_openrouter() {
+fn lifecycle_with_ai_commands_uses_mocked_openrouter() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut server = mockito::Server::new();
-    let mock = server
-        .mock("POST", "/chat/completions")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(CANNED_OPENROUTER_RESPONSE)
-        .create();
+    let mock_draft = mock_chat_completion(&mut server, DRAFT_REPLY);
+    let mock_refine = mock_chat_completion(&mut server, REFINE_REPLY);
 
     let prev_base = env::var("OPENROUTER_API_BASE").ok();
     let prev_key = env::var("OPENROUTER_API_KEY").ok();
@@ -203,7 +219,7 @@ fn lifecycle_with_draft_uses_mocked_openrouter() {
     );
     env::set_var("OPENROUTER_API_KEY", "test-key");
 
-    let result = run_draft_lifecycle();
+    let result = run_ai_lifecycle();
 
     match prev_base {
         Some(v) => env::set_var("OPENROUTER_API_BASE", v),
@@ -214,27 +230,28 @@ fn lifecycle_with_draft_uses_mocked_openrouter() {
         None => env::remove_var("OPENROUTER_API_KEY"),
     }
 
-    result.expect("draft lifecycle should succeed");
-    mock.assert();
+    result.expect("ai lifecycle should succeed");
+    mock_draft.assert();
+    mock_refine.assert();
 }
 
-fn run_draft_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
+fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let (_tmp, workdir) = fresh_workdir();
     commands::init::run(&FakeJj::new(), workdir.clone(), true)?;
     commands::new::run(
         &FakeJj::new(),
-        "Draft test post".into(),
+        "Ai test post".into(),
         workdir.clone(),
         None,
         Kind::Post,
         None,
         true,
     )?;
-    let slug = "draft-test-post";
+    let slug = "ai-test-post";
 
-    // Trying to draft at Concept must fail with DraftWrongStage. Catch
-    // before promoting so the negative path is exercised inside the
-    // same lifecycle test instead of a tiny standalone case.
+    // Draft at Concept must fail with DraftWrongStage. Catch the
+    // negative path here so the stage-gating regression doesn't need
+    // its own standalone test.
     let err = commands::draft::run(
         &FakeJj::new(),
         DraftArgs {
@@ -251,8 +268,8 @@ fn run_draft_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
         "expected DraftWrongStage, got: {err:?}"
     );
 
+    // Concept → Ideation, then draft.
     commands::promote::run(&FakeJj::new(), slug.to_string(), workdir.clone(), true)?;
-
     commands::draft::run(
         &FakeJj::new(),
         DraftArgs {
@@ -268,12 +285,64 @@ fn run_draft_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let (_, post) = repo.load(slug)?;
     assert_eq!(
         post.body.trim(),
-        CANNED_DRAFT_REPLY.trim(),
-        "body should match the canned mock reply"
+        DRAFT_REPLY.trim(),
+        "body should match the canned draft reply"
     );
-    let ai = post.metadata.ai.as_ref().expect("ai block populated");
-    let draft = ai.draft.as_ref().expect("ai.draft populated");
+    let ai = post
+        .metadata
+        .ai
+        .as_ref()
+        .expect("ai block populated post-draft");
+    assert!(ai.draft.is_some(), "ai.draft set post-draft");
+    assert!(ai.refine.is_none(), "ai.refine not set yet");
+
+    // Refine at Ideation must fail with RefineWrongStage. Same
+    // pattern as the draft check above.
+    let err = commands::refine::run(
+        &FakeJj::new(),
+        RefineArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: "tighten".into(),
+            model: "test-model".into(),
+            no_sync: true,
+        },
+    )
+    .expect_err("refine at Ideation must error");
+    assert!(
+        matches!(err, Error::RefineWrongStage { .. }),
+        "expected RefineWrongStage, got: {err:?}"
+    );
+
+    // Ideation → Editing, then refine.
+    commands::promote::run(&FakeJj::new(), slug.to_string(), workdir.clone(), true)?;
+    commands::refine::run(
+        &FakeJj::new(),
+        RefineArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: "tighten paragraphs".into(),
+            model: "test-model".into(),
+            no_sync: true,
+        },
+    )?;
+
+    let repo = Repository::open(Workdir::new(&workdir))?;
+    let (_, post) = repo.load(slug)?;
+    assert_eq!(
+        post.body.trim(),
+        REFINE_REPLY.trim(),
+        "body should match the canned refine reply"
+    );
+    let ai = post
+        .metadata
+        .ai
+        .as_ref()
+        .expect("ai block populated post-refine");
+    let draft = ai.draft.as_ref().expect("ai.draft preserved across refine");
     assert_eq!(draft.prompt, "write me three paragraphs about mocking");
-    assert_eq!(draft.model, "test-model");
+    let refine = ai.refine.as_ref().expect("ai.refine set post-refine");
+    assert_eq!(refine.prompt, "tighten paragraphs");
+    assert_eq!(refine.model, "test-model");
     Ok(())
 }

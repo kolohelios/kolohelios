@@ -45,6 +45,11 @@ pub enum Error {
     )]
     DraftWrongStage { slug: String, stage: Stage },
 
+    #[error(
+        "cannot refine post {slug:?} from stage {stage}: refining requires the post to be in the `editing` stage"
+    )]
+    RefineWrongStage { slug: String, stage: Stage },
+
     #[error("cannot demote from {0}: already at the first workflow stage")]
     DemoteFromInitial(Stage),
 

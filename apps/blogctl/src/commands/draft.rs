@@ -170,6 +170,7 @@ mod tests {
                 model: "old-model".into(),
                 generated_at: OffsetDateTime::UNIX_EPOCH,
             }),
+            refine: None,
         };
         let h = merge_draft_record(
             Some(prior),
