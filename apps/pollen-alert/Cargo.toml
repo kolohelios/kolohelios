@@ -9,12 +9,25 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Async trait methods. Worker callbacks are async; the forecast trait
+# is `async fn fetch` so the natural impl works with `worker::Fetch`
+# without `Pin<Box<...>>` boilerplate.
+async-trait = "0.1"
 # `default-features = false` drops chrono's default `clock` feature
 # (which pulls in libc time functions unavailable on
-# `wasm32-unknown-unknown`); the scoring module only needs
-# `NaiveDate` / `NaiveDateTime` arithmetic.
+# `wasm32-unknown-unknown`). The forecast parser captures Open-Meteo
+# timestamps as `String` and uses `NaiveDateTime::parse_from_str` to
+# handle the seconds-less format — no chrono `serde` feature needed.
 chrono = { version = "0.4", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 worker = "0.8"
+
+[dev-dependencies]
+# `tokio = { rt, macros }` lets native integration tests run async
+# code via `#[tokio::test]`. The Worker runtime doesn't need tokio
+# (worker has its own executor); this is host-side only.
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [profile.release]
 opt-level = "s"

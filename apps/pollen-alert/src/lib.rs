@@ -1,4 +1,5 @@
 pub mod alert;
+pub mod forecast;
 pub mod scoring;
 
 use worker::{event, Context, Env, Request, Response, Result, ScheduleContext, ScheduledEvent};
