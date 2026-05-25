@@ -1,13 +1,14 @@
 //! `blogctl analytics {summary, compare, recommendations}` — read
 //! every published post's classifications + metrics and surface
-//! aggregates. summary + compare are implemented; recommendations
-//! is still a stub (behavior lands in #441).
+//! aggregates. All three commands implemented.
 
 use std::path::PathBuf;
 
 use time::OffsetDateTime;
 
-use crate::analytics::{self, Comparison, DimensionSummary, Summary, ValueSummary};
+use crate::analytics::{
+    self, Comparison, DimensionSummary, Recommendations, Summary, ValueSummary,
+};
 use crate::error::{Error, Result};
 use crate::storage::{Repository, Workdir};
 use crate::target::Target;
@@ -252,6 +253,37 @@ fn format_cell_body(cell: &analytics::Cell) -> String {
     format!("n={}  {er}", cell.n)
 }
 
-pub fn recommendations(_args: RecommendationsArgs) -> Result<()> {
-    Err(Error::Unimplemented("analytics recommendations"))
+pub fn recommendations(args: RecommendationsArgs) -> Result<()> {
+    let repo = Repository::open(Workdir::new(&args.workdir))?;
+    let handles = repo.list()?;
+    let posts: Vec<_> = handles
+        .iter()
+        .map(|h| repo.load_raw(&h.metadata.slug).map(|(_, post)| post))
+        .collect::<Result<_>>()?;
+    let r = analytics::recommendations(&posts, args.target, args.min_n, OffsetDateTime::now_utc());
+    print_recommendations_text(&r);
+    Ok(())
+}
+
+fn print_recommendations_text(r: &Recommendations) {
+    let target_label = r
+        .target_filter
+        .map(|t| format!("target={t}, "))
+        .unwrap_or_default();
+    println!(
+        "analytics recommendations  ({target_label}n_total={n})",
+        n = r.n_total,
+    );
+    println!();
+    if r.observations.is_empty() {
+        println!(
+            "  (no observations — add metrics and classifications to more posts to surface signal)"
+        );
+    } else {
+        for obs in &r.observations {
+            println!("  {}", obs.render());
+            println!();
+        }
+    }
+    println!("{}", analytics::CLOSING_REMINDER);
 }
