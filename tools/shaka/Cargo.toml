@@ -20,3 +20,6 @@ serde_yaml_ng = "0.10"
 shlex = "1"
 snafu = "0.9"
 tempfile = "3"
+
+[lints.clippy]
+mod_module_files = "deny"

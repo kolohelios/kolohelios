@@ -8,6 +8,11 @@
 //! compile error at the call site.
 
 #![allow(dead_code)]
+// `tests/common/mod.rs` is the canonical Rust idiom for shared
+// integration-test helpers: naming it `mod.rs` keeps Cargo from
+// compiling it as its own test binary. The repo-wide
+// `clippy::mod_module_files` lint must be silenced here.
+#![allow(clippy::mod_module_files)]
 //!
 //! The project schema imports
 //! `kolohelios.com/infra/cloudflare-dns/domains:domain` to constrain
