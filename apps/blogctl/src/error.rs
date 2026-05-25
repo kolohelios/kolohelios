@@ -182,6 +182,12 @@ pub enum Error {
         #[source]
         source: time::error::Parse,
     },
+
+    #[error("could not parse backfill import file: {0}")]
+    BackfillImportParse(#[source] serde_json::Error),
+
+    #[error("backfill completed with {0} warning(s) — see stderr for details")]
+    BackfillPartialFailure(usize),
 }
 
 impl Error {
