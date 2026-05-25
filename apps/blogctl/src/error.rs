@@ -50,6 +50,11 @@ pub enum Error {
     )]
     RefineWrongStage { slug: String, stage: Stage },
 
+    #[error(
+        "cannot final-edit post {slug:?} from stage {stage}: the polish pass requires the post to be in the `final-editing` stage"
+    )]
+    FinalEditWrongStage { slug: String, stage: Stage },
+
     #[error("cannot demote from {0}: already at the first workflow stage")]
     DemoteFromInitial(Stage),
 

@@ -167,6 +167,27 @@ pub enum Command {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Polish-pass a post body via OpenRouter. Post must be in the
+    /// `final-editing` stage. Without `--prompt`, applies a baked-in
+    /// LinkedIn-flavored polish prompt (strip LLMisms, cap at 500
+    /// words, plain text only). Requires `OPENROUTER_API_KEY`.
+    FinalEdit {
+        slug: String,
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Override the default polish instruction. Use this for
+        /// non-LinkedIn surfaces (articles, etc.) where the baked-in
+        /// LinkedIn rules don't apply.
+        #[arg(long)]
+        prompt: Option<String>,
+        /// OpenRouter model identifier.
+        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
+        model: String,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Set classification dimensions on a post (format, hook, tone,
     /// audience, strategic-role, theme). Missing flags leave the
     /// existing value alone; `--clear-<dim>` removes it.
@@ -429,6 +450,22 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
         } => commands::refine::run(
             jj,
             commands::refine::RefineArgs {
+                slug,
+                workdir: workdir_or_pwd(workdir)?,
+                prompt,
+                model,
+                no_sync,
+            },
+        ),
+        Command::FinalEdit {
+            slug,
+            workdir,
+            prompt,
+            model,
+            no_sync,
+        } => commands::final_edit::run(
+            jj,
+            commands::final_edit::FinalEditArgs {
                 slug,
                 workdir: workdir_or_pwd(workdir)?,
                 prompt,

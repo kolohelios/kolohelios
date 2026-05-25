@@ -5,6 +5,7 @@ pub mod classify;
 pub mod demote;
 pub mod doctor;
 pub mod draft;
+pub mod final_edit;
 pub mod fix;
 pub mod init;
 pub mod list;

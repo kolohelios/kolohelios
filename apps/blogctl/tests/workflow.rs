@@ -20,7 +20,8 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 
 use blogctl::commands::{
-    self, classify::ClassifyArgs, draft::DraftArgs, metrics::UpdateArgs, refine::RefineArgs,
+    self, classify::ClassifyArgs, draft::DraftArgs, final_edit::FinalEditArgs, metrics::UpdateArgs,
+    refine::RefineArgs,
 };
 use blogctl::error::Error;
 use blogctl::kind::Kind;
@@ -198,18 +199,23 @@ const DRAFT_REPLY: &str =
     "## Drafted body\n\nFirst paragraph from the mock.\n\nSecond paragraph from the mock.\n";
 const REFINE_REPLY: &str =
     "## Refined body\n\nTighter first paragraph.\n\nTighter second paragraph.\n";
+const FINAL_EDIT_REPLY: &str =
+    "Polished body from the mock.\n\nNo markdown, just words and double line breaks.\n";
 
 /// Drive the AI-touching path of the lifecycle end-to-end against a
 /// `mockito` server: draft into an Ideation post, promote to Editing,
-/// refine. Asserts on body replacement and the `ai.draft` / `ai.refine`
-/// audit blocks. Also exercises the negative paths (draft from Concept,
-/// refine from Ideation) so the stage-gating regressions land here too.
+/// refine, promote to FinalEditing, final-edit. Asserts on body
+/// replacement and the `ai.draft` / `ai.refine` / `ai.final_edit`
+/// audit blocks. Also exercises the negative paths (draft from
+/// Concept, refine from Ideation, final-edit from Editing) so the
+/// stage-gating regressions land here too.
 #[test]
 fn lifecycle_with_ai_commands_uses_mocked_openrouter() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut server = mockito::Server::new();
     let mock_draft = mock_chat_completion(&mut server, DRAFT_REPLY);
     let mock_refine = mock_chat_completion(&mut server, REFINE_REPLY);
+    let mock_final_edit = mock_chat_completion(&mut server, FINAL_EDIT_REPLY);
 
     let prev_base = env::var("OPENROUTER_API_BASE").ok();
     let prev_key = env::var("OPENROUTER_API_KEY").ok();
@@ -233,6 +239,7 @@ fn lifecycle_with_ai_commands_uses_mocked_openrouter() {
     result.expect("ai lifecycle should succeed");
     mock_draft.assert();
     mock_refine.assert();
+    mock_final_edit.assert();
 }
 
 fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
@@ -344,5 +351,72 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let refine = ai.refine.as_ref().expect("ai.refine set post-refine");
     assert_eq!(refine.prompt, "tighten paragraphs");
     assert_eq!(refine.model, "test-model");
+
+    // FinalEdit at Editing must fail with FinalEditWrongStage. Same
+    // stage-gating pattern as the draft/refine checks above.
+    let err = commands::final_edit::run(
+        &FakeJj::new(),
+        FinalEditArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: None,
+            model: "test-model".into(),
+            no_sync: true,
+        },
+    )
+    .expect_err("final-edit at Editing must error");
+    assert!(
+        matches!(err, Error::FinalEditWrongStage { .. }),
+        "expected FinalEditWrongStage, got: {err:?}"
+    );
+
+    // Editing → FinalEditing, then final-edit (using the baked-in
+    // LinkedIn polish prompt since --prompt is None).
+    commands::promote::run(&FakeJj::new(), slug.to_string(), workdir.clone(), true)?;
+    commands::final_edit::run(
+        &FakeJj::new(),
+        FinalEditArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: None,
+            model: "test-model".into(),
+            no_sync: true,
+        },
+    )?;
+
+    let repo = Repository::open(Workdir::new(&workdir))?;
+    let (_, post) = repo.load(slug)?;
+    assert_eq!(
+        post.body.trim(),
+        FINAL_EDIT_REPLY.trim(),
+        "body should match the canned final-edit reply"
+    );
+    let ai = post
+        .metadata
+        .ai
+        .as_ref()
+        .expect("ai block populated post-final-edit");
+    let draft = ai
+        .draft
+        .as_ref()
+        .expect("ai.draft preserved across final-edit");
+    assert_eq!(draft.prompt, "write me three paragraphs about mocking");
+    let refine = ai
+        .refine
+        .as_ref()
+        .expect("ai.refine preserved across final-edit");
+    assert_eq!(refine.prompt, "tighten paragraphs");
+    let fe = ai
+        .final_edit
+        .as_ref()
+        .expect("ai.final_edit set post-final-edit");
+    // The default polish prompt should have been recorded in the audit
+    // block since --prompt was None.
+    assert!(
+        fe.prompt.to_lowercase().contains("linkedin"),
+        "default polish prompt should be stored in ai.final_edit: {}",
+        fe.prompt
+    );
+    assert_eq!(fe.model, "test-model");
     Ok(())
 }
