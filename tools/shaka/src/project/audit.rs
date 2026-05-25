@@ -101,11 +101,13 @@ struct RustHasTests;
 struct RustCoverageThresholdNonzero;
 struct RustLicenseDual;
 struct KoloheliosNixViaFlakehub;
+struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
 
 const REQUIRED_RUST_LICENSE: &str = r#"license = "MIT OR Apache-2.0""#;
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
     "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
+const REQUIRED_KOLOHELIOS_HOME_URL: &str = "https://flakehub.com/f/kolohelios/home/*.tar.gz";
 
 impl Rule for ReadmePresent {
     fn name(&self) -> &'static str {
@@ -224,11 +226,33 @@ impl Rule for KoloheliosNixViaFlakehub {
         let Ok(contents) = std::fs::read_to_string(&flake) else {
             return RuleResult::Pass;
         };
-        match extract_kolohelios_nix_url(&contents) {
+        match extract_input_url(&contents, "kolohelios-nix") {
             None => RuleResult::Pass,
             Some(url) if url == REQUIRED_KOLOHELIOS_NIX_URL => RuleResult::Pass,
             Some(url) => RuleResult::Fail(format!(
                 "kolohelios-nix input must use FlakeHub URL `{REQUIRED_KOLOHELIOS_NIX_URL}` (found: `{url}`)"
+            )),
+        }
+    }
+}
+
+impl Rule for KoloheliosHomeViaFlakehub {
+    fn name(&self) -> &'static str {
+        "kolohelios-home-via-flakehub"
+    }
+    fn applies(&self, _meta: &ProjectMeta) -> bool {
+        true
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let flake = project_dir.join("flake.nix");
+        let Ok(contents) = std::fs::read_to_string(&flake) else {
+            return RuleResult::Pass;
+        };
+        match extract_input_url(&contents, "home-env") {
+            None => RuleResult::Pass,
+            Some(url) if url == REQUIRED_KOLOHELIOS_HOME_URL => RuleResult::Pass,
+            Some(url) => RuleResult::Fail(format!(
+                "home-env input must use FlakeHub URL `{REQUIRED_KOLOHELIOS_HOME_URL}` (found: `{url}`)"
             )),
         }
     }
@@ -329,23 +353,25 @@ fn is_placeholder_body_line(stripped: &str) -> bool {
     matches!(body, "true" | ":")
 }
 
-// Parses an inline `kolohelios-nix.url = "<url>";` declaration, accepting
+// Parses an inline `<input_name>.url = "<url>";` declaration, accepting
 // both the in-block form (inside `inputs = { ... }`) and the top-level
-// `inputs.kolohelios-nix.url = "..."` form. Returns the URL if found,
+// `inputs.<input_name>.url = "..."` form. Returns the URL if found,
 // ignoring lines that are commented out (whitespace then `#`). Block-form
-// (`kolohelios-nix = { url = "..."; }`) is intentionally not supported —
-// every current consumer uses the inline form, and the rule fails closed
-// (returns None → Pass via "rule didn't apply") rather than silently
+// (`<input_name> = { url = "..."; }`) is intentionally not supported —
+// every current consumer uses the inline form, and callers fail closed
+// (return None → Pass via "rule didn't apply") rather than silently
 // accepting a malformed declaration.
-fn extract_kolohelios_nix_url(flake_contents: &str) -> Option<String> {
+fn extract_input_url(flake_contents: &str, input_name: &str) -> Option<String> {
+    let top_prefix = format!("inputs.{input_name}.url");
+    let block_prefix = format!("{input_name}.url");
     for line in flake_contents.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with('#') {
             continue;
         }
         let Some(after_attr) = trimmed
-            .strip_prefix("inputs.kolohelios-nix.url")
-            .or_else(|| trimmed.strip_prefix("kolohelios-nix.url"))
+            .strip_prefix(top_prefix.as_str())
+            .or_else(|| trimmed.strip_prefix(block_prefix.as_str()))
         else {
             continue;
         };
@@ -371,6 +397,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustCoverageThresholdNonzero),
         Box::new(RustLicenseDual),
         Box::new(KoloheliosNixViaFlakehub),
+        Box::new(KoloheliosHomeViaFlakehub),
         Box::new(ValidateRecipeMeaningful),
     ]
 }
@@ -1057,6 +1084,88 @@ mod tests {
         .unwrap();
         assert_eq!(
             KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_home_via_flakehub_passes_when_no_flake_nix() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(
+            KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_home_via_flakehub_passes_when_flake_does_not_reference_input() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{ inputs.nixpkgs.url = \"github:NixOS/nixpkgs\"; outputs = { ... }: { }; }\n",
+        )
+        .unwrap();
+        assert_eq!(
+            KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_home_via_flakehub_passes_for_canonical_url() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  inputs = {\n    home-env.url = \"https://flakehub.com/f/kolohelios/home/*.tar.gz\";\n    nixpkgs.follows = \"kolohelios-nix/nixpkgs\";\n  };\n}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn kolohelios_home_via_flakehub_fails_for_path_input() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  inputs = {\n    home-env.url = \"path:../home\";\n  };\n}\n",
+        )
+        .unwrap();
+        match KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("path:../home"), "got: {msg}");
+                assert!(msg.contains("FlakeHub URL"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn kolohelios_home_via_flakehub_fails_for_github_url() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  inputs.home-env.url = \"github:kolohelios/home\";\n}\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn kolohelios_home_via_flakehub_ignores_comment_only_mentions() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("flake.nix"),
+            "{\n  # home-env.url could be a path: input from a sibling flake\n  inputs.nixpkgs.url = \"github:NixOS/nixpkgs\";\n}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
             RuleResult::Pass
         );
     }
