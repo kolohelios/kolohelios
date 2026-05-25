@@ -15,6 +15,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::error::{Error, Result};
@@ -120,6 +121,19 @@ impl FromStr for Predicate {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self> {
         Self::parse(s)
+    }
+}
+
+impl Serialize for Predicate {
+    fn serialize<S: Serializer>(&self, ser: S) -> std::result::Result<S::Ok, S::Error> {
+        ser.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Predicate {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> std::result::Result<Self, D::Error> {
+        let s = String::deserialize(de)?;
+        Predicate::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 

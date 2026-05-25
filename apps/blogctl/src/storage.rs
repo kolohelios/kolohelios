@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use crate::error::{Error, Result};
+use crate::kind::Kind;
 use crate::post::{Post, PostMetadata};
+use crate::predicate::Predicate;
 use crate::stage::Stage;
 use crate::taxonomy::{Dimension, Taxonomy};
 
@@ -44,20 +46,34 @@ pub struct Config {
     /// `blogctl classify` before any write.
     #[serde(default)]
     pub classifications: BTreeMap<String, Dimension>,
+    /// Per-kind stage configuration: prompts, exit predicates, optional
+    /// model overrides. Keyed by `Kind::as_str()`, so the TOML table
+    /// reads `[kinds.post.stages.ideation]`. Unknown kind/stage names
+    /// are tolerated at parse time and silently ignored at lookup time —
+    /// see `Config::stage_config`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kinds: BTreeMap<String, KindConfig>,
 }
 
-/// Workdir-wide defaults. Currently just the theme `blogctl new` selects
-/// when `--theme` is not given; will grow as additional defaults land.
+/// Workdir-wide defaults. The theme `blogctl new` selects when `--theme`
+/// is not given, plus the default OpenRouter model `run-stage`/`draft`
+/// uses when a stage doesn't override it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Defaults {
     #[serde(default = "default_theme_name")]
     pub theme: String,
+    /// OpenRouter model to use when a stage doesn't specify one.
+    /// Optional because workdirs that never call the LLM don't need to
+    /// commit to a model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 impl Default for Defaults {
     fn default() -> Self {
         Self {
             theme: DEFAULT_THEME.to_string(),
+            model: None,
         }
     }
 }
@@ -73,6 +89,29 @@ fn default_theme_name() -> String {
 pub struct ThemeConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub prompts: BTreeMap<String, String>,
+}
+
+/// Per-kind stage configuration. Keyed by `Stage::as_str()` so the TOML
+/// reads `[kinds.post.stages.ideation]`. Unknown stage names sit unused.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct KindConfig {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stages: BTreeMap<String, StageConfig>,
+}
+
+/// One stage's prompt, exit criteria, and optional model override.
+///
+/// `prompt` is workdir-relative — convention puts templates under
+/// `prompts/`, but the path is taken verbatim. `exit` predicates are
+/// parsed eagerly at config-load time so a malformed predicate surfaces
+/// as a config parse error rather than a crash deep inside `promote`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct StageConfig {
+    pub prompt: PathBuf,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exit: Vec<Predicate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// VCS auto-sync settings. Controls whether write-shaped blogctl
@@ -127,7 +166,27 @@ impl Config {
             themes,
             sync: SyncConfig::default(),
             classifications: Taxonomy::current_v1().to_btreemap(),
+            kinds: BTreeMap::new(),
         }
+    }
+
+    /// Look up the `[kinds.<kind>.stages.<stage>]` entry, if present.
+    /// Returns `None` for kinds or stages the user hasn't configured —
+    /// callers decide whether absence is fatal (`draft` needs a prompt)
+    /// or benign (`promote` with no exit predicates is allowed).
+    pub fn stage_config(&self, kind: Kind, stage: Stage) -> Option<&StageConfig> {
+        self.kinds
+            .get(kind.as_str())
+            .and_then(|k| k.stages.get(stage.as_str()))
+    }
+
+    /// Resolve the OpenRouter model for a `(kind, stage)` call site:
+    /// stage override wins over the workdir default. Returns `None` if
+    /// neither is set.
+    pub fn model_for(&self, kind: Kind, stage: Stage) -> Option<&str> {
+        self.stage_config(kind, stage)
+            .and_then(|s| s.model.as_deref())
+            .or(self.defaults.model.as_deref())
     }
 }
 
@@ -1103,5 +1162,141 @@ mod tests {
         .unwrap();
         let (_handle, loaded) = repo.load("no-class").unwrap();
         assert!(loaded.metadata.classifications.is_empty());
+    }
+
+    #[test]
+    fn config_without_kinds_table_back_fills_empty_map() {
+        // Pre-#233 configs have no `[kinds.*]` tables; the field must
+        // default to an empty map so existing workdirs keep parsing.
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        fs::write(repo.workdir().config_path(), "version = 1\n").unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.kinds.is_empty());
+        assert!(cfg.defaults.model.is_none());
+    }
+
+    #[test]
+    fn config_parses_kinds_stages_from_toml() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let raw = concat!(
+            "version = 1\n",
+            "\n",
+            "[defaults]\n",
+            "model = \"anthropic/claude-sonnet-4-6\"\n",
+            "\n",
+            "[kinds.post.stages.ideation]\n",
+            "prompt = \"prompts/ideation-post.md\"\n",
+            "exit = [\"body.words >= 150\"]\n",
+            "\n",
+            "[kinds.article.stages.ideation]\n",
+            "prompt = \"prompts/ideation-article.md\"\n",
+            "model = \"anthropic/claude-opus-4-7\"\n",
+            "exit = [\"body.words >= 800\"]\n",
+        );
+        fs::write(repo.workdir().config_path(), raw).unwrap();
+        let cfg = repo.read_config().unwrap();
+
+        assert_eq!(
+            cfg.defaults.model.as_deref(),
+            Some("anthropic/claude-sonnet-4-6")
+        );
+
+        let post_stage = cfg.stage_config(Kind::Post, Stage::Ideation).unwrap();
+        assert_eq!(post_stage.prompt, PathBuf::from("prompts/ideation-post.md"));
+        assert_eq!(post_stage.exit.len(), 1);
+        assert!(post_stage.model.is_none());
+
+        let article_stage = cfg.stage_config(Kind::Article, Stage::Ideation).unwrap();
+        assert_eq!(
+            article_stage.model.as_deref(),
+            Some("anthropic/claude-opus-4-7")
+        );
+    }
+
+    #[test]
+    fn config_parse_rejects_malformed_exit_predicate() {
+        // The whole point of eager predicate parsing: a typo in
+        // .blog-os.toml fails at read_config(), not deep inside promote.
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let raw = concat!(
+            "version = 1\n",
+            "[kinds.post.stages.ideation]\n",
+            "prompt = \"prompts/ideation-post.md\"\n",
+            "exit = [\"body.words >=\"]\n",
+        );
+        fs::write(repo.workdir().config_path(), raw).unwrap();
+        let err = repo.read_config().unwrap_err();
+        assert!(matches!(err, Error::ConfigParse { .. }), "got: {err:?}");
+    }
+
+    #[test]
+    fn stage_config_returns_none_for_unconfigured_kind_or_stage() {
+        let (_tmp, repo) = fresh_repo();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.stage_config(Kind::Post, Stage::Ideation).is_none());
+    }
+
+    #[test]
+    fn model_for_falls_back_to_defaults_model() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let raw = concat!(
+            "version = 1\n",
+            "[defaults]\n",
+            "model = \"anthropic/claude-sonnet-4-6\"\n",
+            "[kinds.post.stages.ideation]\n",
+            "prompt = \"prompts/ideation-post.md\"\n",
+        );
+        fs::write(repo.workdir().config_path(), raw).unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(
+            cfg.model_for(Kind::Post, Stage::Ideation),
+            Some("anthropic/claude-sonnet-4-6")
+        );
+    }
+
+    #[test]
+    fn model_for_prefers_stage_override_over_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let raw = concat!(
+            "version = 1\n",
+            "[defaults]\n",
+            "model = \"anthropic/claude-sonnet-4-6\"\n",
+            "[kinds.article.stages.ideation]\n",
+            "prompt = \"prompts/ideation-article.md\"\n",
+            "model = \"anthropic/claude-opus-4-7\"\n",
+        );
+        fs::write(repo.workdir().config_path(), raw).unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(
+            cfg.model_for(Kind::Article, Stage::Ideation),
+            Some("anthropic/claude-opus-4-7")
+        );
+    }
+
+    #[test]
+    fn model_for_returns_none_when_neither_default_nor_override_set() {
+        let (_tmp, repo) = fresh_repo();
+        let cfg = repo.read_config().unwrap();
+        assert!(cfg.model_for(Kind::Post, Stage::Ideation).is_none());
     }
 }
