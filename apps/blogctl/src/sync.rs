@@ -67,18 +67,29 @@ pub struct UnpushedSummary {
 ///
 /// 1. `status` — bail if `jj` isn't installed or the workdir isn't a
 ///    repo (skip-with-warn at the call site).
-/// 2. `fetch` — pull `<remote>` so we know the latest `<bookmark>@<remote>`.
-/// 3. `rebase_onto_remote` — rebase `@` (and any prior-but-unpushed
+/// 2. `other_bookmarks_in_range` — refuse if `@`'s ancestry crosses an
+///    unrelated branch tip; advancing `<bookmark>` would otherwise yank
+///    those commits along.
+/// 3. `fetch` — pull `<remote>` so we know the latest `<bookmark>@<remote>`.
+/// 4. `rebase_onto_remote` — rebase `@` (and any prior-but-unpushed
 ///    ancestors) onto `<bookmark>@<remote>`. Conflicts hard-fail.
-/// 4. `new_change` — create a new empty change on top of `@` with the
+/// 5. `new_change` — create a new empty change on top of `@` with the
 ///    deterministic message. The pending file write lands inside it.
-/// 5. *(command body writes files)*
-/// 6. `set_bookmark_to_head` — advance the bookmark to `@`.
-/// 7. `push` — best-effort; failure warns but doesn't fail the command.
+/// 6. *(command body writes files)*
+/// 7. `set_bookmark_to_head` — advance the bookmark to `@`.
+/// 8. `push` — best-effort; failure warns but doesn't fail the command.
 pub trait Jj: Send + Sync {
     /// Report whether `jj` is installed and the workdir is a `jj`
     /// repo. Used by sync hooks to decide whether to proceed.
     fn status(&self, workdir: &Path) -> Result<Status>;
+
+    /// Names of local bookmarks (other than `bookmark` itself) that sit
+    /// on commits in `bookmark..@`. A non-empty result means `@`'s
+    /// ancestry crosses an unrelated branch tip — pushing would yank
+    /// those commits onto `bookmark`, which is almost never what the
+    /// caller wants. Returns an empty vec when `bookmark` doesn't yet
+    /// exist locally (brand-new workdir before the first write).
+    fn other_bookmarks_in_range(&self, workdir: &Path, bookmark: &str) -> Result<Vec<String>>;
 
     /// Fetch `remote`. Pulls remote-tracking refs (including
     /// `<bookmark>@<remote>`) but does not modify local bookmarks.
@@ -160,6 +171,52 @@ impl Jj for RealJj {
             status: out.status.code().unwrap_or(-1),
             stderr: stderr.into_owned(),
         })
+    }
+
+    fn other_bookmarks_in_range(&self, workdir: &Path, bookmark: &str) -> Result<Vec<String>> {
+        // `local_bookmarks` excludes `<name>@<remote>` tracking refs, so
+        // we don't surface `main@origin` as a "side branch". One name
+        // per line keeps parsing trivial when a commit carries multiple
+        // bookmarks.
+        let revset = format!("{bookmark}..@");
+        let template = "local_bookmarks.map(|b| b.name()).join(\"\\n\") ++ \"\\n\"";
+        let command_str = format!("{JJ} log -r {revset} -T <local_bookmarks>");
+        let out = Command::new(JJ)
+            .args(["log", "-r", revset.as_str(), "--no-graph", "-T", template])
+            .current_dir(workdir)
+            .output()
+            .map_err(|source| Error::JjInvoke {
+                command: command_str.clone(),
+                source,
+            })?;
+        if !out.status.success() {
+            // Brand-new workdir: `<bookmark>` hasn't been created
+            // locally yet, so the revset errors. Treat as "no side
+            // branches" so the first write can proceed; downstream
+            // `set_bookmark_to_head` will create the bookmark.
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if stderr.contains("No such revision")
+                || stderr.contains("doesn't exist")
+                || stderr.contains("Revision") && stderr.contains("not found")
+            {
+                return Ok(Vec::new());
+            }
+            return Err(Error::JjCommandFailed {
+                command: command_str,
+                status: out.status.code().unwrap_or(-1),
+                stderr: stderr.into_owned(),
+            });
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let mut names: Vec<String> = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != bookmark)
+            .map(str::to_string)
+            .collect();
+        names.sort();
+        names.dedup();
+        Ok(names)
     }
 
     fn fetch(&self, workdir: &Path, remote: &str) -> Result<()> {
@@ -371,19 +428,24 @@ impl SyncOptions {
 ///
 /// 1. `status` — if `jj` is missing or workdir isn't a repo, warn to
 ///    stderr, then just run `write` and return.
-/// 2. `fetch` — pull the latest `<remote>`. Fetch failure (offline,
+/// 2. `other_bookmarks_in_range` — refuse with `WorkdirOnSideBranch` if
+///    `@`'s ancestry crosses an unrelated branch tip. Otherwise
+///    `set_bookmark_to_head` would yank those commits onto `<bookmark>`
+///    and `jj git push` would reject whichever empty/no-description
+///    commit is in the range.
+/// 3. `fetch` — pull the latest `<remote>`. Fetch failure (offline,
 ///    no remote configured) warns and skips the rebase, then proceeds
 ///    with `new_change` / write / push as usual; push may also fail,
 ///    that's fine.
-/// 3. `rebase_onto_remote` — rebase `@` onto `<bookmark>@<remote>`.
+/// 4. `rebase_onto_remote` — rebase `@` onto `<bookmark>@<remote>`.
 ///    Conflicts are a hard error: the user must resolve before
 ///    blogctl can continue, otherwise we'd push a conflicted commit.
-/// 4. `new_change(message)` — empty change with the deterministic
+/// 5. `new_change(message)` — empty change with the deterministic
 ///    template-built message.
-/// 5. `write` — runs the caller's write closure inside the new
+/// 6. `write` — runs the caller's write closure inside the new
 ///    change. `jj` auto-snapshots the resulting working-copy state.
-/// 6. `set_bookmark_to_head` — advance the bookmark to `@`.
-/// 7. `push` — best-effort. `Failed` warns to stderr; the command
+/// 7. `set_bookmark_to_head` — advance the bookmark to `@`.
+/// 8. `push` — best-effort. `Failed` warns to stderr; the command
 ///    still exits 0 because the commit is safely local.
 ///
 /// If `opts.is_active()` is false (`enabled = false` or `--no-sync`),
@@ -417,6 +479,18 @@ where
             eprintln!("hint: run `jj git init --colocate` in this workdir to enable sync");
             return write();
         }
+    }
+
+    // Refuse to advance the bookmark if `@`'s ancestry crosses an
+    // unrelated branch tip — otherwise `set_bookmark_to_head` would
+    // silently yank those commits onto `<bookmark>` and the push would
+    // reject whichever empty/no-description commit is in the range.
+    let side_bookmarks = jj.other_bookmarks_in_range(workdir, &opts.config.bookmark)?;
+    if !side_bookmarks.is_empty() {
+        return Err(Error::WorkdirOnSideBranch {
+            bookmark: opts.config.bookmark.clone(),
+            side_bookmarks,
+        });
     }
 
     let fetch_ok = match jj.fetch(workdir, &opts.config.remote) {
@@ -522,6 +596,7 @@ struct FakeState {
     rebase_outcome: Option<RebaseOutcome>,
     push_outcome: Option<PushOutcome>,
     unpushed_summary: Option<Option<UnpushedSummary>>,
+    other_bookmarks: Option<Vec<String>>,
 }
 
 /// One recorded call against `FakeJj`. Tests pop these and assert.
@@ -556,6 +631,10 @@ pub enum Call {
         workdir: PathBuf,
         bookmark: String,
         remote: String,
+    },
+    OtherBookmarksInRange {
+        workdir: PathBuf,
+        bookmark: String,
     },
 }
 
@@ -593,6 +672,13 @@ impl FakeJj {
         self
     }
 
+    /// Force `other_bookmarks_in_range()` to return `names`. Default is
+    /// an empty vec (no side branches in range) when unset.
+    pub fn with_other_bookmarks(self, names: Vec<String>) -> Self {
+        self.inner.lock().unwrap().other_bookmarks = Some(names);
+        self
+    }
+
     /// Snapshot of recorded calls in order.
     pub fn calls(&self) -> Vec<Call> {
         self.inner.lock().unwrap().calls.clone()
@@ -606,6 +692,15 @@ impl Jj for FakeJj {
             workdir: workdir.to_path_buf(),
         });
         Ok(s.status.clone().unwrap_or(Status::Ok))
+    }
+
+    fn other_bookmarks_in_range(&self, workdir: &Path, bookmark: &str) -> Result<Vec<String>> {
+        let mut s = self.inner.lock().unwrap();
+        s.calls.push(Call::OtherBookmarksInRange {
+            workdir: workdir.to_path_buf(),
+            bookmark: bookmark.to_string(),
+        });
+        Ok(s.other_bookmarks.clone().unwrap_or_default())
     }
 
     fn fetch(&self, workdir: &Path, remote: &str) -> Result<()> {
@@ -823,16 +918,17 @@ mod tests {
         .unwrap();
         assert!(executed.get());
         let calls = jj.calls();
-        assert_eq!(calls.len(), 6, "got: {calls:?}");
+        assert_eq!(calls.len(), 7, "got: {calls:?}");
         assert!(matches!(calls[0], Call::Status { .. }));
-        assert!(matches!(calls[1], Call::Fetch { .. }));
-        assert!(matches!(calls[2], Call::Rebase { .. }));
+        assert!(matches!(calls[1], Call::OtherBookmarksInRange { .. }));
+        assert!(matches!(calls[2], Call::Fetch { .. }));
+        assert!(matches!(calls[3], Call::Rebase { .. }));
         assert!(matches!(
-            calls[3],
+            calls[4],
             Call::NewChange { ref message, .. } if message == "msg"
         ));
-        assert!(matches!(calls[4], Call::SetBookmark { .. }));
-        assert!(matches!(calls[5], Call::Push { .. }));
+        assert!(matches!(calls[5], Call::SetBookmark { .. }));
+        assert!(matches!(calls[6], Call::Push { .. }));
     }
 
     #[test]
@@ -895,8 +991,8 @@ mod tests {
             "write must NOT run when rebase produced conflicts"
         );
         let calls = jj.calls();
-        // Status, Fetch, Rebase — then bail.
-        assert_eq!(calls.len(), 3);
+        // Status, OtherBookmarksInRange, Fetch, Rebase — then bail.
+        assert_eq!(calls.len(), 4);
         assert!(!calls
             .iter()
             .any(|c| matches!(c, Call::NewChange { .. } | Call::Push { .. })));
@@ -913,6 +1009,87 @@ mod tests {
         assert!(result.is_ok(), "push failure must NOT fail the command");
         assert!(executed.get(), "write must still have run");
         // Full call sequence happened, including push.
-        assert_eq!(jj.calls().len(), 6);
+        assert_eq!(jj.calls().len(), 7);
+    }
+
+    #[test]
+    fn commit_and_push_refuses_when_side_branch_in_range() {
+        // `@` sitting on top of a feature branch means
+        // `set_bookmark_to_head` would silently yank those commits onto
+        // `<bookmark>`. Bail before any destructive work.
+        let jj = FakeJj::new().with_other_bookmarks(vec!["chore/feature".into()]);
+        let executed = std::cell::Cell::new(false);
+        let err = commit_and_push(&jj, &wd(), &active_opts(), "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        })
+        .unwrap_err();
+        match err {
+            Error::WorkdirOnSideBranch {
+                bookmark,
+                side_bookmarks,
+            } => {
+                assert_eq!(bookmark, "main");
+                assert_eq!(side_bookmarks, vec!["chore/feature".to_string()]);
+            }
+            other => panic!("expected WorkdirOnSideBranch, got {other:?}"),
+        }
+        assert!(!executed.get(), "write must NOT run when precheck fails");
+        let calls = jj.calls();
+        // Status, OtherBookmarksInRange — then bail.
+        assert_eq!(calls.len(), 2);
+        assert!(matches!(calls[0], Call::Status { .. }));
+        assert!(matches!(calls[1], Call::OtherBookmarksInRange { .. }));
+    }
+
+    #[test]
+    fn commit_and_push_skips_precheck_when_disabled() {
+        // `enabled = false` bypasses the entire jj orchestration, so
+        // the side-branch precheck must not fire either.
+        let jj = FakeJj::new().with_other_bookmarks(vec!["chore/feature".into()]);
+        let mut opts = active_opts();
+        opts.config.enabled = false;
+        let executed = std::cell::Cell::new(false);
+        commit_and_push(&jj, &wd(), &opts, "msg", || {
+            executed.set(true);
+            Ok::<(), Error>(())
+        })
+        .unwrap();
+        assert!(executed.get(), "write must run when sync is disabled");
+        assert!(
+            jj.calls().is_empty(),
+            "precheck must not fire when sync is disabled"
+        );
+    }
+
+    #[test]
+    fn commit_and_push_skips_precheck_when_jj_not_installed() {
+        // Status::JjNotInstalled short-circuits before the precheck —
+        // we can't ask jj about bookmarks if jj isn't on PATH.
+        let jj = FakeJj::new()
+            .with_status(Status::JjNotInstalled)
+            .with_other_bookmarks(vec!["chore/feature".into()]);
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || Ok::<(), Error>(())).unwrap();
+        let calls = jj.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(matches!(calls[0], Call::Status { .. }));
+    }
+
+    #[test]
+    fn fake_other_bookmarks_defaults_to_empty() {
+        let jj = FakeJj::new();
+        assert!(jj
+            .other_bookmarks_in_range(&wd(), "main")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn fake_other_bookmarks_can_be_overridden() {
+        let jj = FakeJj::new().with_other_bookmarks(vec!["feature/x".into()]);
+        assert_eq!(
+            jj.other_bookmarks_in_range(&wd(), "main").unwrap(),
+            vec!["feature/x".to_string()]
+        );
     }
 }

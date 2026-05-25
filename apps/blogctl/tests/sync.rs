@@ -22,47 +22,53 @@ fn workdir() -> (TempDir, PathBuf) {
     (tmp, path)
 }
 
-/// Verify the canonical 6-call shape one write-shaped command produces:
-/// Status, Fetch, Rebase, NewChange, SetBookmark, Push (in order).
+/// Verify the canonical 7-call shape one write-shaped command produces:
+/// Status, OtherBookmarksInRange, Fetch, Rebase, NewChange, SetBookmark,
+/// Push (in order).
 fn assert_full_sync_flow(calls: &[Call], expected_message: &str) {
-    assert_eq!(calls.len(), 6, "expected 6 jj calls, got: {calls:?}");
+    assert_eq!(calls.len(), 7, "expected 7 jj calls, got: {calls:?}");
     assert!(
         matches!(calls[0], Call::Status { .. }),
         "first call must be Status, got: {:?}",
         calls[0]
     );
     assert!(
-        matches!(calls[1], Call::Fetch { .. }),
-        "second call must be Fetch, got: {:?}",
+        matches!(calls[1], Call::OtherBookmarksInRange { .. }),
+        "second call must be OtherBookmarksInRange, got: {:?}",
         calls[1]
     );
     assert!(
-        matches!(calls[2], Call::Rebase { .. }),
-        "third call must be Rebase, got: {:?}",
+        matches!(calls[2], Call::Fetch { .. }),
+        "third call must be Fetch, got: {:?}",
         calls[2]
     );
-    match &calls[3] {
+    assert!(
+        matches!(calls[3], Call::Rebase { .. }),
+        "fourth call must be Rebase, got: {:?}",
+        calls[3]
+    );
+    match &calls[4] {
         Call::NewChange { message, .. } => {
             assert_eq!(message, expected_message, "wrong commit message",)
         }
-        other => panic!("fourth call must be NewChange, got: {other:?}"),
+        other => panic!("fifth call must be NewChange, got: {other:?}"),
     }
     assert!(
-        matches!(calls[4], Call::SetBookmark { ref bookmark, .. } if bookmark == "main"),
-        "fifth call must be SetBookmark main, got: {:?}",
-        calls[4]
+        matches!(calls[5], Call::SetBookmark { ref bookmark, .. } if bookmark == "main"),
+        "sixth call must be SetBookmark main, got: {:?}",
+        calls[5]
     );
     assert!(
         matches!(
-            calls[5],
+            calls[6],
             Call::Push {
                 ref remote,
                 ref bookmark,
                 ..
             } if remote == "origin" && bookmark == "main"
         ),
-        "sixth call must be Push origin main, got: {:?}",
-        calls[5]
+        "seventh call must be Push origin main, got: {:?}",
+        calls[6]
     );
 }
 
@@ -400,8 +406,8 @@ fn push_failure_does_not_fail_the_command() {
     assert!(path.join("concepts/hi.md").is_file());
     // And we did go through the full sync flow including the failed push.
     let calls = jj.calls();
-    assert_eq!(calls.len(), 6);
-    assert!(matches!(calls[5], Call::Push { .. }));
+    assert_eq!(calls.len(), 7);
+    assert!(matches!(calls[6], Call::Push { .. }));
 }
 
 #[test]
@@ -870,7 +876,7 @@ fn rebase_conflict_is_a_hard_error_and_aborts_the_write() {
     );
     // Call sequence stopped after the rebase.
     let calls = jj.calls();
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), 4);
     assert!(
         !calls
             .iter()
