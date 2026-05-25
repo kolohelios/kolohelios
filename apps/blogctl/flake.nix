@@ -55,6 +55,11 @@
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
             nativeBuildInputs = [ pkgs.installShellFiles ];
+            # Integration tests in tests/cli.rs spawn `jj` directly (and
+            # exercise blogctl commands whose precondition check shells
+            # out to `jj status`). Without `jujutsu` on PATH the test
+            # suite fails inside the nix-build sandbox.
+            nativeCheckInputs = [ pkgs.jujutsu ];
             postInstall = ''
               installShellCompletion --cmd blogctl \
                 --bash <($out/bin/blogctl completions bash) \
