@@ -1,0 +1,8 @@
+format (n=6)
+  thesis    n=4   imp p50=1.0k   eng p50=5.0%  [p25=3.0% p75=5.0%]
+  parable   n=2   imp p50=800   eng p50=2.0%  [p25=2.0% p75=2.0%]  (low n)
+
+hook (n=6)
+  contradiction  n=3   imp p50=1.2k   eng p50=5.0%  [p25=5.0% p75=5.0%]
+  direct-claim   n=1   imp p50=900   eng p50=3.0%  [p25=3.0% p75=3.0%]  (low n)
+  question       n=2   imp p50=800   eng p50=2.0%  [p25=2.0% p75=2.0%]  (low n)

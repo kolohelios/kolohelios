@@ -1,7 +1,13 @@
 //! `blogctl analytics {summary, compare, recommendations}` — read
 //! every published post's classifications + metrics and surface
 //! aggregates. All three commands implemented.
+//!
+//! The text renderers (`render_summary_text`, `render_compare_text`,
+//! `render_recommendations_text`) are public and `Write`-based so
+//! the golden tests in `tests/analytics_render.rs` can capture the
+//! exact output without spawning a subprocess.
 
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 use time::OffsetDateTime;
@@ -58,28 +64,36 @@ pub fn summary(args: SummaryArgs) -> Result<()> {
         args.dimension.as_deref(),
         OffsetDateTime::now_utc(),
     );
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
     if args.json {
-        println!(
+        writeln!(
+            out,
             "{}",
             serde_json::to_string_pretty(&summary).map_err(Error::SummaryJson)?
-        );
+        )
+        .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     } else {
-        print_text(&summary);
+        render_summary_text(&summary, &mut out)
+            .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     }
     Ok(())
 }
 
-fn print_text(s: &Summary) {
+/// Render the human-readable summary view into `w`. Public so the
+/// golden tests can capture into a `Vec<u8>` without going through
+/// stdout.
+pub fn render_summary_text(s: &Summary, w: &mut dyn Write) -> io::Result<()> {
     if s.dimensions.is_empty() {
-        println!("no classified posts with metrics in this workdir");
-        return;
+        writeln!(w, "no classified posts with metrics in this workdir")?;
+        return Ok(());
     }
     for (i, dim) in s.dimensions.iter().enumerate() {
         if i > 0 {
-            println!();
+            writeln!(w)?;
         }
         let total: usize = dim.values.iter().map(|v| v.n).sum();
-        println!("{} (n={total})", dim.name);
+        writeln!(w, "{} (n={total})", dim.name)?;
         let width = dim
             .values
             .iter()
@@ -88,12 +102,18 @@ fn print_text(s: &Summary) {
             .unwrap_or(0)
             .max(8);
         for v in &dim.values {
-            print_value_row(dim, v, width);
+            render_value_row(dim, v, width, w)?;
         }
     }
+    Ok(())
 }
 
-fn print_value_row(_dim: &DimensionSummary, v: &ValueSummary, value_width: usize) {
+fn render_value_row(
+    _dim: &DimensionSummary,
+    v: &ValueSummary,
+    value_width: usize,
+    w: &mut dyn Write,
+) -> io::Result<()> {
     let imp = format_imp(v.impressions.p50);
     let er = match v.engagement_rate {
         None => "eng p50=—".to_string(),
@@ -105,12 +125,13 @@ fn print_value_row(_dim: &DimensionSummary, v: &ValueSummary, value_width: usize
         ),
     };
     let low = if v.low_n { "  (low n)" } else { "" };
-    println!(
+    writeln!(
+        w,
         "  {value:<width$}  n={n}   imp p50={imp}   {er}{low}",
         value = v.value,
         width = value_width,
         n = v.n,
-    );
+    )
 }
 
 /// `1842 → "1.8k"`. Below 1000 we print the integer; at or above
@@ -145,32 +166,39 @@ pub fn compare(args: CompareArgs) -> Result<()> {
         args.min_n,
         OffsetDateTime::now_utc(),
     );
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
     if args.json {
-        println!(
+        writeln!(
+            out,
             "{}",
             serde_json::to_string_pretty(&comparison).map_err(Error::SummaryJson)?
-        );
+        )
+        .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     } else {
-        print_compare_text(&comparison);
+        render_compare_text(&comparison, &mut out)
+            .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     }
     Ok(())
 }
 
-fn print_compare_text(c: &Comparison) {
+/// Render the crosstab + marginals view into `w`.
+pub fn render_compare_text(c: &Comparison, w: &mut dyn Write) -> io::Result<()> {
     let target_label = c
         .target_filter
         .map(|t| format!("target={t}"))
         .unwrap_or_else(|| "all targets".into());
-    println!(
+    writeln!(
+        w,
         "compare {} \u{00d7} {}  ({})",
         c.dim_a, c.dim_b, target_label,
-    );
-    println!();
+    )?;
+    writeln!(w)?;
 
     let rows = c.row_values();
     let cols = c.column_values();
     if rows.is_empty() || cols.is_empty() {
-        println!("(no posts match this comparison)");
+        writeln!(w, "(no posts match this comparison)")?;
     } else {
         // Column widths: each column at least max(col_name, "n=NN X.X%"),
         // with two spaces of padding between columns.
@@ -178,44 +206,46 @@ fn print_compare_text(c: &Comparison) {
         let col_widths: Vec<usize> = cols
             .iter()
             .map(|col| {
-                let mut w = col.len();
+                let mut width = col.len();
                 for row in &rows {
                     if let Some(cell) = c.cell(row, col) {
-                        w = w.max(format_cell_body(cell).len());
+                        width = width.max(format_cell_body(cell).len());
                     }
                 }
-                w.max(8)
+                width.max(8)
             })
             .collect();
 
-        // Header row.
-        print!("{:<width$}", "", width = row_label_width + 2);
-        for (col, w) in cols.iter().zip(col_widths.iter()) {
-            print!("  {col:<w$}", col = col, w = w);
+        // Build each row in-memory so we can trim trailing
+        // whitespace before writing it out — repo whitespace check
+        // (and good taste) reject lines that end in pad spaces.
+        let mut header = format!("{:<width$}", "", width = row_label_width + 2);
+        for (col, width) in cols.iter().zip(col_widths.iter()) {
+            header.push_str(&format!("  {col:<width$}"));
         }
-        println!();
+        writeln!(w, "{}", header.trim_end())?;
 
-        // Data rows.
         for row in &rows {
-            print!("{row:<width$}", row = row, width = row_label_width + 2);
-            for (col, w) in cols.iter().zip(col_widths.iter()) {
+            let mut line = format!("{row:<width$}", row = row, width = row_label_width + 2);
+            for (col, width) in cols.iter().zip(col_widths.iter()) {
                 let body = match c.cell(row, col) {
                     None => "--".to_string(),
                     Some(cell) => format_cell_body(cell),
                 };
-                print!("  {body:<w$}", body = body, w = w);
+                line.push_str(&format!("  {body:<width$}"));
             }
-            println!();
+            writeln!(w, "{}", line.trim_end())?;
         }
     }
 
-    println!();
-    println!("marginals:");
-    print_marginals(&c.marginals_a);
-    print_marginals(&c.marginals_b);
+    writeln!(w)?;
+    writeln!(w, "marginals:")?;
+    render_marginals(&c.marginals_a, w)?;
+    render_marginals(&c.marginals_b, w)?;
+    Ok(())
 }
 
-fn print_marginals(marginals: &[analytics::Marginal]) {
+fn render_marginals(marginals: &[analytics::Marginal], w: &mut dyn Write) -> io::Result<()> {
     // Label width sized to the longest "<dim>=<value>:" string in this
     // marginal slice — keeps the columns aligned within each group.
     let label_width = marginals
@@ -230,14 +260,16 @@ fn print_marginals(marginals: &[analytics::Marginal]) {
             .engagement_rate_p50
             .map(format_er)
             .unwrap_or_else(|| "\u{2014}".into());
-        println!(
+        writeln!(
+            w,
             "  {label:<label_width$}  n={n:<3}   eng p50={er}",
             label = label,
             label_width = label_width,
             n = m.n,
             er = er,
-        );
+        )?;
     }
+    Ok(())
 }
 
 /// Body of one cell: `n=N  X.X%` or `n=N  (low)` when the cell is
@@ -261,29 +293,38 @@ pub fn recommendations(args: RecommendationsArgs) -> Result<()> {
         .map(|h| repo.load_raw(&h.metadata.slug).map(|(_, post)| post))
         .collect::<Result<_>>()?;
     let r = analytics::recommendations(&posts, args.target, args.min_n, OffsetDateTime::now_utc());
-    print_recommendations_text(&r);
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    render_recommendations_text(&r, &mut out)
+        .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     Ok(())
 }
 
-fn print_recommendations_text(r: &Recommendations) {
+/// Render the hedged-prose recommendations view into `w`. The
+/// closing reminder is unconditional — copy-paste of one
+/// observation still lands with the hedge attached.
+pub fn render_recommendations_text(r: &Recommendations, w: &mut dyn Write) -> io::Result<()> {
     let target_label = r
         .target_filter
         .map(|t| format!("target={t}, "))
         .unwrap_or_default();
-    println!(
+    writeln!(
+        w,
         "analytics recommendations  ({target_label}n_total={n})",
         n = r.n_total,
-    );
-    println!();
+    )?;
+    writeln!(w)?;
     if r.observations.is_empty() {
-        println!(
+        writeln!(
+            w,
             "  (no observations — add metrics and classifications to more posts to surface signal)"
-        );
+        )?;
     } else {
         for obs in &r.observations {
-            println!("  {}", obs.render());
-            println!();
+            writeln!(w, "  {}", obs.render())?;
+            writeln!(w)?;
         }
     }
-    println!("{}", analytics::CLOSING_REMINDER);
+    writeln!(w, "{}", analytics::CLOSING_REMINDER)?;
+    Ok(())
 }
