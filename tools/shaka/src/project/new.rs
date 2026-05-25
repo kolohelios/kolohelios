@@ -75,6 +75,7 @@ fn scaffold_rust(dir: &Path, name: &str) -> std::io::Result<()> {
     fs::write(dir.join(".envrc"), ENVRC)?;
     fs::write(dir.join("README.md"), readme(name))?;
     fs::write(dir.join(".gitignore"), GITIGNORE)?;
+    fs::write(dir.join("deny.toml"), DENY_TOML)?;
     fs::write(dir.join("src/main.rs"), main_rs(name))?;
     Ok(())
 }
@@ -187,6 +188,42 @@ const ENVRC: &str = "use flake\n";
 
 const GITIGNORE: &str = "target/\nresult\n.direnv/\n";
 
+/// Baseline `cargo-deny` config for fresh rust projects. Matches the
+/// content shipped by every existing rust crate in the repo
+/// (`tools/shaka`, `apps/blogctl`, `apps/kolohelios-portfolio`). Without
+/// this file the generated `justfile`'s `validate` recipe would fail at
+/// `cargo deny check` on first run — clap's transitive deps include
+/// crates whose licenses aren't on cargo-deny's default allowlist.
+/// `CDLA-Permissive-2.0` is in the list because at least one consumer
+/// (blogctl) needs it; broader allowlist is a no-op for projects that
+/// don't.
+const DENY_TOML: &str = r#"[advisories]
+version = 2
+unmaintained = "all"
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+"#;
+
 fn readme(name: &str) -> String {
     format!("# {name}\n")
 }
@@ -291,5 +328,37 @@ mod tests {
         // rust-has-tests audit rule looks for #[cfg(test)] in any .rs file.
         let out = main_rs("demo");
         assert!(out.contains("#[cfg(test)]"));
+    }
+
+    #[test]
+    fn deny_toml_template_allows_standard_license_set() {
+        // Spot-check that the template carries the licenses every
+        // existing rust crate in the repo needs. If a future edit
+        // removes one, the corresponding project's `cargo deny check`
+        // would start failing on its next run.
+        for expected in [
+            "MIT",
+            "Apache-2.0",
+            "BSD-3-Clause",
+            "CDLA-Permissive-2.0",
+            "ISC",
+            "Unicode-3.0",
+            "Unicode-DFS-2016",
+        ] {
+            assert!(
+                DENY_TOML.contains(&format!("\"{expected}\"")),
+                "DENY_TOML missing license {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn scaffold_rust_writes_deny_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("demo");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        scaffold_rust(&dir, "demo").expect("scaffold");
+        let written = std::fs::read_to_string(dir.join("deny.toml")).expect("read deny.toml");
+        assert_eq!(written, DENY_TOML);
     }
 }
