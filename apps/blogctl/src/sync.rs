@@ -425,10 +425,15 @@ where
             // Offline, unconfigured remote, or transient network failure.
             // Skip the rebase and continue — push may also fail, but
             // the working copy will still be committed locally.
-            eprintln!(
-                "warning: fetch from {} failed: {e}; skipping rebase",
-                opts.config.remote
-            );
+            // The "no remote configured" case is the common pre-first-push
+            // state of a fresh workdir; surfacing it as a warning every
+            // write is noise the user can't act on.
+            if !cause_is_missing_remote(&e) {
+                eprintln!(
+                    "warning: fetch from {} failed: {e}; skipping rebase",
+                    opts.config.remote
+                );
+            }
             false
         }
     };
@@ -452,15 +457,30 @@ where
     match jj.push(workdir, &opts.config.remote, &opts.config.bookmark)? {
         PushOutcome::Pushed | PushOutcome::NothingToPush => {}
         PushOutcome::Failed(reason) => {
-            eprintln!(
-                "warning: push to {}/{} failed: {reason}",
-                opts.config.remote, opts.config.bookmark,
-            );
-            eprintln!("hint: commit is local; retry with `jj git push` when ready");
+            // Same suppression as the fetch path: a fresh workdir with
+            // no configured remote will surface this on every write.
+            if !reason.contains("No git remotes") {
+                eprintln!(
+                    "warning: push to {}/{} failed: {reason}",
+                    opts.config.remote, opts.config.bookmark,
+                );
+                eprintln!("hint: commit is local; retry with `jj git push` when ready");
+            }
         }
     }
 
     Ok(result)
+}
+
+/// True when `err` represents `jj git fetch` failing because the
+/// configured remote doesn't exist in the colocated `.git`. Surfaced
+/// so the sync hook can suppress the otherwise-noisy warning for the
+/// common pre-first-push state.
+fn cause_is_missing_remote(err: &Error) -> bool {
+    matches!(
+        err,
+        Error::JjCommandFailed { stderr, .. } if stderr.contains("No git remotes")
+    )
 }
 
 /// Shell `jj <args>` in `workdir`, treating any non-zero exit as a
@@ -661,6 +681,28 @@ mod tests {
 
     fn wd() -> PathBuf {
         PathBuf::from("/tmp/blogctl-fake")
+    }
+
+    #[test]
+    fn cause_is_missing_remote_matches_jj_no_remotes_error() {
+        let err = Error::JjCommandFailed {
+            command: "jj git fetch --remote origin".into(),
+            status: 1,
+            stderr:
+                "Warning: No git remotes matching 'origin'\nError: No git remotes to fetch from\n"
+                    .into(),
+        };
+        assert!(cause_is_missing_remote(&err));
+    }
+
+    #[test]
+    fn cause_is_missing_remote_ignores_unrelated_failures() {
+        let err = Error::JjCommandFailed {
+            command: "jj git fetch --remote origin".into(),
+            status: 1,
+            stderr: "Error: connection refused\n".into(),
+        };
+        assert!(!cause_is_missing_remote(&err));
     }
 
     #[test]
