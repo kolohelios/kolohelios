@@ -23,6 +23,7 @@ jobs:
     outputs:
       base_ref: ${{ steps.base.outputs.ref }}
       blogctl: ${{ steps.filter.outputs.blogctl }}
+      home: ${{ steps.filter.outputs.home }}
       image: ${{ steps.filter.outputs.image }}
       nix-lib: ${{ steps.filter.outputs.nix-lib }}
       shaka: ${{ steps.filter.outputs.shaka }}
@@ -46,6 +47,8 @@ jobs:
             - 'apps/blogctl/**'
           image:
             - 'infra/devbox/**'
+          home:
+            - 'infra/home/**'
           nix-lib:
             - 'nix/kolohelios-nix/**'
           shaka:
@@ -154,6 +157,31 @@ jobs:
         name: linode-image
         path: result/nixos.img
         retention-days: 7
+  build-home:
+    name: Build infra/home
+    needs:
+    - preflight
+    - changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.home == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: actions/checkout@v6
+    - uses: DeterminateSystems/nix-installer-action@main
+      with:
+        determinate: true
+        flakehub: true
+    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - run: nix flake check ./infra/home
+    - uses: DeterminateSystems/flakehub-push@main
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      with:
+        directory: infra/home
+        name: kolohelios/home
+        rolling: true
+        visibility: public
   build-nix-lib:
     name: Build kolohelios-nix
     needs:
@@ -211,6 +239,7 @@ jobs:
     - preflight
     - build-blogctl
     - build-image
+    - build-home
     - build-nix-lib
     - build-shaka
     if: always()
