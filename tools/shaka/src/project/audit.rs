@@ -60,6 +60,7 @@ pub struct CoverageThreshold {
 #[derive(Debug, Deserialize)]
 pub struct Coverage {
     pub line: CoverageThreshold,
+    #[allow(dead_code)]
     pub branch: CoverageThreshold,
 }
 
@@ -172,10 +173,16 @@ impl Rule for RustCoverageThresholdNonzero {
                 _ => RuleResult::Pass,
             };
         };
-        if cov.line.fail == 0 || cov.branch.fail == 0 {
+        // Branch threshold is allowed to be zero: `cargo-llvm-cov --branch`
+        // is unstable and doesn't count `match` arms or `matches!()`, only
+        // short-circuit booleans. A fresh scaffold has no measurable
+        // branches, so requiring `branch.fail > 0` would make every new
+        // project unshippable until it grew `&&`/`||` chains. Line coverage
+        // remains gated.
+        if cov.line.fail == 0 {
             return RuleResult::Fail(format!(
-                "coverage thresholds must be non-zero (line={}, branch={})",
-                cov.line.fail, cov.branch.fail
+                "line coverage threshold must be non-zero (line={})",
+                cov.line.fail
             ));
         }
         RuleResult::Pass
@@ -859,7 +866,7 @@ mod tests {
     }
 
     #[test]
-    fn coverage_threshold_fails_for_zero_branch() {
+    fn coverage_threshold_passes_for_zero_branch() {
         let tmp = TempDir::new().unwrap();
         let meta = ProjectMeta {
             coverage: Some(Coverage {
@@ -870,7 +877,7 @@ mod tests {
         };
         assert!(matches!(
             RustCoverageThresholdNonzero.check(tmp.path(), &meta),
-            RuleResult::Fail(_)
+            RuleResult::Pass
         ));
     }
 

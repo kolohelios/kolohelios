@@ -110,7 +110,7 @@ fn rust_project_without_tests_fails_audit() {
 }
 
 #[test]
-fn zero_coverage_threshold_fails_audit() {
+fn zero_line_coverage_threshold_fails_audit() {
     let staged = Staged::new(&["zero-coverage"]);
     let out = staged.run_audit();
     assert!(!out.status.success());
@@ -118,6 +118,18 @@ fn zero_coverage_threshold_fails_audit() {
     assert!(
         stdout.contains("rust-coverage-threshold-nonzero"),
         "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn zero_branch_coverage_threshold_passes_audit() {
+    let staged = Staged::new(&["zero-branch-coverage"]);
+    let out = staged.run_audit();
+    let stdout = stdout_of(&out);
+    assert!(
+        out.status.success(),
+        "expected success, got exit {:?}\nstdout: {stdout}",
+        out.status.code()
     );
 }
 
