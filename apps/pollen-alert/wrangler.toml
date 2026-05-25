@@ -15,3 +15,22 @@ command = "cargo install -q worker-build --locked && worker-build --release"
 # UTC value stable rather than tracking local time).
 [triggers]
 crons = ["0 2 * * *"]
+
+# Non-secret runtime config. Latitude/longitude pin Bainbridge Island,
+# WA; `TZ` is what Open-Meteo uses to return local-time hours.
+# `THRESHOLD` and `MIN_CONSECUTIVE_HOURS` match the v1 rules in
+# `scoring`/`alert`. `DRY_RUN=true` swaps the Pushover notifier for
+# `LogNotifier` so the pipeline can be exercised end-to-end without
+# sending real notifications — useful for staging before secrets are
+# wired or after a wrangler.toml change.
+#
+# Secrets live outside this file. Set via:
+#   wrangler secret put PUSHOVER_APP_TOKEN
+#   wrangler secret put PUSHOVER_USER_KEY
+[vars]
+LAT = "47.625"
+LON = "-122.5"
+TZ = "America/Los_Angeles"
+THRESHOLD = "5"
+MIN_CONSECUTIVE_HOURS = "3"
+DRY_RUN = "true"
