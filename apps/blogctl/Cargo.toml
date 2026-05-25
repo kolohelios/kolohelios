@@ -27,3 +27,6 @@ ureq = { version = "2", features = ["json"] }
 [dev-dependencies]
 mockito = "1"
 tempfile = "3"
+
+[lints.clippy]
+mod_module_files = "deny"
