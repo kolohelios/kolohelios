@@ -236,6 +236,7 @@ mod tests {
                     theme: themes.iter().map(|s| (*s).to_string()).collect(),
                     ..Default::default()
                 },
+                ai: None,
             },
             "body\n",
         )
@@ -268,6 +269,7 @@ mod tests {
                     }),
                 }],
                 classifications: Classifications::default(),
+                ai: None,
             },
             "body\n",
         )

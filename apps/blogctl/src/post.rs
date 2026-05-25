@@ -47,6 +47,29 @@ pub struct PostMetadata {
     /// quiet in their frontmatter.
     #[serde(default, skip_serializing_if = "Classifications::is_empty")]
     pub classifications: Classifications,
+    /// AI-assisted operations audit trail. Populated by `blogctl
+    /// draft` (and future `refine`/`final-edit` commands) so a future
+    /// reader can see what prompt + model produced the current body.
+    /// `None` for posts that haven't been touched by AI commands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai: Option<AiHistory>,
+}
+
+/// Per-AI-command audit records. Each field is `Option` so a post that
+/// went through `draft` but not `refine` doesn't carry an empty
+/// `refine:` block in its frontmatter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct AiHistory {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<AiDraftRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiDraftRecord {
+    pub prompt: String,
+    pub model: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub generated_at: OffsetDateTime,
 }
 
 fn default_theme() -> String {
@@ -204,6 +227,7 @@ mod tests {
             history_checked: false,
             targets: vec![],
             classifications: Default::default(),
+            ai: None,
         }
     }
 

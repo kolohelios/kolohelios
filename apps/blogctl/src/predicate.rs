@@ -549,6 +549,7 @@ mod tests {
                     history_checked: true,
                     targets: vec![],
                     classifications: Classifications::default(),
+                    ai: None,
                 },
                 body,
             )

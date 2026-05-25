@@ -119,12 +119,17 @@ mod tests {
         assert_eq!(content, Some("pong".to_string()));
     }
 
+    // Both endpoint env tests mutate the same process-global var;
+    // cargo runs unit tests in parallel by default, so without
+    // serialization each test sees the other's half-step and asserts
+    // inconsistently (observed as a flake under cargo-llvm-cov). A
+    // module-local mutex held across the env-var dance is the lightest
+    // guard that works.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn endpoint_defaults_to_production_url() {
-        // SAFETY: env vars are process-global. This test deliberately
-        // unsets and asserts; tests touching the same var should run
-        // serially under cargo test's default thread-per-test layout.
-        // The asymmetric set/unset cost is fine for the seam check.
+        let _guard = ENV_LOCK.lock().unwrap();
         let prev = env::var(API_BASE_VAR).ok();
         env::remove_var(API_BASE_VAR);
         assert_eq!(endpoint(), DEFAULT_ENDPOINT);
@@ -135,6 +140,7 @@ mod tests {
 
     #[test]
     fn endpoint_honors_env_override() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let prev = env::var(API_BASE_VAR).ok();
         env::set_var(API_BASE_VAR, "http://127.0.0.1:1234/v1/chat");
         assert_eq!(endpoint(), "http://127.0.0.1:1234/v1/chat");
