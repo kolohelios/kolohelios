@@ -8,7 +8,6 @@
 //! as `None` when omitted, so consumers can opt out of audit dimensions
 //! they don't care about.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -85,10 +84,25 @@ pub fn load(start: &Path) -> Result<RepoPolicy, String> {
             start.display()
         )
     })?;
+    let cue = std::fs::read_to_string(&policy_path)
+        .map_err(|e| format!("could not read {}: {e}", policy_path.display()))?;
+    load_from_string(&cue).map_err(|e| format!("{}: {e}", policy_path.display()))
+}
 
-    // Per-process schema temp file — same pattern as project::schema_check.
-    let schema_path =
-        write_schema().map_err(|e| format!("could not write repo-policy schema: {e}"))?;
+/// Parse a `.shaka/repo.cue` from its raw CUE source — used by the
+/// audit when `--repo <external>` fetches policy from the target
+/// repository instead of walking the cwd.
+pub fn load_from_string(cue: &str) -> Result<RepoPolicy, String> {
+    // Per-call tempdir so concurrent callers (e.g. parallel cargo
+    // tests) don't race on a shared `/tmp/shaka-repo-policy-<pid>/`
+    // dir. Auto-cleaned on drop.
+    let tmp = tempfile::TempDir::new().map_err(|e| format!("could not create tempdir: {e}"))?;
+    let schema_path = tmp.path().join("schema.cue");
+    std::fs::write(&schema_path, SCHEMA)
+        .map_err(|e| format!("could not write repo-policy schema: {e}"))?;
+    let policy_path = tmp.path().join("repo.cue");
+    std::fs::write(&policy_path, cue)
+        .map_err(|e| format!("could not write temp policy file: {e}"))?;
 
     let output = Command::new("cue")
         .arg("export")
@@ -103,24 +117,10 @@ pub fn load(start: &Path) -> Result<RepoPolicy, String> {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let detail = if stderr.is_empty() { stdout } else { stderr };
-        return Err(format!(
-            "cue export failed for {}: {detail}",
-            policy_path.display()
-        ));
+        return Err(format!("cue export failed: {detail}"));
     }
 
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("could not parse {}: {e}", policy_path.display()))
-}
-
-fn write_schema() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir().join(format!(
-        "shaka-repo-policy-schema-{}.cue",
-        std::process::id()
-    ));
-    let mut f = std::fs::File::create(&path)?;
-    f.write_all(SCHEMA.as_bytes())?;
-    Ok(path)
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("could not parse policy: {e}"))
 }
 
 #[cfg(test)]
@@ -156,5 +156,53 @@ mod tests {
     fn find_policy_file_returns_none_when_absent() {
         let tmp = TempDir::new().unwrap();
         assert!(find_policy_file(tmp.path()).is_none());
+    }
+
+    #[test]
+    fn load_from_string_parses_complete_policy() {
+        let cue = r#"package repopolicy
+
+#RepoPolicy & {
+    defaultBranch: "main"
+    merge: {
+        rebase:              true
+        merge:               false
+        squash:              false
+        deleteBranchOnMerge: true
+        autoMerge:           true
+    }
+    branchProtection: {
+        requiredChecks: ["Preflight"]
+        strictStatusChecks: true
+        allowForcePush:     false
+        allowDeletion:      false
+    }
+}
+"#;
+        let policy = load_from_string(cue).expect("policy parses");
+        assert_eq!(policy.default_branch, "main");
+        assert!(policy.merge.rebase);
+        assert!(policy.merge.auto_merge);
+        let bp = policy.branch_protection.expect("branch_protection set");
+        assert_eq!(bp.required_checks, vec!["Preflight"]);
+    }
+
+    #[test]
+    fn load_from_string_rejects_incomplete_policy() {
+        // Missing merge.autoMerge — schema requires a concrete value.
+        let cue = r#"package repopolicy
+
+#RepoPolicy & {
+    defaultBranch: "main"
+    merge: {
+        rebase:              true
+        merge:               false
+        squash:              false
+        deleteBranchOnMerge: true
+    }
+}
+"#;
+        let err = load_from_string(cue).expect_err("incomplete policy rejected");
+        assert!(err.contains("autoMerge"), "actual error: {err}");
     }
 }
