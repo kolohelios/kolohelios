@@ -12,6 +12,10 @@ build-check:
 wasm-check:
     cargo check --target wasm32-unknown-unknown
 
+worker-build-check:
+    cargo install -q worker-build --locked
+    worker-build --release
+
 test:
     cargo test
 
@@ -62,4 +66,4 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: build-check fmt-check lint doc-check deny machete test coverage wasm-check nix-fmt-check flake-check whitespace-check
+validate: build-check fmt-check lint doc-check deny machete test coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
