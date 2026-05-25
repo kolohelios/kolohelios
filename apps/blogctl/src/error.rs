@@ -30,6 +30,16 @@ pub enum Error {
     #[error("cannot promote from {0}: already at the final workflow stage")]
     PromoteFromTerminal(Stage),
 
+    #[error(
+        "cannot promote {slug:?} from {from} to {to}: exit predicate {predicate} not satisfied"
+    )]
+    PromoteBlocked {
+        slug: String,
+        from: Stage,
+        to: Stage,
+        predicate: String,
+    },
+
     #[error("cannot demote from {0}: already at the first workflow stage")]
     DemoteFromInitial(Stage),
 

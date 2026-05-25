@@ -122,6 +122,115 @@ fn promote_drives_full_sync_with_stage_transition_message() {
 }
 
 #[test]
+fn promote_blocks_when_current_stage_exit_predicate_fails() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Hello World".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    // Append a stage config gating concept→ideation on body.words >= 5.
+    // The new post's body is empty, so the gate must block.
+    let cfg_path = path.join(".blog-os.toml");
+    let mut cfg = fs::read_to_string(&cfg_path).unwrap();
+    cfg.push_str(concat!(
+        "\n[kinds.post.stages.concept]\n",
+        "prompt = \"prompts/concept-post.md\"\n",
+        "exit = [\"body.words >= 5\"]\n",
+    ));
+    fs::write(&cfg_path, cfg).unwrap();
+
+    let jj = FakeJj::new();
+    let err =
+        commands::promote::run(&jj, "hello-world".to_string(), path.clone(), false).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            blogctl::error::Error::PromoteBlocked { ref predicate, .. }
+                if predicate == "body.words >= 5"
+        ),
+        "got: {err:?}"
+    );
+    // The blocked promote must not have touched jj or the file system.
+    assert!(jj.calls().is_empty(), "blocked promote should not call jj");
+    assert!(path.join("concepts/hello-world.md").is_file());
+    assert!(!path.join("ideation/hello-world.md").exists());
+}
+
+#[test]
+fn promote_passes_gate_when_exit_predicate_satisfied() {
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Hello World".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    // Plant a body the predicate will accept and a matching gate.
+    let post_path = path.join("concepts/hello-world.md");
+    let on_disk = fs::read_to_string(&post_path).unwrap();
+    fs::write(
+        &post_path,
+        format!("{on_disk}\nfive six seven eight nine ten\n"),
+    )
+    .unwrap();
+    let cfg_path = path.join(".blog-os.toml");
+    let mut cfg = fs::read_to_string(&cfg_path).unwrap();
+    cfg.push_str(concat!(
+        "\n[kinds.post.stages.concept]\n",
+        "prompt = \"prompts/concept-post.md\"\n",
+        "exit = [\"body.words >= 5\"]\n",
+    ));
+    fs::write(&cfg_path, cfg).unwrap();
+
+    let jj = FakeJj::new();
+    commands::promote::run(&jj, "hello-world".to_string(), path.clone(), false).unwrap();
+    assert_full_sync_flow(&jj.calls(), "post(hello-world): concept \u{2192} ideation");
+    assert!(path.join("ideation/hello-world.md").is_file());
+}
+
+#[test]
+fn promote_with_no_stage_config_for_kind_is_ungated() {
+    // A workdir with a stage config for `article` but not `post` must
+    // still allow `post` promotion — the gate is opt-in per (kind, stage).
+    let (_tmp, path) = workdir();
+    commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
+    commands::new::run(
+        &FakeJj::new(),
+        "Hello".to_string(),
+        path.clone(),
+        None,
+        Kind::Post,
+        None,
+        false,
+    )
+    .unwrap();
+    let cfg_path = path.join(".blog-os.toml");
+    let mut cfg = fs::read_to_string(&cfg_path).unwrap();
+    cfg.push_str(concat!(
+        "\n[kinds.article.stages.concept]\n",
+        "prompt = \"prompts/concept-article.md\"\n",
+        "exit = [\"body.words >= 9999\"]\n",
+    ));
+    fs::write(&cfg_path, cfg).unwrap();
+
+    let jj = FakeJj::new();
+    commands::promote::run(&jj, "hello".to_string(), path.clone(), false).unwrap();
+    assert!(path.join("ideation/hello.md").is_file());
+}
+
+#[test]
 fn demote_drives_full_sync_with_reverse_arrow_message() {
     let (_tmp, path) = workdir();
     commands::init::run(&FakeJj::new(), path.clone(), false).unwrap();
