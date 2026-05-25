@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 
+mod auth;
+
 #[derive(Parser)]
 #[command(name = "todoist", version, about = "Command-line client for Todoist")]
 struct Cli {
@@ -93,8 +95,46 @@ fn main() -> Result<()> {
 
 fn dispatch(command: Command) -> Result<()> {
     match command {
-        Command::Auth(_) => bail!("auth subcommands are not yet implemented"),
+        Command::Auth(AuthCmd { command }) => handle_auth(command),
         Command::Tasks(_) => bail!("tasks subcommands are not yet implemented"),
+    }
+}
+
+fn handle_auth(cmd: AuthSubcommand) -> Result<()> {
+    let path = auth::default_config_path()?;
+    let op = auth::RealOp;
+    match cmd {
+        AuthSubcommand::Login { op_ref } => {
+            auth::login(&op, &path, &op_ref)?;
+            println!("saved token reference to {}", path.display());
+            Ok(())
+        }
+        AuthSubcommand::Status => {
+            println!("{}", render_status(auth::status(&op, &path)?));
+            Ok(())
+        }
+        AuthSubcommand::Logout => {
+            auth::logout(&path)?;
+            println!("removed token reference (if any)");
+            Ok(())
+        }
+    }
+}
+
+fn render_status(state: auth::AuthState) -> String {
+    match state {
+        auth::AuthState::NotLoggedIn => "not logged in".to_string(),
+        auth::AuthState::Configured {
+            op_ref,
+            resolve_err,
+        } => {
+            let line = format!("token reference: {op_ref}");
+            let check = match resolve_err {
+                None => "resolve check: ok".to_string(),
+                Some(detail) => format!("resolve check: failed ({detail})"),
+            };
+            format!("{line}\n{check}")
+        }
     }
 }
 
@@ -180,12 +220,29 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_auth_returns_unimplemented_error() {
-        let err = dispatch(Command::Auth(AuthCmd {
-            command: AuthSubcommand::Status,
-        }))
-        .unwrap_err();
-        assert!(err.to_string().contains("auth"));
+    fn render_status_handles_not_logged_in() {
+        let out = render_status(auth::AuthState::NotLoggedIn);
+        assert_eq!(out, "not logged in");
+    }
+
+    #[test]
+    fn render_status_handles_resolved_configuration() {
+        let out = render_status(auth::AuthState::Configured {
+            op_ref: "op://x".to_string(),
+            resolve_err: None,
+        });
+        assert!(out.contains("op://x"));
+        assert!(out.contains("ok"));
+    }
+
+    #[test]
+    fn render_status_handles_failed_resolution() {
+        let out = render_status(auth::AuthState::Configured {
+            op_ref: "op://x".to_string(),
+            resolve_err: Some("vault locked".to_string()),
+        });
+        assert!(out.contains("op://x"));
+        assert!(out.contains("vault locked"));
     }
 
     #[test]
