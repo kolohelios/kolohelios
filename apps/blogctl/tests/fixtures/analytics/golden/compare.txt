@@ -1,0 +1,12 @@
+compare format × hook  (target=linkedin)
+
+            contradiction  direct-claim  question
+parable     --             --            n=2  (low)
+thesis      n=3  5.0%      n=1  (low)    --
+
+marginals:
+  format=thesis:   n=4     eng p50=5.0%
+  format=parable:  n=2     eng p50=2.0%
+  hook=contradiction:  n=3     eng p50=5.0%
+  hook=direct-claim:   n=1     eng p50=3.0%
+  hook=question:       n=2     eng p50=2.0%

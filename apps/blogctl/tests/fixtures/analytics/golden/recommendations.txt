@@ -1,0 +1,9 @@
+analytics recommendations  (target=linkedin, n_total=6)
+
+  Early signal: format=thesis correlates with higher engagement (median 5.0% vs corpus 3.0%; n=4).
+
+  Early signal: hook=contradiction correlates with higher engagement (median 5.0% vs corpus 3.0%; n=3).
+
+  Stale data: 1 published post(s) have metrics older than 30 days [old]. Run `blogctl metrics update <slug>` to refresh.
+
+Reminder: these are correlations on a small sample. Treat as priors for what to try next, not as conclusions.
