@@ -1,0 +1,64 @@
+{
+  description = "todoist";
+
+  inputs = {
+    kolohelios-nix.url = "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
+    nixpkgs.follows = "kolohelios-nix/nixpkgs";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    {
+      self,
+      kolohelios-nix,
+      nixpkgs,
+      rust-overlay,
+      ...
+    }:
+    let
+      inherit (kolohelios-nix.lib) supportedSystems workflowPackages;
+
+      forEachSupportedSystem =
+        f:
+        nixpkgs.lib.genAttrs supportedSystems (
+          system:
+          f {
+            inherit system;
+            pkgs = import nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+              overlays = [ rust-overlay.overlays.default ];
+            };
+          }
+        );
+
+      rustToolchain =
+        pkgs:
+        pkgs.rust-bin.nightly.latest.default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "llvm-tools-preview"
+          ];
+        };
+    in
+    {
+      devShells = forEachSupportedSystem (
+        { pkgs, ... }:
+        {
+          default = pkgs.mkShell {
+            packages = [
+              (rustToolchain pkgs)
+            ]
+            ++ (workflowPackages pkgs)
+            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
+          };
+        }
+      );
+
+      formatter = kolohelios-nix.formatter;
+    };
+}
