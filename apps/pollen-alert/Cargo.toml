@@ -9,6 +9,11 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# `default-features = false` drops chrono's default `clock` feature
+# (which pulls in libc time functions unavailable on
+# `wasm32-unknown-unknown`); the scoring module only needs
+# `NaiveDate` / `NaiveDateTime` arithmetic.
+chrono = { version = "0.4", default-features = false }
 worker = "0.8"
 
 [profile.release]
