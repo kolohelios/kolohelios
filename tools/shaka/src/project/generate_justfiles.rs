@@ -217,13 +217,24 @@ apply *ARGS:
 // as `infra/home`). The tofu recipes are omitted because they would
 // fail on a missing directory; carrying an empty `terraform/` placeholder
 // would be worse than this branch.
+//
+// Unlike the WITH_TF variants, this template DOES run `nix flake check`.
+// The #170 carve-out applies specifically to projects whose flake builds
+// a full NixOS toplevel (the devbox closure exceeds a GH runner's disk);
+// nix-only infra projects scoped to lib-style outputs
+// (`nixosModules`/`darwinConfigurations`/`devShells`) eval cheaply and
+// benefit from local/CI parity. If a future nix-only infra project ships
+// a NixOS toplevel and trips #170, branch the template then.
 const INFRA_TEMPLATE_NO_TF: &str = r#"nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
+    nix flake check
 
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: nix-fmt-check whitespace-check
+validate: nix-fmt-check flake-check whitespace-check
 "#;
 
 // Pandoc-rendered document project. Each `*.md` at the project root
@@ -677,18 +688,25 @@ mod tests {
     }
 
     #[test]
-    fn infra_templates_omit_flake_check() {
+    fn infra_with_tf_templates_omit_flake_check() {
         // See #170: infra `nix flake check` pulls a NixOS closure that
-        // exceeds GitHub runner disk; `Build Linode image` covers the
-        // eval check via full `nix build`.
-        for tpl in [
-            INFRA_TEMPLATE_WITH_TF,
-            INFRA_TEMPLATE_WITH_TF_BARE,
-            INFRA_TEMPLATE_NO_TF,
-        ] {
+        // exceeds GitHub runner disk for the only project shaped this way
+        // (devbox); `Build Linode image` covers the eval check via full
+        // `nix build`. NO_TF (nix-only infra) is exempt and runs
+        // `flake-check` — see the comment above its template.
+        for tpl in [INFRA_TEMPLATE_WITH_TF, INFRA_TEMPLATE_WITH_TF_BARE] {
             assert!(!tpl.contains("flake-check"));
             assert!(!tpl.contains("nix flake check"));
         }
+    }
+
+    #[test]
+    fn infra_no_tf_template_runs_flake_check() {
+        assert!(INFRA_TEMPLATE_NO_TF.contains("flake-check:"));
+        assert!(INFRA_TEMPLATE_NO_TF.contains("nix flake check"));
+        assert!(
+            INFRA_TEMPLATE_NO_TF.contains("validate: nix-fmt-check flake-check whitespace-check\n")
+        );
     }
 
     #[test]
@@ -789,11 +807,6 @@ mod tests {
     fn infra_no_tf_template_omits_tofu() {
         assert!(!INFRA_TEMPLATE_NO_TF.contains("tofu"));
         assert!(!INFRA_TEMPLATE_NO_TF.contains("terraform"));
-    }
-
-    #[test]
-    fn infra_no_tf_template_validate_chain() {
-        assert!(INFRA_TEMPLATE_NO_TF.contains("validate: nix-fmt-check whitespace-check\n"));
     }
 
     #[test]
