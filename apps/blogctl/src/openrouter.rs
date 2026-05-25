@@ -10,8 +10,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
-const ENDPOINT: &str = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_ENDPOINT: &str = "https://openrouter.ai/api/v1/chat/completions";
 const API_KEY_VAR: &str = "OPENROUTER_API_KEY";
+const API_BASE_VAR: &str = "OPENROUTER_API_BASE";
+
+/// Resolve the chat-completions endpoint. Production reads the default;
+/// tests set `OPENROUTER_API_BASE` to a `mockito` server URL so the
+/// full HTTP path is exercised without depending on the live service.
+fn endpoint() -> String {
+    env::var(API_BASE_VAR).unwrap_or_else(|_| DEFAULT_ENDPOINT.to_string())
+}
 
 pub const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4-6";
 
@@ -57,7 +65,7 @@ pub fn chat(prompt: &str, model: &str) -> Result<String> {
     // ChatRequest fields are all serializable primitives — to_value cannot fail.
     let body = serde_json::to_value(&request).expect("ChatRequest is serializable");
 
-    let response = ureq::post(ENDPOINT)
+    let response = ureq::post(&endpoint())
         .set("Authorization", &format!("Bearer {api_key}"))
         .set("Content-Type", "application/json")
         .send_json(body)
@@ -109,6 +117,31 @@ mod tests {
         let parsed: ChatResponse = serde_json::from_value(raw).unwrap();
         let content = parsed.choices.into_iter().next().map(|c| c.message.content);
         assert_eq!(content, Some("pong".to_string()));
+    }
+
+    #[test]
+    fn endpoint_defaults_to_production_url() {
+        // SAFETY: env vars are process-global. This test deliberately
+        // unsets and asserts; tests touching the same var should run
+        // serially under cargo test's default thread-per-test layout.
+        // The asymmetric set/unset cost is fine for the seam check.
+        let prev = env::var(API_BASE_VAR).ok();
+        env::remove_var(API_BASE_VAR);
+        assert_eq!(endpoint(), DEFAULT_ENDPOINT);
+        if let Some(v) = prev {
+            env::set_var(API_BASE_VAR, v);
+        }
+    }
+
+    #[test]
+    fn endpoint_honors_env_override() {
+        let prev = env::var(API_BASE_VAR).ok();
+        env::set_var(API_BASE_VAR, "http://127.0.0.1:1234/v1/chat");
+        assert_eq!(endpoint(), "http://127.0.0.1:1234/v1/chat");
+        match prev {
+            Some(v) => env::set_var(API_BASE_VAR, v),
+            None => env::remove_var(API_BASE_VAR),
+        }
     }
 
     #[test]
