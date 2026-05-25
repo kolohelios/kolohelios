@@ -40,6 +40,11 @@ pub enum Error {
         predicate: String,
     },
 
+    #[error(
+        "cannot draft post {slug:?} from stage {stage}: drafting requires the post to be in the `ideation` stage"
+    )]
+    DraftWrongStage { slug: String, stage: Stage },
+
     #[error("cannot demote from {0}: already at the first workflow stage")]
     DemoteFromInitial(Stage),
 

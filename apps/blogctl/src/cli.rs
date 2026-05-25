@@ -127,6 +127,27 @@ pub enum Command {
         #[command(subcommand)]
         action: AiAction,
     },
+    /// Generate a post body via OpenRouter from a single prompt seeded
+    /// with the post's title + existing notes. Post must be in the
+    /// `ideation` stage. Requires `OPENROUTER_API_KEY` in the
+    /// environment — wrap the invocation in `op run --env-file=.env --
+    /// ...` to resolve it from 1Password.
+    Draft {
+        slug: String,
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Instruction to send to the model (alongside the post's
+        /// title + existing body).
+        #[arg(long)]
+        prompt: String,
+        /// OpenRouter model identifier.
+        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
+        model: String,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Set classification dimensions on a post (format, hook, tone,
     /// audience, strategic-role, theme). Missing flags leave the
     /// existing value alone; `--clear-<dim>` removes it.
@@ -364,6 +385,22 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
         Command::Ai { action } => match action {
             AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
         },
+        Command::Draft {
+            slug,
+            workdir,
+            prompt,
+            model,
+            no_sync,
+        } => commands::draft::run(
+            jj,
+            commands::draft::DraftArgs {
+                slug,
+                workdir: workdir_or_pwd(workdir)?,
+                prompt,
+                model,
+                no_sync,
+            },
+        ),
         Command::Classify {
             slug,
             workdir,

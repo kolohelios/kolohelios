@@ -60,6 +60,7 @@ pub fn run(
             history_checked: false,
             targets: vec![],
             classifications: Default::default(),
+            ai: None,
         };
         let post = Post::new(metadata, "");
         repo.create_post(&post)

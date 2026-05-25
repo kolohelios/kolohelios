@@ -6,22 +6,52 @@
 //! directory rename, taxonomy mismatch) — gaps unit tests miss because
 //! each one stays inside one module's contract.
 //!
-//! No AI here. `commands::ai::ping` is the only OpenRouter call site
-//! today and isn't wired into the lifecycle; the seam from #474 is
-//! exercised separately by `tests/ai_endpoint.rs`. Once the
-//! AI-integrated commands tracked in #483 land (`draft`, `refine`,
-//! `final-edit`), they'll slot into this file rather than a new one.
+//! The AI-touching path lands here too via `lifecycle_with_draft`,
+//! which drives `commands::draft` against a `mockito` server using the
+//! `OPENROUTER_API_BASE` seam (#474). Once the rest of the
+//! AI-integrated commands tracked in #483 land (`refine`,
+//! `final-edit`), they'll extend the same test rather than spawning
+//! new ones.
 
+use std::env;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use tempfile::TempDir;
 
-use blogctl::commands::{self, classify::ClassifyArgs, metrics::UpdateArgs};
+use blogctl::commands::{self, classify::ClassifyArgs, draft::DraftArgs, metrics::UpdateArgs};
+use blogctl::error::Error;
 use blogctl::kind::Kind;
 use blogctl::stage::Stage;
 use blogctl::storage::{Repository, Workdir};
 use blogctl::sync::FakeJj;
 use blogctl::target::{Target, TargetEntry, TargetStatus};
+
+// `tests/ai_endpoint.rs` also touches OPENROUTER_API_BASE; both
+// processes run in parallel by default. Process-level mutex keeps the
+// env-var dance from racing within this binary; cargo runs each
+// integration test binary in its own process so the two files don't
+// interfere with each other.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+const CANNED_DRAFT_REPLY: &str =
+    "## Drafted body\n\nFirst paragraph from the mock.\n\nSecond paragraph from the mock.\n";
+
+const CANNED_OPENROUTER_RESPONSE: &str = r###"{
+  "id": "gen-test-001",
+  "object": "chat.completion",
+  "model": "test-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "## Drafted body\n\nFirst paragraph from the mock.\n\nSecond paragraph from the mock.\n"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}"###;
 
 fn fresh_workdir() -> (TempDir, PathBuf) {
     let tmp = TempDir::new().expect("tempdir");
@@ -148,4 +178,102 @@ fn lifecycle_init_new_classify_promote_metrics() {
     assert_eq!(m.reactions, 42);
     assert_eq!(m.comments, 7);
     assert_eq!(m.reposts, 3);
+}
+
+/// Drive an `Ideation`-stage post through `commands::draft` against a
+/// `mockito` server. Asserts the body was replaced with the mock's
+/// reply and the `ai.draft` audit block was populated. Also asserts
+/// that drafting from a non-`Ideation` stage errors cleanly.
+#[test]
+fn lifecycle_with_draft_uses_mocked_openrouter() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/chat/completions")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(CANNED_OPENROUTER_RESPONSE)
+        .create();
+
+    let prev_base = env::var("OPENROUTER_API_BASE").ok();
+    let prev_key = env::var("OPENROUTER_API_KEY").ok();
+    env::set_var(
+        "OPENROUTER_API_BASE",
+        format!("{}/chat/completions", server.url()),
+    );
+    env::set_var("OPENROUTER_API_KEY", "test-key");
+
+    let result = run_draft_lifecycle();
+
+    match prev_base {
+        Some(v) => env::set_var("OPENROUTER_API_BASE", v),
+        None => env::remove_var("OPENROUTER_API_BASE"),
+    }
+    match prev_key {
+        Some(v) => env::set_var("OPENROUTER_API_KEY", v),
+        None => env::remove_var("OPENROUTER_API_KEY"),
+    }
+
+    result.expect("draft lifecycle should succeed");
+    mock.assert();
+}
+
+fn run_draft_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
+    let (_tmp, workdir) = fresh_workdir();
+    commands::init::run(&FakeJj::new(), workdir.clone(), true)?;
+    commands::new::run(
+        &FakeJj::new(),
+        "Draft test post".into(),
+        workdir.clone(),
+        None,
+        Kind::Post,
+        None,
+        true,
+    )?;
+    let slug = "draft-test-post";
+
+    // Trying to draft at Concept must fail with DraftWrongStage. Catch
+    // before promoting so the negative path is exercised inside the
+    // same lifecycle test instead of a tiny standalone case.
+    let err = commands::draft::run(
+        &FakeJj::new(),
+        DraftArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: "go".into(),
+            model: "test-model".into(),
+            no_sync: true,
+        },
+    )
+    .expect_err("draft at Concept must error");
+    assert!(
+        matches!(err, Error::DraftWrongStage { .. }),
+        "expected DraftWrongStage, got: {err:?}"
+    );
+
+    commands::promote::run(&FakeJj::new(), slug.to_string(), workdir.clone(), true)?;
+
+    commands::draft::run(
+        &FakeJj::new(),
+        DraftArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: "write me three paragraphs about mocking".into(),
+            model: "test-model".into(),
+            no_sync: true,
+        },
+    )?;
+
+    let repo = Repository::open(Workdir::new(&workdir))?;
+    let (_, post) = repo.load(slug)?;
+    assert_eq!(
+        post.body.trim(),
+        CANNED_DRAFT_REPLY.trim(),
+        "body should match the canned mock reply"
+    );
+    let ai = post.metadata.ai.as_ref().expect("ai block populated");
+    let draft = ai.draft.as_ref().expect("ai.draft populated");
+    assert_eq!(draft.prompt, "write me three paragraphs about mocking");
+    assert_eq!(draft.model, "test-model");
+    Ok(())
 }

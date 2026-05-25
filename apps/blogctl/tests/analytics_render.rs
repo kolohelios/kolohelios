@@ -68,6 +68,7 @@ fn post(
                 hook: hook.map(|s| s.into()),
                 ..Default::default()
             },
+            ai: None,
         },
         "body\n",
     )

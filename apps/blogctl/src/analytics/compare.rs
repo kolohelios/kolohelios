@@ -265,6 +265,7 @@ mod tests {
                     theme: themes.iter().map(|s| (*s).to_string()).collect(),
                     ..Default::default()
                 },
+                ai: None,
             },
             "body\n",
         )
