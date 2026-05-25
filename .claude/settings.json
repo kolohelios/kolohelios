@@ -17,5 +17,18 @@
       "Bash(shaka *)",
       "Bash(tools/shaka/bin/shaka *)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tools/shaka/bin/shaka claude hook pre-issue-create"
+          }
+        ]
+      }
+    ]
   }
 }
