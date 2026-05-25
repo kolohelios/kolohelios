@@ -148,6 +148,25 @@ pub enum Command {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Iterate on a post body via OpenRouter, seeded with the post's
+    /// title + current body. Post must be in the `editing` stage.
+    /// Requires `OPENROUTER_API_KEY` in the environment.
+    Refine {
+        slug: String,
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Refinement instruction to send to the model (alongside the
+        /// post's title + current body).
+        #[arg(long)]
+        prompt: String,
+        /// OpenRouter model identifier.
+        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
+        model: String,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Set classification dimensions on a post (format, hook, tone,
     /// audience, strategic-role, theme). Missing flags leave the
     /// existing value alone; `--clear-<dim>` removes it.
@@ -394,6 +413,22 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
         } => commands::draft::run(
             jj,
             commands::draft::DraftArgs {
+                slug,
+                workdir: workdir_or_pwd(workdir)?,
+                prompt,
+                model,
+                no_sync,
+            },
+        ),
+        Command::Refine {
+            slug,
+            workdir,
+            prompt,
+            model,
+            no_sync,
+        } => commands::refine::run(
+            jj,
+            commands::refine::RefineArgs {
                 slug,
                 workdir: workdir_or_pwd(workdir)?,
                 prompt,

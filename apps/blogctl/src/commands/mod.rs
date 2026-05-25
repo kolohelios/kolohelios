@@ -12,4 +12,5 @@ pub mod metrics;
 pub mod new;
 pub mod promote;
 pub mod readme;
+pub mod refine;
 pub mod show;
