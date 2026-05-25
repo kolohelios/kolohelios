@@ -83,8 +83,23 @@ validate: nix-fmt-check flake-check whitespace-check
 // wasm-target sanity check lives in `wasm-check`. The validate recipe
 // composes the wasm check so wasm-incompat deps surface here, not
 // later when wrangler tries to compile.
+//
+// `worker-build-check` mirrors the exact `cargo install worker-build
+// --locked && worker-build --release` chain `cf-deploy.yml` runs in
+// CI (#424). `wasm-check` alone catches syntactic wasm-target
+// incompatibility but not the toolchain-resolution failure mode
+// that bit #403 — wasm-pack's `which("rustc")` probe is only
+// exercised by `worker-build`. Validate runs it locally so a CI-only
+// failure of this class can no longer hide behind a green local
+// run. The `cargo install --locked` is idempotent (no-op on a
+// re-run with the same lockfile-pinned version); first-run cost is
+// the worker-build install.
 const RUST_WORKER_TEMPLATE: &str = r#"wasm-check:
     cargo check --target wasm32-unknown-unknown
+
+worker-build-check:
+    cargo install -q worker-build --locked
+    worker-build --release
 
 test:
     cargo test
@@ -136,7 +151,7 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint doc-check deny machete test coverage wasm-check nix-fmt-check flake-check whitespace-check
+validate: fmt-check lint doc-check deny machete test coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
 "#;
 
 // Infra projects intentionally do NOT run `nix flake check` in `validate`.
