@@ -4,7 +4,10 @@
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
+flake-check:
+    nix flake check
+
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: nix-fmt-check whitespace-check
+validate: nix-fmt-check flake-check whitespace-check
