@@ -173,6 +173,110 @@ pub fn render_table(
     lines.join("\n")
 }
 
+pub struct CompletedTask {
+    pub prefix: String,
+    pub content: String,
+}
+
+pub struct CompleteResult {
+    pub arg: String,
+    pub outcome: Result<CompletedTask, String>,
+}
+
+pub fn run_complete(
+    client: &impl TodoistClient,
+    token: &str,
+    args: &[String],
+) -> Result<Vec<CompleteResult>> {
+    let tasks = client
+        .list_tasks(token, &TaskListQuery::default())
+        .map_err(|e| anyhow!(e))?;
+    let mut results = Vec::with_capacity(args.len());
+    for arg in args {
+        match resolve_target(&tasks, arg) {
+            Ok(task) => {
+                let id = task.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let content = task
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let prefix: String = id.chars().take(ID_PREFIX_LEN).collect();
+                let outcome = match client.close_task(token, id) {
+                    Ok(()) => Ok(CompletedTask { prefix, content }),
+                    Err(e) => Err(e.to_string()),
+                };
+                results.push(CompleteResult {
+                    arg: arg.clone(),
+                    outcome,
+                });
+            }
+            Err(e) => results.push(CompleteResult {
+                arg: arg.clone(),
+                outcome: Err(e),
+            }),
+        }
+    }
+    Ok(results)
+}
+
+pub fn resolve_target<'a>(
+    tasks: &'a [serde_json::Value],
+    arg: &str,
+) -> Result<&'a serde_json::Value, String> {
+    if let Some(exact) = tasks
+        .iter()
+        .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(arg))
+    {
+        return Ok(exact);
+    }
+    let prefix_matches: Vec<&serde_json::Value> = tasks
+        .iter()
+        .filter(|t| {
+            t.get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| id.starts_with(arg))
+                .unwrap_or(false)
+        })
+        .collect();
+    match prefix_matches.as_slice() {
+        [] => Err(format!("no task matching {arg:?}")),
+        [hit] => Ok(*hit),
+        many => {
+            let candidates: Vec<String> = many
+                .iter()
+                .map(|t| {
+                    let id = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let prefix: String = id.chars().take(ID_PREFIX_LEN).collect();
+                    let content = t.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    format!("{prefix} ({content})")
+                })
+                .collect();
+            Err(format!(
+                "ambiguous prefix {arg:?}: matches {}",
+                candidates.join(", ")
+            ))
+        }
+    }
+}
+
+pub fn render_complete_results(results: &[CompleteResult], use_unicode: bool) -> (String, bool) {
+    let ok_mark = if use_unicode { "✓" } else { "ok" };
+    let err_mark = if use_unicode { "✗" } else { "x" };
+    let mut any_failure = false;
+    let lines: Vec<String> = results
+        .iter()
+        .map(|r| match &r.outcome {
+            Ok(task) => format!("{ok_mark} {} {}", task.prefix, task.content),
+            Err(e) => {
+                any_failure = true;
+                format!("{err_mark} {} ({e})", r.arg)
+            }
+        })
+        .collect();
+    (lines.join("\n"), any_failure)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +291,8 @@ mod tests {
         last_create: RefCell<Option<CreateTaskBody>>,
         create_response: serde_json::Value,
         create_error: RefCell<Option<ApiError>>,
+        closed_ids: RefCell<Vec<String>>,
+        close_failure_ids: Vec<String>,
     }
 
     impl FakeClient {
@@ -198,11 +304,18 @@ mod tests {
                 last_create: RefCell::new(None),
                 create_response: serde_json::json!({"id": "999abc12345", "content": "echo"}),
                 create_error: RefCell::new(None),
+                closed_ids: RefCell::new(Vec::new()),
+                close_failure_ids: Vec::new(),
             }
         }
 
         fn with_create_error(mut self, err: ApiError) -> Self {
             self.create_error = RefCell::new(Some(err));
+            self
+        }
+
+        fn with_close_failure(mut self, id: &str) -> Self {
+            self.close_failure_ids.push(id.to_string());
             self
         }
     }
@@ -231,6 +344,17 @@ mod tests {
                 return Err(e);
             }
             Ok(self.create_response.clone())
+        }
+
+        fn close_task(&self, _token: &str, id: &str) -> Result<(), ApiError> {
+            if self.close_failure_ids.iter().any(|f| f == id) {
+                return Err(ApiError::Other {
+                    status: 404,
+                    body: format!("task {id} not found"),
+                });
+            }
+            self.closed_ids.borrow_mut().push(id.to_string());
+            Ok(())
         }
     }
 
@@ -430,5 +554,133 @@ mod tests {
         assert!(out.contains("abcdef"));
         assert!(!out.contains("9876543210"));
         assert!(out.contains("buy milk"));
+    }
+
+    #[test]
+    fn resolve_target_matches_exact_id() {
+        let tasks = vec![task("abcdef0000", "x", "1", 1, None)];
+        let hit = resolve_target(&tasks, "abcdef0000").unwrap();
+        assert_eq!(hit.get("id").and_then(|v| v.as_str()), Some("abcdef0000"));
+    }
+
+    #[test]
+    fn resolve_target_matches_unique_prefix() {
+        let tasks = vec![
+            task("abcdef0000", "x", "1", 1, None),
+            task("ghijkl1111", "y", "1", 1, None),
+        ];
+        let hit = resolve_target(&tasks, "abc").unwrap();
+        assert_eq!(hit.get("id").and_then(|v| v.as_str()), Some("abcdef0000"));
+    }
+
+    #[test]
+    fn resolve_target_errors_on_ambiguous_prefix() {
+        let tasks = vec![
+            task("abc111", "first", "1", 1, None),
+            task("abc222", "second", "1", 1, None),
+        ];
+        let err = resolve_target(&tasks, "abc").unwrap_err();
+        assert!(err.contains("ambiguous"));
+        assert!(err.contains("first"));
+        assert!(err.contains("second"));
+    }
+
+    #[test]
+    fn resolve_target_errors_when_no_match() {
+        let tasks = vec![task("aaa", "x", "1", 1, None)];
+        let err = resolve_target(&tasks, "zzz").unwrap_err();
+        assert!(err.contains("no task matching"));
+    }
+
+    #[test]
+    fn run_complete_closes_resolved_ids() {
+        let tasks = vec![
+            task("abcdef1111", "first", "1", 1, None),
+            task("ghijkl2222", "second", "1", 1, None),
+        ];
+        let client = FakeClient::new(vec![], tasks);
+        let args = vec!["abc".to_string(), "ghijkl2222".to_string()];
+        let results = run_complete(&client, "tok", &args).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].outcome.is_ok());
+        assert!(results[1].outcome.is_ok());
+        let closed = client.closed_ids.borrow();
+        assert_eq!(*closed, vec!["abcdef1111", "ghijkl2222"]);
+    }
+
+    #[test]
+    fn run_complete_reports_resolve_failure_but_continues() {
+        let tasks = vec![task("aaa111", "real", "1", 1, None)];
+        let client = FakeClient::new(vec![], tasks);
+        let args = vec!["zzz".to_string(), "aaa".to_string()];
+        let results = run_complete(&client, "tok", &args).unwrap();
+        assert!(results[0].outcome.is_err());
+        assert!(results[1].outcome.is_ok());
+        assert_eq!(*client.closed_ids.borrow(), vec!["aaa111"]);
+    }
+
+    #[test]
+    fn run_complete_reports_api_failure_but_continues() {
+        let tasks = vec![
+            task("aaa111", "first", "1", 1, None),
+            task("bbb222", "second", "1", 1, None),
+        ];
+        let client = FakeClient::new(vec![], tasks).with_close_failure("aaa111");
+        let args = vec!["aaa".to_string(), "bbb".to_string()];
+        let results = run_complete(&client, "tok", &args).unwrap();
+        assert!(results[0].outcome.is_err());
+        assert!(results[1].outcome.is_ok());
+        assert_eq!(*client.closed_ids.borrow(), vec!["bbb222"]);
+    }
+
+    #[test]
+    fn render_complete_results_uses_unicode_when_enabled() {
+        let results = vec![CompleteResult {
+            arg: "abc".into(),
+            outcome: Ok(CompletedTask {
+                prefix: "abcdef".into(),
+                content: "buy milk".into(),
+            }),
+        }];
+        let (out, failed) = render_complete_results(&results, true);
+        assert!(out.contains("✓"));
+        assert!(out.contains("abcdef"));
+        assert!(out.contains("buy milk"));
+        assert!(!failed);
+    }
+
+    #[test]
+    fn render_complete_results_uses_ascii_when_disabled() {
+        let results = vec![CompleteResult {
+            arg: "abc".into(),
+            outcome: Ok(CompletedTask {
+                prefix: "abcdef".into(),
+                content: "x".into(),
+            }),
+        }];
+        let (out, _) = render_complete_results(&results, false);
+        assert!(out.contains("ok"));
+        assert!(!out.contains("✓"));
+    }
+
+    #[test]
+    fn render_complete_results_flags_any_failure() {
+        let results = vec![
+            CompleteResult {
+                arg: "abc".into(),
+                outcome: Ok(CompletedTask {
+                    prefix: "abcdef".into(),
+                    content: "x".into(),
+                }),
+            },
+            CompleteResult {
+                arg: "zzz".into(),
+                outcome: Err("no match".into()),
+            },
+        ];
+        let (out, failed) = render_complete_results(&results, true);
+        assert!(failed);
+        assert!(out.contains("zzz"));
+        assert!(out.contains("no match"));
     }
 }

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, Subcommand};
 
 mod api;
@@ -158,7 +158,19 @@ fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
             println!("{}", tasks::render_added(&created));
             Ok(())
         }
-        _ => bail!("this tasks subcommand is not yet implemented"),
+        TasksSubcommand::Complete { ids } => {
+            let token = resolve_token()?;
+            let client = api::RealClient::default();
+            let results = tasks::run_complete(&client, &token, &ids)?;
+            let use_unicode = std::io::IsTerminal::is_terminal(&std::io::stdout())
+                && std::env::var_os("NO_COLOR").is_none();
+            let (out, any_failure) = tasks::render_complete_results(&results, use_unicode);
+            println!("{out}");
+            if any_failure {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
     }
 }
 
@@ -320,17 +332,6 @@ mod tests {
         });
         assert!(out.contains("op://x"));
         assert!(out.contains("vault locked"));
-    }
-
-    #[test]
-    fn dispatch_tasks_returns_unimplemented_error() {
-        let err = dispatch(Command::Tasks(TasksCmd {
-            command: TasksSubcommand::Complete {
-                ids: vec!["abc".into()],
-            },
-        }))
-        .unwrap_err();
-        assert!(err.to_string().contains("tasks"));
     }
 
     #[test]

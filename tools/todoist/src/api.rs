@@ -66,6 +66,8 @@ pub trait TodoistClient {
         token: &str,
         body: &CreateTaskBody,
     ) -> Result<serde_json::Value, ApiError>;
+
+    fn close_task(&self, token: &str, id: &str) -> Result<(), ApiError>;
 }
 
 pub struct RealClient {
@@ -114,6 +116,26 @@ impl TodoistClient for RealClient {
         let payload =
             serde_json::to_value(body).map_err(|e| ApiError::Network(format!("encode: {e}")))?;
         send_json(req.send_json(payload))
+    }
+
+    fn close_task(&self, token: &str, id: &str) -> Result<(), ApiError> {
+        let req = ureq::post(&format!("{}/tasks/{id}/close", self.base))
+            .set("Authorization", &format!("Bearer {token}"));
+        send_no_content(req.call())
+    }
+}
+
+fn send_no_content(result: Result<ureq::Response, ureq::Error>) -> Result<(), ApiError> {
+    match result {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(401, _)) => Err(ApiError::Unauthorized),
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response
+                .into_string()
+                .unwrap_or_else(|_| "<unreadable>".into());
+            Err(ApiError::Other { status, body })
+        }
+        Err(ureq::Error::Transport(t)) => Err(ApiError::Network(t.to_string())),
     }
 }
 
