@@ -133,6 +133,9 @@ pub enum Error {
     #[error("could not parse predicate: {0}")]
     PredicateParse(String),
 
+    #[error("could not evaluate predicate {predicate:?}: {reason}")]
+    PredicateEval { predicate: String, reason: String },
+
     #[error("could not invoke `{command}`: {source}")]
     JjInvoke {
         command: String,

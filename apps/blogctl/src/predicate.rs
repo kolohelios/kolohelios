@@ -15,7 +15,10 @@
 use std::fmt;
 use std::str::FromStr;
 
+use serde_json::Value;
+
 use crate::error::{Error, Result};
+use crate::post::Post;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Accessor {
@@ -49,7 +52,48 @@ pub struct Predicate {
     pub literal: Literal,
 }
 
+/// The value an accessor resolves to. Narrow on purpose — the predicate
+/// language can only compare these three shapes, plus an "absent" signal
+/// for unset frontmatter fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Resolved {
+    Int(i64),
+    Str(String),
+    Bool(bool),
+    Absent,
+}
+
+impl Resolved {
+    fn type_name(&self) -> &'static str {
+        match self {
+            Resolved::Int(_) => "int",
+            Resolved::Str(_) => "string",
+            Resolved::Bool(_) => "bool",
+            Resolved::Absent => "absent",
+        }
+    }
+}
+
 impl Predicate {
+    /// Evaluate this predicate against a `Post`. Returns `Ok(bool)` on a
+    /// successful comparison; `Err(PredicateEval)` when the accessor
+    /// can't be resolved or the literal's type doesn't match the
+    /// accessor's value type.
+    pub fn evaluate(&self, post: &Post) -> Result<bool> {
+        let resolved = self
+            .accessor
+            .resolve(post)
+            .map_err(|reason| self.eval_err(reason))?;
+        compare(&resolved, self.op, &self.literal).map_err(|reason| self.eval_err(reason))
+    }
+
+    fn eval_err(&self, reason: String) -> Error {
+        Error::PredicateEval {
+            predicate: self.to_string(),
+            reason,
+        }
+    }
+
     /// Parse a single predicate line. Three tokens: an accessor, an
     /// operator, and a literal. The literal token is "everything after
     /// the operator, trimmed" so quoted strings can contain spaces.
@@ -116,6 +160,122 @@ impl fmt::Display for Literal {
             Literal::Str(s) => write!(f, "{s:?}"),
             Literal::Bool(b) => write!(f, "{b}"),
         }
+    }
+}
+
+impl Accessor {
+    fn resolve(&self, post: &Post) -> std::result::Result<Resolved, String> {
+        match self {
+            Accessor::BodyWords => Ok(Resolved::Int(count_words(&post.body) as i64)),
+            Accessor::BodyChars => Ok(Resolved::Int(post.body.chars().count() as i64)),
+            Accessor::Frontmatter(field) => {
+                let tree = frontmatter_tree(post)?;
+                match tree.get(field) {
+                    None => Ok(Resolved::Absent),
+                    Some(v) => resolve_scalar(v, field),
+                }
+            }
+            Accessor::FrontmatterLen(field) => {
+                let tree = frontmatter_tree(post)?;
+                match tree.get(field) {
+                    None => Ok(Resolved::Absent),
+                    Some(Value::Array(items)) => Ok(Resolved::Int(items.len() as i64)),
+                    Some(Value::String(s)) => Ok(Resolved::Int(s.chars().count() as i64)),
+                    Some(other) => Err(format!(
+                        "frontmatter.{field}.len is only defined for arrays and strings, got {}",
+                        json_type(other)
+                    )),
+                }
+            }
+        }
+    }
+}
+
+fn count_words(body: &str) -> usize {
+    body.split_whitespace().count()
+}
+
+/// Serialize `PostMetadata` to a JSON object so the accessor can walk it
+/// dynamically without growing a hard-coded match arm per field. The
+/// clone is cheap relative to a predicate-gated stage transition.
+fn frontmatter_tree(post: &Post) -> std::result::Result<serde_json::Map<String, Value>, String> {
+    let value = serde_json::to_value(&post.metadata)
+        .map_err(|e| format!("could not serialize frontmatter: {e}"))?;
+    match value {
+        Value::Object(map) => Ok(map),
+        _ => Err("frontmatter did not serialize to an object".into()),
+    }
+}
+
+fn resolve_scalar(value: &Value, field: &str) -> std::result::Result<Resolved, String> {
+    match value {
+        Value::Null => Ok(Resolved::Absent),
+        Value::Bool(b) => Ok(Resolved::Bool(*b)),
+        Value::String(s) => Ok(Resolved::Str(s.clone())),
+        Value::Number(n) => n
+            .as_i64()
+            .map(Resolved::Int)
+            .ok_or_else(|| format!("frontmatter.{field} is not an integer")),
+        Value::Array(_) | Value::Object(_) => Err(format!(
+            "frontmatter.{field} is a {}; use .len or pick a scalar field",
+            json_type(value)
+        )),
+    }
+}
+
+fn json_type(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn compare(resolved: &Resolved, op: Op, literal: &Literal) -> std::result::Result<bool, String> {
+    if matches!(resolved, Resolved::Absent) {
+        return Err("accessor resolved to absent (field unset)".into());
+    }
+    match (resolved, literal) {
+        (Resolved::Int(lhs), Literal::Int(rhs)) => Ok(apply_ord(*lhs, *rhs, op)),
+        (Resolved::Str(lhs), Literal::Str(rhs)) => apply_eq(lhs == rhs, op, "string"),
+        (Resolved::Bool(lhs), Literal::Bool(rhs)) => apply_eq(lhs == rhs, op, "bool"),
+        (lhs, rhs) => Err(format!(
+            "type mismatch: accessor is {}, literal is {}",
+            lhs.type_name(),
+            literal_type(rhs),
+        )),
+    }
+}
+
+fn apply_ord(lhs: i64, rhs: i64, op: Op) -> bool {
+    match op {
+        Op::Eq => lhs == rhs,
+        Op::Ne => lhs != rhs,
+        Op::Ge => lhs >= rhs,
+        Op::Le => lhs <= rhs,
+        Op::Gt => lhs > rhs,
+        Op::Lt => lhs < rhs,
+    }
+}
+
+fn apply_eq(eq: bool, op: Op, type_name: &str) -> std::result::Result<bool, String> {
+    match op {
+        Op::Eq => Ok(eq),
+        Op::Ne => Ok(!eq),
+        other => Err(format!(
+            "operator {other} is not defined for {type_name}; only == and != apply"
+        )),
+    }
+}
+
+fn literal_type(l: &Literal) -> &'static str {
+    match l {
+        Literal::Int(_) => "int",
+        Literal::Str(_) => "string",
+        Literal::Bool(_) => "bool",
     }
 }
 
@@ -350,5 +510,144 @@ mod tests {
     fn from_str_dispatches_to_parse() {
         let p: Predicate = "body.words >= 1".parse().unwrap();
         assert_eq!(p.accessor, Accessor::BodyWords);
+    }
+
+    mod evaluate {
+        use super::*;
+        use crate::classifications::Classifications;
+        use crate::kind::Kind;
+        use crate::post::{Post, PostMetadata};
+        use crate::stage::Stage;
+        use time::macros::datetime;
+
+        fn fixture(body: &str) -> Post {
+            Post::new(
+                PostMetadata {
+                    title: "Example Title".into(),
+                    slug: "example".into(),
+                    kind: Kind::Post,
+                    theme: "standard".into(),
+                    status: Stage::Ideation,
+                    created_at: datetime!(2026-05-03 00:00:00 UTC),
+                    updated_at: datetime!(2026-05-03 00:00:00 UTC),
+                    tags: vec!["rust".into(), "tooling".into()],
+                    todoist_task_id: None,
+                    history_checked: true,
+                    targets: vec![],
+                    classifications: Classifications::default(),
+                },
+                body,
+            )
+        }
+
+        fn eval(input: &str, post: &Post) -> Result<bool> {
+            Predicate::parse(input).unwrap().evaluate(post)
+        }
+
+        #[test]
+        fn body_words_counts_whitespace_separated_tokens() {
+            let post = fixture("one two three four five");
+            assert!(eval("body.words >= 5", &post).unwrap());
+            assert!(eval("body.words == 5", &post).unwrap());
+            assert!(!eval("body.words > 5", &post).unwrap());
+        }
+
+        #[test]
+        fn body_words_handles_runs_of_whitespace() {
+            let post = fixture("alpha   beta\nbeta\tgamma");
+            // Four tokens — "alpha", "beta", "beta", "gamma".
+            assert!(eval("body.words == 4", &post).unwrap());
+        }
+
+        #[test]
+        fn body_chars_counts_unicode_characters() {
+            let post = fixture("héllo"); // 5 chars, 6 bytes.
+            assert!(eval("body.chars == 5", &post).unwrap());
+        }
+
+        #[test]
+        fn frontmatter_string_equality() {
+            let post = fixture("body");
+            assert!(eval(r#"frontmatter.title == "Example Title""#, &post).unwrap());
+            assert!(eval(r#"frontmatter.title != "Other""#, &post).unwrap());
+        }
+
+        #[test]
+        fn frontmatter_bool_equality() {
+            let post = fixture("body");
+            assert!(eval("frontmatter.history_checked == true", &post).unwrap());
+            assert!(!eval("frontmatter.history_checked == false", &post).unwrap());
+        }
+
+        #[test]
+        fn frontmatter_string_rejects_ordering_operator() {
+            let post = fixture("body");
+            let err = eval(r#"frontmatter.title > "A""#, &post).unwrap_err();
+            assert!(
+                matches!(err, Error::PredicateEval { ref reason, .. } if reason.contains("only == and !=")),
+                "got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn frontmatter_len_on_array() {
+            let post = fixture("body");
+            // tags = ["rust", "tooling"] from the fixture.
+            assert!(eval("frontmatter.tags.len == 2", &post).unwrap());
+            assert!(eval("frontmatter.tags.len > 0", &post).unwrap());
+        }
+
+        #[test]
+        fn frontmatter_len_on_string() {
+            let post = fixture("body");
+            // title = "Example Title" — 13 chars.
+            assert!(eval("frontmatter.title.len == 13", &post).unwrap());
+        }
+
+        #[test]
+        fn type_mismatch_errors_with_clear_message() {
+            let post = fixture("body");
+            let err = eval(r#"frontmatter.title == 5"#, &post).unwrap_err();
+            assert!(
+                matches!(err, Error::PredicateEval { ref reason, .. } if reason.contains("type mismatch")),
+                "got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn absent_frontmatter_field_errors() {
+            // `todoist_task_id` is None on the fixture and serializes to
+            // null; the evaluator surfaces that distinctly from a value
+            // mismatch.
+            let post = fixture("body");
+            let err = eval(r#"frontmatter.todoist_task_id == "x""#, &post).unwrap_err();
+            assert!(
+                matches!(err, Error::PredicateEval { ref reason, .. } if reason.contains("absent")),
+                "got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn unknown_frontmatter_field_errors() {
+            let post = fixture("body");
+            let err = eval(r#"frontmatter.no_such_field == "x""#, &post).unwrap_err();
+            assert!(
+                matches!(err, Error::PredicateEval { ref reason, .. } if reason.contains("absent")),
+                "got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn eval_error_carries_canonical_predicate_text() {
+            let post = fixture("");
+            let err = eval(r#"frontmatter.title == 5"#, &post).unwrap_err();
+            match err {
+                Error::PredicateEval { predicate, .. } => {
+                    // Display canonicalizes: int literal stays unquoted.
+                    assert_eq!(predicate, "frontmatter.title == 5");
+                }
+                other => panic!("expected PredicateEval, got {other:?}"),
+            }
+        }
     }
 }
