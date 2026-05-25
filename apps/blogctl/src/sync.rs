@@ -233,7 +233,11 @@ impl Jj for RealJj {
     }
 
     fn new_change(&self, workdir: &Path, message: &str) -> Result<()> {
-        run_strict(workdir, &["new", "--no-edit=false", "-m", message])?;
+        // `--no-edit` is a bare boolean flag in current jj; the old
+        // `--no-edit=false` syntax errors with "unexpected value".
+        // Default `jj new` already moves @ to the new commit, which
+        // is exactly what we want here.
+        run_strict(workdir, &["new", "-m", message])?;
         Ok(())
     }
 
