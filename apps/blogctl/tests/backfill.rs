@@ -285,22 +285,110 @@ fn import_full_batch_lands_in_one_commit() {
     }
 }
 
-#[test]
-fn interactive_mode_is_unimplemented_for_now() {
-    // The no-import path returns Error::Unimplemented until the
-    // follow-up commit on this branch wires up stdin prompts.
+/// Build a fixture workdir, promote `bare-post` all the way to
+/// published, so the interactive walk actually sees it.
+fn fixture_workdir_with_published() -> TempDir {
     let tmp = fixture_workdir();
-    let result = commands::backfill::run(
+    // Promote bare-post: concept → ideation → editing → final-editing
+    // → published. classify + metrics would normally be done at
+    // various stages; here we just walk it through.
+    for _ in 0..4 {
+        commands::promote::run(
+            &FakeJj::new(),
+            "bare-post".to_string(),
+            tmp.path().to_path_buf(),
+            false,
+        )
+        .unwrap();
+    }
+    tmp
+}
+
+#[test]
+fn interactive_skips_dimensions_via_blank_input_then_quits() {
+    // Drive: every classification prompt → empty line (skip), then
+    // metrics prompts: skip the whole post (S). One published post,
+    // no changes, exit clean.
+    let tmp = fixture_workdir_with_published();
+    // 5 single-valued dimensions, each prompted; skip each. Then
+    // metrics block — skip the whole post.
+    let input_bytes = b"\n\n\n\n\nS\n";
+    let mut input = std::io::Cursor::new(&input_bytes[..]);
+    let mut output: Vec<u8> = Vec::new();
+    commands::backfill::run_interactive(
         &FakeJj::new(),
-        commands::backfill::BackfillArgs {
+        &commands::backfill::BackfillArgs {
             workdir: tmp.path().to_path_buf(),
             import: None,
             no_sync: false,
         },
-    );
-    let err = result.expect_err("interactive mode not yet implemented");
+        &mut input,
+        &mut output,
+    )
+    .unwrap();
+    let stdout = String::from_utf8(output).unwrap();
     assert!(
-        matches!(err, blogctl::Error::Unimplemented(_)),
-        "got: {err:?}"
+        stdout.contains("walked 1"),
+        "expected walk summary in output, got: {stdout}"
     );
+    // No changes written — frontmatter still has empty classifications.
+    let raw = fs::read_to_string(tmp.path().join("published/bare-post.md")).unwrap();
+    assert!(!raw.contains("format: thesis"));
+}
+
+#[test]
+fn interactive_writes_classification_picked_by_number() {
+    let tmp = fixture_workdir_with_published();
+    // Sequence:
+    //   format: 2  (second item in current_v1's format list = "thesis")
+    //   hook:   skip
+    //   tone:   skip
+    //   audience: skip
+    //   strategic_role: skip
+    //   metrics for linkedin: skip-post (S)
+    let input_bytes = b"2\n\n\n\n\nS\n";
+    let mut input = std::io::Cursor::new(&input_bytes[..]);
+    let mut output: Vec<u8> = Vec::new();
+    commands::backfill::run_interactive(
+        &FakeJj::new(),
+        &commands::backfill::BackfillArgs {
+            workdir: tmp.path().to_path_buf(),
+            import: None,
+            no_sync: false,
+        },
+        &mut input,
+        &mut output,
+    )
+    .unwrap();
+    let raw = fs::read_to_string(tmp.path().join("published/bare-post.md")).unwrap();
+    assert!(
+        raw.contains("format: thesis"),
+        "expected format=thesis after picking #2, got:\n{raw}"
+    );
+}
+
+#[test]
+fn interactive_quits_immediately_on_q() {
+    let tmp = fixture_workdir_with_published();
+    // First prompt sees `q` — quit immediately. File on disk is
+    // untouched (no commit).
+    let pre = fs::read_to_string(tmp.path().join("published/bare-post.md")).unwrap();
+    let input_bytes = b"q\n";
+    let mut input = std::io::Cursor::new(&input_bytes[..]);
+    let mut output: Vec<u8> = Vec::new();
+    commands::backfill::run_interactive(
+        &FakeJj::new(),
+        &commands::backfill::BackfillArgs {
+            workdir: tmp.path().to_path_buf(),
+            import: None,
+            no_sync: false,
+        },
+        &mut input,
+        &mut output,
+    )
+    .unwrap();
+    let post = fs::read_to_string(tmp.path().join("published/bare-post.md")).unwrap();
+    assert_eq!(pre, post, "file should be untouched after immediate quit");
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("quitting"));
 }
