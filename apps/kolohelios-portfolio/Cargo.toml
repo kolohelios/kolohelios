@@ -36,3 +36,6 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+
+[lints.clippy]
+mod_module_files = "deny"

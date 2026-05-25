@@ -110,7 +110,10 @@ fn cargo_toml(name: &str) -> String {
          \n\
          [[bin]]\n\
          name = \"{name}\"\n\
-         path = \"src/main.rs\"\n"
+         path = \"src/main.rs\"\n\
+         \n\
+         [lints.clippy]\n\
+         mod_module_files = \"deny\"\n"
     )
 }
 
@@ -321,6 +324,17 @@ mod tests {
         let out = cargo_toml("demo");
         assert!(out.contains(r#"license = "MIT OR Apache-2.0""#));
         assert!(out.contains(r#"name = "demo""#));
+    }
+
+    #[test]
+    fn cargo_toml_enforces_flat_module_layout() {
+        // Every rust crate in the repo carries
+        // `clippy::mod_module_files = "deny"` so new submodules can't
+        // reintroduce the `foo/mod.rs` form. New projects must inherit
+        // the lint or the convention drifts.
+        let out = cargo_toml("demo");
+        assert!(out.contains("[lints.clippy]"));
+        assert!(out.contains("mod_module_files = \"deny\""));
     }
 
     #[test]
