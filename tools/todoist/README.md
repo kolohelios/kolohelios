@@ -22,7 +22,21 @@ the reference — never the token. `auth login` rejects a reference
 that `op read` cannot resolve, so a bad ref fails fast instead of
 turning into a surprise 401 later.
 
+## Listing tasks
+
+```
+todoist tasks list [--project <name-or-id>] [--filter <todoist-filter>] \
+                   [--limit <N>] [--json]
+```
+
+`--project` accepts either a project name (resolved via `/projects`)
+or a numeric ID. `--filter` passes through the `Todoist` filter query
+language verbatim (`today`, `overdue`, `@waiting`, etc.). `--json`
+emits one raw API object per line for piping into `jq`; without it
+the output is a column table whose `id` shows the first six characters
+of the task ID for quick reference.
+
 ## Status
 
-Auth is implemented (#476). Task operations are still stubs;
-follow-up issues (#477–#479) fill them in.
+Auth (#476) and `tasks list` (#477) are implemented. `tasks add` (#478)
+and `tasks complete` (#479) are still stubs.

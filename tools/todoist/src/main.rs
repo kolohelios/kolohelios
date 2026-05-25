@@ -1,7 +1,11 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
 
+mod api;
 mod auth;
+mod tasks;
+
+use auth::OpRunner;
 
 #[derive(Parser)]
 #[command(name = "todoist", version, about = "Command-line client for Todoist")]
@@ -96,8 +100,56 @@ fn main() -> Result<()> {
 fn dispatch(command: Command) -> Result<()> {
     match command {
         Command::Auth(AuthCmd { command }) => handle_auth(command),
-        Command::Tasks(_) => bail!("tasks subcommands are not yet implemented"),
+        Command::Tasks(TasksCmd { command }) => handle_tasks(command),
     }
+}
+
+fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
+    match cmd {
+        TasksSubcommand::List {
+            project,
+            filter,
+            limit,
+            json,
+        } => {
+            let token = resolve_token()?;
+            let client = api::RealClient::default();
+            let outcome = tasks::run_list(
+                &client,
+                &token,
+                &tasks::ListOpts {
+                    project,
+                    filter,
+                    limit,
+                },
+            )?;
+            if json {
+                println!("{}", tasks::render_ndjson(&outcome.tasks));
+            } else {
+                println!(
+                    "{}",
+                    tasks::render_table(&outcome.tasks, &outcome.projects_by_id)
+                );
+            }
+            Ok(())
+        }
+        _ => bail!("this tasks subcommand is not yet implemented"),
+    }
+}
+
+fn resolve_token() -> Result<String> {
+    let path = auth::default_config_path()?;
+    let op = auth::RealOp;
+    let raw = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "could not read {} — run `todoist auth login` first",
+            path.display()
+        )
+    })?;
+    let config: auth::Config =
+        toml::from_str(&raw).context("could not parse stored auth config")?;
+    op.read(&config.token_op_ref)
+        .map_err(|e| anyhow!("could not resolve token from 1Password: {e}"))
 }
 
 fn handle_auth(cmd: AuthSubcommand) -> Result<()> {
