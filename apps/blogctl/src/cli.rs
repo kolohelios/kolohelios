@@ -86,6 +86,22 @@ pub enum Command {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Render the configured prompt for a post's current stage, call
+    /// OpenRouter, and write the reply as
+    /// `<workdir>/drafts/<slug>.draft-N.md` for review. Requires a
+    /// `[kinds.<kind>.stages.<current>]` entry in `.blog-os.toml`.
+    Draft {
+        slug: String,
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Override the model the config would otherwise resolve to.
+        #[arg(long)]
+        model: Option<String>,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Move a post one stage back.
     Demote {
         slug: String,
@@ -350,6 +366,12 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             workdir,
             no_sync,
         } => commands::demote::run(jj, slug, workdir_or_pwd(workdir)?, no_sync),
+        Command::Draft {
+            slug,
+            workdir,
+            model,
+            no_sync,
+        } => commands::draft::run(jj, slug, workdir_or_pwd(workdir)?, model, no_sync),
         Command::Readme { action } => match action {
             ReadmeAction::Regenerate { workdir, no_sync } => {
                 commands::readme::regenerate(jj, workdir_or_pwd(workdir)?, no_sync)
@@ -545,6 +567,17 @@ mod tests {
                 "hello",
                 "--workdir",
                 "/tmp/wd",
+                "--no-sync",
+            ],
+            vec!["blogctl", "draft", "hello", "--workdir", "/tmp/wd"],
+            vec![
+                "blogctl",
+                "draft",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
+                "--model",
+                "anthropic/claude-opus-4-7",
                 "--no-sync",
             ],
             vec!["blogctl", "demote", "hello", "--workdir", "/tmp/wd"],
@@ -834,6 +867,7 @@ mod tests {
             vec!["blogctl", "show", "hello"],
             vec!["blogctl", "promote", "hello"],
             vec!["blogctl", "demote", "hello"],
+            vec!["blogctl", "draft", "hello"],
             vec!["blogctl", "readme", "regenerate"],
             vec!["blogctl", "doctor"],
             vec!["blogctl", "fix"],

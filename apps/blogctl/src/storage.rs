@@ -222,6 +222,17 @@ impl Workdir {
         self.stage_dir(stage).join(format!("{slug}.md"))
     }
 
+    /// Top-level directory drafts land in. Lives outside the stage
+    /// directories so the post walk (list/doctor/audit) doesn't pick
+    /// the AI-generated drafts up as posts.
+    pub fn drafts_dir(&self) -> PathBuf {
+        self.root.join("drafts")
+    }
+
+    pub fn draft_path(&self, slug: &str, n: u32) -> PathBuf {
+        self.drafts_dir().join(format!("{slug}.draft-{n}.md"))
+    }
+
     /// All directories that should exist after `init`. Only the stage
     /// directories — prompt files live at the workdir root next to
     /// `.blog-os.toml` and `README.md`.
