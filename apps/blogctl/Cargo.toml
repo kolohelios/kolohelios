@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
+minijinja = { version = "2", default-features = false, features = ["serde", "loader"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"

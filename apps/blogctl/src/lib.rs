@@ -7,6 +7,7 @@ pub mod kind;
 pub mod openrouter;
 pub mod post;
 pub mod predicate;
+pub mod prompts;
 pub mod slug;
 pub mod stage;
 pub mod storage;

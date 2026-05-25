@@ -146,6 +146,32 @@ pub enum Error {
     #[error("could not evaluate predicate {predicate:?}: {reason}")]
     PredicateEval { predicate: String, reason: String },
 
+    #[error("could not render prompt template {path}: {source}")]
+    PromptRender {
+        path: PathBuf,
+        #[source]
+        source: minijinja::Error,
+    },
+
+    #[error(
+        "no [kinds.{kind}.stages.{stage}] in .blog-os.toml — configure a prompt before running draft"
+    )]
+    DraftStageUnconfigured {
+        kind: crate::kind::Kind,
+        stage: crate::stage::Stage,
+    },
+
+    #[error(
+        "no model set for kinds.{kind}.stages.{stage} or defaults.model — pass --model or configure one"
+    )]
+    DraftModelUnconfigured {
+        kind: crate::kind::Kind,
+        stage: crate::stage::Stage,
+    },
+
+    #[error("draft slot exhausted for {0:?}: 999 drafts already exist (housekeeping needed)")]
+    DraftFloodLimit(String),
+
     #[error("could not invoke `{command}`: {source}")]
     JjInvoke {
         command: String,
