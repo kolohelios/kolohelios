@@ -181,6 +181,15 @@ pub enum Error {
     SyncRebaseConflict { bookmark: String, remote: String },
 
     #[error(
+        "@ has commits from side branch(es) {} below it; bring @ on top of {bookmark} before writing",
+        side_bookmarks.join(", "),
+    )]
+    WorkdirOnSideBranch {
+        bookmark: String,
+        side_bookmarks: Vec<String>,
+    },
+
+    #[error(
         "`blogctl {0}` is not yet implemented (CLI surface only; behavior lands in a follow-up)"
     )]
     Unimplemented(&'static str),
