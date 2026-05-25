@@ -189,6 +189,7 @@ mod tests {
                 generated_at: OffsetDateTime::UNIX_EPOCH,
             }),
             refine: None,
+            final_edit: None,
         };
         let h = merge_refine_record(
             Some(prior),
@@ -211,6 +212,7 @@ mod tests {
                 model: "old-model".into(),
                 generated_at: OffsetDateTime::UNIX_EPOCH,
             }),
+            final_edit: None,
         };
         let h = merge_refine_record(
             Some(prior),

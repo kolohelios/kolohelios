@@ -67,6 +67,10 @@ pub struct AiHistory {
     /// per #506's scope. Earlier refines live in `jj` history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refine: Option<AiRefineRecord>,
+    /// Most-recent `blogctl final-edit` invocation. Same single-slot
+    /// shape as `refine` — earlier polish passes live in `jj` history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_edit: Option<AiFinalEditRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,6 +83,14 @@ pub struct AiDraftRecord {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AiRefineRecord {
+    pub prompt: String,
+    pub model: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub generated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiFinalEditRecord {
     pub prompt: String,
     pub model: String,
     #[serde(with = "time::serde::rfc3339")]

@@ -171,6 +171,7 @@ mod tests {
                 generated_at: OffsetDateTime::UNIX_EPOCH,
             }),
             refine: None,
+            final_edit: None,
         };
         let h = merge_draft_record(
             Some(prior),
