@@ -133,6 +133,31 @@ fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
             }
             Ok(())
         }
+        TasksSubcommand::Add {
+            content,
+            project,
+            due,
+            priority,
+            labels,
+            description,
+        } => {
+            let token = resolve_token()?;
+            let client = api::RealClient::default();
+            let created = tasks::run_add(
+                &client,
+                &token,
+                &tasks::AddOpts {
+                    content,
+                    project,
+                    due,
+                    priority,
+                    labels,
+                    description,
+                },
+            )?;
+            println!("{}", tasks::render_added(&created));
+            Ok(())
+        }
         _ => bail!("this tasks subcommand is not yet implemented"),
     }
 }

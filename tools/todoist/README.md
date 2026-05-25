@@ -36,7 +36,23 @@ emits one raw API object per line for piping into `jq`; without it
 the output is a column table whose `id` shows the first six characters
 of the task ID for quick reference.
 
+## Adding tasks
+
+```
+todoist tasks add <content> [--project <name-or-id>] \
+                            [--due <natural-language>] \
+                            [--priority 1|2|3|4] \
+                            [--label <name>]... \
+                            [--description <text>]
+```
+
+`--due` passes through to `Todoist`'s natural-language parser
+(`tomorrow at 3pm`, `every monday`, etc.). Priority is `1` (lowest)
+through `4` (highest) — out-of-range values are rejected before the
+request reaches the server. Repeating `--label` attaches multiple
+labels at once.
+
 ## Status
 
-Auth (#476) and `tasks list` (#477) are implemented. `tasks add` (#478)
-and `tasks complete` (#479) are still stubs.
+Auth (#476), `tasks list` (#477), and `tasks add` (#478) are
+implemented. `tasks complete` (#479) is still a stub.
