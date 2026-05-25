@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 
-use crate::api::{Project, TaskListQuery, TodoistClient};
+use crate::api::{CreateTaskBody, Project, TaskListQuery, TodoistClient};
 
 pub const ID_PREFIX_LEN: usize = 6;
 
@@ -57,6 +57,46 @@ pub fn resolve_project_id(projects: &[Project], arg: &str) -> Result<String> {
             many.len()
         )),
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AddOpts {
+    pub content: String,
+    pub project: Option<String>,
+    pub due: Option<String>,
+    pub priority: Option<u8>,
+    pub labels: Vec<String>,
+    pub description: Option<String>,
+}
+
+pub fn run_add(
+    client: &impl TodoistClient,
+    token: &str,
+    opts: &AddOpts,
+) -> Result<serde_json::Value> {
+    let project_id = match &opts.project {
+        Some(arg) => {
+            let projects = client.list_projects(token).map_err(|e| anyhow!(e))?;
+            Some(resolve_project_id(&projects, arg)?)
+        }
+        None => None,
+    };
+    let body = CreateTaskBody {
+        content: opts.content.clone(),
+        project_id,
+        due_string: opts.due.clone(),
+        priority: opts.priority,
+        labels: opts.labels.clone(),
+        description: opts.description.clone(),
+    };
+    client.create_task(token, &body).map_err(|e| anyhow!(e))
+}
+
+pub fn render_added(task: &serde_json::Value) -> String {
+    let id = task.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let prefix: String = id.chars().take(ID_PREFIX_LEN).collect();
+    let content = task.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    format!("created {prefix} {content}")
 }
 
 pub fn render_ndjson(tasks: &[serde_json::Value]) -> String {
@@ -136,7 +176,7 @@ pub fn render_table(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{ApiError, Project, TaskListQuery, TodoistClient};
+    use crate::api::{ApiError, CreateTaskBody, Project, TaskListQuery, TodoistClient};
     use std::cell::RefCell;
     use std::collections::HashMap;
 
@@ -144,6 +184,9 @@ mod tests {
         projects: Vec<Project>,
         tasks: Vec<serde_json::Value>,
         last_query: RefCell<Option<TaskListQuery>>,
+        last_create: RefCell<Option<CreateTaskBody>>,
+        create_response: serde_json::Value,
+        create_error: RefCell<Option<ApiError>>,
     }
 
     impl FakeClient {
@@ -152,7 +195,15 @@ mod tests {
                 projects,
                 tasks,
                 last_query: RefCell::new(None),
+                last_create: RefCell::new(None),
+                create_response: serde_json::json!({"id": "999abc12345", "content": "echo"}),
+                create_error: RefCell::new(None),
             }
+        }
+
+        fn with_create_error(mut self, err: ApiError) -> Self {
+            self.create_error = RefCell::new(Some(err));
+            self
         }
     }
 
@@ -168,6 +219,18 @@ mod tests {
 
         fn list_projects(&self, _token: &str) -> Result<Vec<Project>, ApiError> {
             Ok(self.projects.clone())
+        }
+
+        fn create_task(
+            &self,
+            _token: &str,
+            body: &CreateTaskBody,
+        ) -> Result<serde_json::Value, ApiError> {
+            *self.last_create.borrow_mut() = Some(body.clone());
+            if let Some(e) = self.create_error.borrow_mut().take() {
+                return Err(e);
+            }
+            Ok(self.create_response.clone())
         }
     }
 
@@ -308,5 +371,64 @@ mod tests {
     fn render_table_reports_empty_set() {
         let out = render_table(&[], &HashMap::new());
         assert_eq!(out, "no tasks");
+    }
+
+    #[test]
+    fn run_add_forwards_all_fields_to_create_body() {
+        let client = FakeClient::new(vec![project("9", "Errands")], vec![]);
+        let opts = AddOpts {
+            content: "buy milk".into(),
+            project: Some("Errands".into()),
+            due: Some("tomorrow".into()),
+            priority: Some(3),
+            labels: vec!["shopping".into()],
+            description: Some("organic".into()),
+        };
+        run_add(&client, "tok", &opts).unwrap();
+        let body = client.last_create.borrow().clone().unwrap();
+        assert_eq!(body.content, "buy milk");
+        assert_eq!(body.project_id.as_deref(), Some("9"));
+        assert_eq!(body.due_string.as_deref(), Some("tomorrow"));
+        assert_eq!(body.priority, Some(3));
+        assert_eq!(body.labels, vec!["shopping"]);
+        assert_eq!(body.description.as_deref(), Some("organic"));
+    }
+
+    #[test]
+    fn run_add_skips_project_lookup_when_unset() {
+        let client = FakeClient::new(vec![], vec![]);
+        let opts = AddOpts {
+            content: "x".into(),
+            ..Default::default()
+        };
+        run_add(&client, "tok", &opts).unwrap();
+        let body = client.last_create.borrow().clone().unwrap();
+        assert!(body.project_id.is_none());
+        assert!(body.labels.is_empty());
+    }
+
+    #[test]
+    fn run_add_surfaces_create_error() {
+        let client = FakeClient::new(vec![], vec![]).with_create_error(ApiError::Other {
+            status: 400,
+            body: "Bad content".into(),
+        });
+        let opts = AddOpts {
+            content: "x".into(),
+            ..Default::default()
+        };
+        let err = run_add(&client, "tok", &opts).unwrap_err();
+        assert!(err.to_string().contains("400"));
+        assert!(err.to_string().contains("Bad content"));
+    }
+
+    #[test]
+    fn render_added_uses_id_prefix_and_content() {
+        let task = serde_json::json!({"id": "abcdef9876543210", "content": "buy milk"});
+        let out = render_added(&task);
+        assert!(out.contains("created"));
+        assert!(out.contains("abcdef"));
+        assert!(!out.contains("9876543210"));
+        assert!(out.contains("buy milk"));
     }
 }
