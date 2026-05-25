@@ -308,3 +308,50 @@ fn compare_with_no_overlapping_classifications_yields_empty_cells() {
     // format set even though no hook).
     assert!(!comparison.marginals_a.is_empty());
 }
+
+#[test]
+fn recommendations_command_succeeds_against_fixture() {
+    let tmp = fixture_workdir_with_hooks();
+    commands::analytics::recommendations(commands::analytics::RecommendationsArgs {
+        workdir: tmp.path().to_path_buf(),
+        target: None,
+        min_n: 3,
+    })
+    .unwrap();
+}
+
+#[test]
+fn recommendations_observations_use_hedged_language() {
+    // Render every observation produced against the fixture and
+    // verify the language gate (no forbidden words anywhere in the
+    // rendered output, including the closing reminder).
+    let tmp = fixture_workdir_with_hooks();
+    let repo = blogctl::Repository::open(blogctl::Workdir::new(tmp.path())).unwrap();
+    let handles = repo.list().unwrap();
+    let posts: Vec<_> = handles
+        .iter()
+        .map(|h| repo.load_raw(&h.metadata.slug).unwrap().1)
+        .collect();
+    let r = blogctl::analytics::recommendations(
+        &posts,
+        Some(Target::Linkedin),
+        3,
+        time::macros::datetime!(2026-05-17 00:00:00 UTC),
+    );
+    for obs in &r.observations {
+        let rendered = obs.render().to_lowercase();
+        for word in blogctl::analytics::FORBIDDEN_WORDS {
+            assert!(
+                !rendered.contains(word),
+                "observation rendered with forbidden word {word:?}: {rendered}",
+            );
+        }
+    }
+    let reminder = blogctl::analytics::CLOSING_REMINDER.to_lowercase();
+    for word in blogctl::analytics::FORBIDDEN_WORDS {
+        assert!(
+            !reminder.contains(word),
+            "closing reminder contains forbidden word {word:?}",
+        );
+    }
+}
