@@ -108,6 +108,10 @@ struct Commit {
     change_id: String,
     description: String,
     files: Vec<String>,
+    /// Parent count for the commit. Used to identify merge commits
+    /// (≥ 2 parents); a regular commit has exactly one parent (or
+    /// zero for the root, which doesn't reach `commit lint`).
+    parent_count: usize,
 }
 
 impl Commit {
@@ -155,10 +159,15 @@ fn collect_commits(revset: &str) -> Result<Vec<Commit>, String> {
         }
         let description = jj_template(id, "description")?;
         let files = jj_files(id)?;
+        let parent_count = jj_template(id, "parents.len()")?
+            .trim()
+            .parse::<usize>()
+            .map_err(|e| format!("could not parse parent count for {id}: {e}"))?;
         commits.push(Commit {
             change_id: id.to_string(),
             description,
             files,
+            parent_count,
         });
     }
     Ok(commits)
@@ -193,6 +202,27 @@ fn jj_files(rev: &str) -> Result<Vec<String>, String> {
 fn lint_commit(commit: &Commit) -> Vec<Finding> {
     let mut findings = Vec::new();
     let desc = commit.description.trim_end();
+
+    // Merge commits (≥ 2 parents) carry titles like
+    // `Merge branch 'main' into <branch>` which fail the conventional
+    // commit regex. Short-circuit with a specific message that points
+    // at the most common source (GitHub's "Update branch" UI button)
+    // and the recovery path, so the user isn't left guessing what a
+    // generic title-format error means.
+    if commit.parent_count >= 2 {
+        findings.push(Finding {
+            severity: Severity::Error,
+            message: format!(
+                "merge commit ({} parents); usually from GitHub's \"Update branch\" \
+                 button. `auto-rebase-prs.yaml` handles main-movement on the next \
+                 push:main; to recover now, rebase locally with:\n    \
+                 jj rebase --branch <bookmark> -d main@origin\n    \
+                 jj git push --bookmark <bookmark>",
+                commit.parent_count
+            ),
+        });
+        return findings;
+    }
 
     if desc.is_empty() || desc == "(no description set)" {
         findings.push(Finding {
@@ -327,10 +357,15 @@ mod tests {
     }
 
     fn lint_desc(desc: &str) -> Vec<Finding> {
+        lint_with_parents(desc, 1)
+    }
+
+    fn lint_with_parents(desc: &str, parent_count: usize) -> Vec<Finding> {
         let commit = Commit {
             change_id: "abc12345".into(),
             description: desc.into(),
             files: vec![],
+            parent_count,
         };
         lint_commit(&commit)
     }
@@ -389,6 +424,34 @@ mod tests {
     #[test]
     fn lint_passes_simple_valid_title() {
         assert!(lint_desc("feat(shaka): add the thing").is_empty());
+    }
+
+    #[test]
+    fn lint_flags_two_parent_merge_commit() {
+        let findings = lint_with_parents("Merge branch 'main' into feat/whatever", 2);
+        assert_eq!(findings.len(), 1);
+        assert!(matches!(findings[0].severity, Severity::Error));
+        assert!(
+            findings[0].message.starts_with("merge commit"),
+            "message: {}",
+            findings[0].message,
+        );
+        assert!(findings[0].message.contains("Update branch"));
+        assert!(findings[0].message.contains("jj rebase"));
+    }
+
+    #[test]
+    fn lint_skips_title_format_check_for_merge_commits() {
+        // The merge-commit message would also fail the conventional-
+        // commit regex; the specific finding should fire alone so the
+        // output isn't noisy.
+        let findings = lint_with_parents("Merge branch 'main' into feat/whatever", 2);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.message.contains("title does not match")),
+            "expected only the merge-commit finding, got: {findings:?}",
+        );
     }
 
     #[test]
