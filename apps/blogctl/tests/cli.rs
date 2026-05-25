@@ -296,11 +296,8 @@ fn doctor_reports_clean_workdir_with_zero_exit() {
     let wd = workdir_arg(tmp.path());
     jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
-    assert_success(
-        &run(&["new", "Hello", "--workdir", &wd, "--no-sync"]),
-        "new",
-    );
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
 
     let out = run(&["doctor", "--workdir", &wd]);
     assert_success(&out, "doctor (clean)");
@@ -313,18 +310,15 @@ fn fix_repairs_stage_mismatch_and_leaves_workdir_clean() {
     let wd = workdir_arg(tmp.path());
     jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
-    assert_success(
-        &run(&["new", "Hello", "--workdir", &wd, "--no-sync"]),
-        "new",
-    );
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
     // Move the file from concepts/ to editing/ without rewriting
     // frontmatter — that's a stage mismatch fix can repair.
     let from = tmp.path().join("concepts/hello.md");
     let to = tmp.path().join("editing/hello.md");
     std::fs::rename(&from, &to).unwrap();
 
-    let fix_out = run(&["fix", "--workdir", &wd, "--no-sync"]);
+    let fix_out = run(&["fix", "--workdir", &wd]);
     assert_success(&fix_out, "fix");
     assert!(
         stdout(&fix_out).contains("fixed"),
@@ -347,11 +341,8 @@ fn fix_dry_run_makes_no_changes() {
     let wd = workdir_arg(tmp.path());
     jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
-    assert_success(
-        &run(&["new", "Hello", "--workdir", &wd, "--no-sync"]),
-        "new",
-    );
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
+    assert_success(&run(&["new", "Hello", "--workdir", &wd]), "new");
     let from = tmp.path().join("concepts/hello.md");
     let to = tmp.path().join("editing/hello.md");
     std::fs::rename(&from, &to).unwrap();
@@ -368,10 +359,10 @@ fn fix_exits_nonzero_when_skipped_findings_remain() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
     jj_init(tmp.path());
-    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
     std::fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
 
-    let out = run(&["fix", "--workdir", &wd, "--no-sync"]);
+    let out = run(&["fix", "--workdir", &wd]);
     assert!(!out.status.success(), "expected non-zero exit");
     assert!(stdout(&out).contains("skipped"), "got: {}", stdout(&out));
 }
@@ -382,7 +373,7 @@ fn doctor_reports_findings_with_nonzero_exit() {
     let wd = workdir_arg(tmp.path());
     jj_init(tmp.path());
 
-    assert_success(&run(&["init", "--workdir", &wd, "--no-sync"]), "init");
+    assert_success(&run(&["init", "--workdir", &wd]), "init");
     // Plant several distinct findings: stray file, removed stage dir.
     std::fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
     std::fs::remove_dir_all(tmp.path().join("editing")).unwrap();
