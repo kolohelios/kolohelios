@@ -91,7 +91,7 @@ fn project_cue(name: &str) -> String {
          \t\t\tfail: 1\n\
          \t\t}}\n\
          \t\tbranch: {{\n\
-         \t\t\tfail: 1\n\
+         \t\t\tfail: 0\n\
          \t\t}}\n\
          \t}}\n\
          }}\n"
