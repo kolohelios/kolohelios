@@ -14,6 +14,11 @@
 
   system.stateVersion = "25.05";
 
+  # `home-env.nixosModules.home` installs `claude-code` (unfree) for the
+  # `jon` user via home-manager. Mirror `infra/home/modules/darwin.nix`
+  # so eval succeeds on both platforms.
+  nixpkgs.config.allowUnfree = true;
+
   # ── Nix settings ──────────────────────────────────────────────
   nix = {
     settings = {
@@ -74,23 +79,14 @@
   services.tailscale.enable = true;
 
   # ── Core packages ─────────────────────────────────────────────
+  # `git`, `jujutsu`, `curl`, `jq`, `direnv` (with `nix-direnv`) are
+  # installed for the `jon` user by `home-env.nixosModules.home`
+  # (`infra/home/modules/common.nix`). Only system-level tools stay here.
   environment.systemPackages = with pkgs; [
-    git
-    jujutsu
     tmux
     neovim
     htop
-    curl
-    jq
-    direnv
-    nix-direnv
   ];
-
-  # ── direnv integration ────────────────────────────────────────
-  programs.direnv = {
-    enable = true;
-    nix-direnv.enable = true;
-  };
 
   # ── Persist symlinks ──────────────────────────────────────────
   # Symlink directories that should survive instance rebuilds.

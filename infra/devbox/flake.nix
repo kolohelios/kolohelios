@@ -4,6 +4,10 @@
   inputs = {
     kolohelios-nix.url = "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
     nixpkgs.follows = "kolohelios-nix/nixpkgs";
+
+    home-env.url = "https://flakehub.com/f/kolohelios/home/*.tar.gz";
+    home-env.inputs.kolohelios-nix.follows = "kolohelios-nix";
+    home-env.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -11,6 +15,7 @@
       self,
       kolohelios-nix,
       nixpkgs,
+      home-env,
       ...
     }:
     let
@@ -21,12 +26,18 @@
       # invoking this flake.
       devboxConfig = lib.nixosSystem {
         system = "x86_64-linux";
-        modules = [ ./nixos/configuration.nix ];
+        modules = [
+          ./nixos/configuration.nix
+          home-env.nixosModules.home
+        ];
       };
 
       imageConfig = lib.nixosSystem {
         system = "x86_64-linux";
-        modules = [ ./nixos/image.nix ];
+        modules = [
+          ./nixos/image.nix
+          home-env.nixosModules.home
+        ];
       };
 
       x86Pkgs = import nixpkgs {
