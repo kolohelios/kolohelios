@@ -4,6 +4,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
 mod ci;
+mod claude;
 mod commit;
 mod deploy;
 mod domain;
@@ -35,6 +36,11 @@ enum Commands {
     Ci {
         #[command(subcommand)]
         command: ci::CiCommand,
+    },
+    /// Hooks invoked by the Claude Code harness via `.claude/settings.json`
+    Claude {
+        #[command(subcommand)]
+        command: claude::ClaudeCommand,
     },
     /// Commit message tooling (lint, etc.)
     Commit {
@@ -115,6 +121,7 @@ fn main() {
             println!("build");
         }
         Commands::Ci { command } => ci::run(command),
+        Commands::Claude { command } => claude::run(command),
         Commands::Commit { command } => commit::run(command),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
