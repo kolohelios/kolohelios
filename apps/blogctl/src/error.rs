@@ -130,6 +130,9 @@ pub enum Error {
     #[error("OpenRouter response contained no choices")]
     OpenrouterEmptyResponse,
 
+    #[error("could not parse predicate: {0}")]
+    PredicateParse(String),
+
     #[error("could not invoke `{command}`: {source}")]
     JjInvoke {
         command: String,
