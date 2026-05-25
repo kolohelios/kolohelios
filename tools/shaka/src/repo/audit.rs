@@ -70,27 +70,61 @@ impl Check {
 }
 
 pub fn run(repo_arg: Option<String>, fix: bool) {
-    let repo = match repo_arg {
-        Some(r) => r,
-        None => match gh::detect_repo() {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("{RED}{BOLD}error:{RESET} {e}");
-                eprintln!("Hint: pass --repo owner/repo explicitly");
-                std::process::exit(1);
-            }
-        },
-    };
-
-    let policy = match policy::load(Path::new(".")) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} {e}");
-            eprintln!(
-                "Hint: create `.shaka/repo.cue` at the repo root \
-                describing your desired GitHub settings"
-            );
-            std::process::exit(1);
+    // Policy source decision: when --repo is explicit, fetch the
+    // target's own .shaka/repo.cue via the GitHub contents API.
+    // Using cwd's policy across repos compared the wrong policy
+    // against the wrong live state (#465). When --repo is omitted,
+    // load cwd's policy as before.
+    let (repo, policy) = match repo_arg {
+        Some(target) => {
+            let cue = match gh::fetch_raw_file(&target, ".shaka/repo.cue") {
+                Ok(Some(c)) => c,
+                Ok(None) => {
+                    eprintln!("{RED}{BOLD}error:{RESET} no .shaka/repo.cue found in {target}");
+                    eprintln!(
+                        "Hint: declare the repo's desired settings in \
+                         .shaka/repo.cue at its root, or omit --repo to \
+                         audit the current repo against its own policy"
+                    );
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("{RED}{BOLD}error:{RESET} fetching policy from {target}: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let p = match policy::load_from_string(&cue) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!(
+                        "{RED}{BOLD}error:{RESET} parsing .shaka/repo.cue from {target}: {e}"
+                    );
+                    std::process::exit(1);
+                }
+            };
+            (target, p)
+        }
+        None => {
+            let repo = match gh::detect_repo() {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("{RED}{BOLD}error:{RESET} {e}");
+                    eprintln!("Hint: pass --repo owner/repo explicitly");
+                    std::process::exit(1);
+                }
+            };
+            let p = match policy::load(Path::new(".")) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{RED}{BOLD}error:{RESET} {e}");
+                    eprintln!(
+                        "Hint: create `.shaka/repo.cue` at the repo root \
+                        describing your desired GitHub settings"
+                    );
+                    std::process::exit(1);
+                }
+            };
+            (repo, p)
         }
     };
 

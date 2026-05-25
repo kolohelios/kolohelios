@@ -51,6 +51,31 @@ pub fn api_get(endpoint: &str) -> Result<Value, GhError> {
     })
 }
 
+/// Fetch a file's raw contents from a repo via the GitHub contents
+/// API. Uses `Accept: application/vnd.github.raw` so the response
+/// body is the file itself rather than the base64-wrapped JSON the
+/// default content type returns. Returns `Ok(None)` on 404 so callers
+/// can surface "policy missing" cleanly; other errors propagate.
+pub fn fetch_raw_file(repo: &str, path: &str) -> Result<Option<String>, GhError> {
+    let endpoint = format!("repos/{repo}/contents/{path}");
+    let output = Command::new("gh")
+        .args(["api", &endpoint, "-H", "Accept: application/vnd.github.raw"])
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("HTTP 404") || stderr.contains("Not Found") {
+            return Ok(None);
+        }
+        return GhCommandSnafu {
+            command: format!("gh api {endpoint}"),
+            stderr: stderr.to_string(),
+        }
+        .fail();
+    }
+    Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
+}
+
 /// Run `gh api <endpoint>` and return the HTTP status code.
 /// Used for endpoints like vulnerability-alerts that signal via status code.
 pub fn api_get_status(endpoint: &str) -> Result<i32, GhError> {
