@@ -52,7 +52,21 @@ through `4` (highest) — out-of-range values are rejected before the
 request reaches the server. Repeating `--label` attaches multiple
 labels at once.
 
+## Completing tasks
+
+```
+todoist tasks complete <id-or-prefix>...
+```
+
+Each argument is matched first against an exact task ID, then against
+the six-character ID prefix (as shown by `tasks list`). Ambiguous
+prefixes print the matching candidates so the next attempt can
+disambiguate. A partial failure across multiple tasks still attempts
+the rest of the batch and exits non-zero only after all results are
+printed. Output uses the Unicode tick `✓` on a TTY, falling back to
+plain `ok`/`x` when `stdout` is redirected or `NO_COLOR` is set.
+
 ## Status
 
-Auth (#476), `tasks list` (#477), and `tasks add` (#478) are
-implemented. `tasks complete` (#479) is still a stub.
+Basic CRUD (auth, list, add, complete) is implemented. Future
+workflows are tracked in #480.
