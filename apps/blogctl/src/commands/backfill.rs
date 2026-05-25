@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -21,9 +22,11 @@ use time::OffsetDateTime;
 
 use crate::classifications::Classifications;
 use crate::error::{Error, Result};
+use crate::stage::Stage;
 use crate::storage::{Repository, Workdir};
 use crate::sync::{self, Jj, SyncOptions};
-use crate::target::{Target, TargetEntry, TargetMetrics};
+use crate::target::{Target, TargetEntry, TargetMetrics, TargetStatus};
+use crate::taxonomy::Taxonomy;
 
 #[derive(Debug)]
 pub struct BackfillArgs {
@@ -52,7 +55,13 @@ struct BackfillEntry {
 pub fn run(jj: &dyn Jj, args: BackfillArgs) -> Result<()> {
     match &args.import {
         Some(path) => run_import(jj, &args, path.clone()),
-        None => Err(Error::Unimplemented("backfill interactive mode")),
+        None => {
+            let stdin = std::io::stdin();
+            let mut input = BufReader::new(stdin.lock());
+            let stdout = std::io::stdout();
+            let mut output = stdout.lock();
+            run_interactive(jj, &args, &mut input, &mut output)
+        }
     }
 }
 
@@ -235,6 +244,357 @@ fn merge_metrics(
     }
     entry.metrics = Some(source.clone());
     MergeMetricsOutcome::Applied
+}
+
+#[derive(Debug, PartialEq)]
+enum LoopControl {
+    Continue,
+    Quit,
+}
+
+/// Interactive backfill — walks every published post and prompts for
+/// missing classifications + metrics on stdin. Each post that gets
+/// changes is committed individually so partial progress persists if
+/// the user quits mid-walk.
+///
+/// Generic over `BufRead` / `Write` so tests can drive stdin with a
+/// canned input buffer.
+pub fn run_interactive<R: BufRead, W: Write>(
+    jj: &dyn Jj,
+    args: &BackfillArgs,
+    input: &mut R,
+    output: &mut W,
+) -> Result<()> {
+    let repo = Repository::open(Workdir::new(&args.workdir))?;
+    let taxonomy = repo.read_taxonomy()?;
+    let config = repo.read_config()?;
+    let opts = SyncOptions::from_config(&config.sync, args.no_sync);
+    let handles = repo.list()?;
+
+    let ctx = InteractiveCtx {
+        jj,
+        repo: &repo,
+        taxonomy: &taxonomy,
+        opts: &opts,
+        args,
+    };
+    let mut walked = 0_usize;
+    for handle in &handles {
+        if handle.stage != Stage::Published {
+            continue;
+        }
+        walked += 1;
+        match process_one(&ctx, &handle.metadata.slug, input, output)? {
+            LoopControl::Continue => {}
+            LoopControl::Quit => {
+                writeln!(output, "quitting; partial progress preserved").ok();
+                break;
+            }
+        }
+    }
+
+    writeln!(output, "backfill: walked {walked} published post(s)").ok();
+    Ok(())
+}
+
+/// Bundle of immutable refs passed to `process_one` for every post.
+/// Carved out of `run_interactive`'s locals so the function's arg
+/// list stays under clippy's `too_many_arguments` cap.
+struct InteractiveCtx<'a> {
+    jj: &'a dyn Jj,
+    repo: &'a Repository,
+    taxonomy: &'a Taxonomy,
+    opts: &'a SyncOptions,
+    args: &'a BackfillArgs,
+}
+
+fn process_one<R: BufRead, W: Write>(
+    ctx: &InteractiveCtx<'_>,
+    slug: &str,
+    input: &mut R,
+    output: &mut W,
+) -> Result<LoopControl> {
+    let (handle, mut post) = ctx.repo.load_raw(slug)?;
+
+    // Determine what's missing. A post is "complete" when every
+    // single-valued classification is set and every published
+    // target has metrics. theme is intentionally not required
+    // (multi-valued; empty is meaningful).
+    let cls_missing = single_dim_missing(&post.metadata.classifications);
+    let needs_metrics: Vec<Target> = post
+        .metadata
+        .targets
+        .iter()
+        .filter(|t| t.status == TargetStatus::Published && t.metrics.is_none())
+        .map(|t| t.name)
+        .collect();
+    if cls_missing.is_empty() && needs_metrics.is_empty() {
+        return Ok(LoopControl::Continue);
+    }
+
+    writeln!(output, "---").ok();
+    writeln!(output, "{} ({})", post.metadata.title, slug).ok();
+    let body_summary: String = post.body.chars().take(200).collect();
+    if !body_summary.is_empty() {
+        writeln!(output, "{}", body_summary).ok();
+    }
+    writeln!(output).ok();
+
+    let mut changed = false;
+    // Both prompt loops can short-circuit. We track the user's exit
+    // request but commit any in-flight changes BEFORE honoring it —
+    // otherwise the user types format=thesis, hits `q`, and loses
+    // that choice.
+    let mut skip_remaining_metrics = false;
+    let mut commit_then_quit = false;
+
+    // Prompt for missing single-valued classifications.
+    'classify: for dim in &cls_missing {
+        match prompt_dimension(dim, ctx.taxonomy, input, output)? {
+            DimPick::Value(v) => {
+                set_classification(&mut post.metadata.classifications, dim, &v);
+                changed = true;
+            }
+            DimPick::Skip => continue,
+            DimPick::SkipPost => {
+                skip_remaining_metrics = true;
+                break 'classify;
+            }
+            DimPick::Quit => {
+                commit_then_quit = true;
+                break 'classify;
+            }
+        }
+    }
+
+    // Only prompt for metrics if the classification loop didn't ask
+    // us to skip this whole post or quit.
+    if !skip_remaining_metrics && !commit_then_quit {
+        'metrics: for target in &needs_metrics {
+            match prompt_metrics(*target, input, output)? {
+                MetricsPick::Values(m) => {
+                    if matches!(
+                        merge_metrics(&mut post.metadata.targets, *target, &m),
+                        MergeMetricsOutcome::Applied
+                    ) {
+                        changed = true;
+                    }
+                }
+                MetricsPick::Skip => continue,
+                MetricsPick::SkipPost => break 'metrics,
+                MetricsPick::Quit => {
+                    commit_then_quit = true;
+                    break 'metrics;
+                }
+            }
+        }
+    }
+
+    if !changed {
+        return Ok(if commit_then_quit {
+            LoopControl::Quit
+        } else {
+            LoopControl::Continue
+        });
+    }
+
+    // Validate before write — invalid value would have been
+    // rejected at prompt time, but a hand-edited workdir could
+    // still arrive here with a stale value on an unprompted dim.
+    if let Err(v) = post.metadata.classifications.validate(ctx.taxonomy) {
+        writeln!(
+            output,
+            "warning: skipping {slug} — {} = {:?} is not in the taxonomy",
+            v.dimension, v.value,
+        )
+        .ok();
+        return Ok(LoopControl::Continue);
+    }
+
+    post.metadata.updated_at = OffsetDateTime::now_utc();
+    let rendered = post.render()?;
+    let path = handle.path.clone();
+    let message = format!("chore: backfill post({slug})");
+    sync::commit_and_push(ctx.jj, &ctx.args.workdir, ctx.opts, &message, || {
+        fs::write(&path, rendered).map_err(|e| Error::io(&path, e))
+    })?;
+    writeln!(output, "  → committed").ok();
+    Ok(if commit_then_quit {
+        LoopControl::Quit
+    } else {
+        LoopControl::Continue
+    })
+}
+
+fn single_dim_missing(c: &Classifications) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if c.format.is_none() {
+        out.push("format");
+    }
+    if c.hook.is_none() {
+        out.push("hook");
+    }
+    if c.tone.is_none() {
+        out.push("tone");
+    }
+    if c.audience.is_none() {
+        out.push("audience");
+    }
+    if c.strategic_role.is_none() {
+        out.push("strategic_role");
+    }
+    out
+}
+
+fn set_classification(c: &mut Classifications, dim: &str, value: &str) {
+    match dim {
+        "format" => c.format = Some(value.to_string()),
+        "hook" => c.hook = Some(value.to_string()),
+        "tone" => c.tone = Some(value.to_string()),
+        "audience" => c.audience = Some(value.to_string()),
+        "strategic_role" => c.strategic_role = Some(value.to_string()),
+        _ => {} // unknown dim — never reached for the dims we prompt for
+    }
+}
+
+enum DimPick {
+    Value(String),
+    Skip,
+    SkipPost,
+    Quit,
+}
+
+enum MetricsPick {
+    Values(TargetMetrics),
+    Skip,
+    SkipPost,
+    Quit,
+}
+
+/// Prompt for a single-valued dimension. The user can pick by
+/// number, type a literal value, type `s` to skip this dim,
+/// `S` to skip the whole post, or `q` to quit the whole walk.
+fn prompt_dimension<R: BufRead, W: Write>(
+    dim: &str,
+    taxonomy: &Taxonomy,
+    input: &mut R,
+    output: &mut W,
+) -> Result<DimPick> {
+    let values: Vec<String> = taxonomy
+        .dimension(dim)
+        .map(|d| d.values.clone())
+        .unwrap_or_default();
+    writeln!(output, "{dim}:").ok();
+    for (i, v) in values.iter().enumerate() {
+        writeln!(output, "  {}. {}", i + 1, v).ok();
+    }
+    writeln!(output, "  s. skip this dimension").ok();
+    writeln!(output, "  S. skip this post").ok();
+    writeln!(output, "  q. quit").ok();
+    loop {
+        write!(output, "> ").ok();
+        output.flush().ok();
+        let line = read_line(input)?;
+        match line.as_str() {
+            "" | "s" => return Ok(DimPick::Skip),
+            "S" => return Ok(DimPick::SkipPost),
+            "q" => return Ok(DimPick::Quit),
+            other => {
+                if let Ok(n) = other.parse::<usize>() {
+                    if n >= 1 && n <= values.len() {
+                        return Ok(DimPick::Value(values[n - 1].clone()));
+                    }
+                }
+                // Literal: only accept if it's in the allowed list.
+                if values.iter().any(|v| v == other) {
+                    return Ok(DimPick::Value(other.to_string()));
+                }
+                writeln!(
+                    output,
+                    "  (not a valid choice; pick a number, type an allowed value, or s/S/q)"
+                )
+                .ok();
+            }
+        }
+    }
+}
+
+fn prompt_metrics<R: BufRead, W: Write>(
+    target: Target,
+    input: &mut R,
+    output: &mut W,
+) -> Result<MetricsPick> {
+    writeln!(
+        output,
+        "metrics for {target} (s/S/q to skip/skip-post/quit):"
+    )
+    .ok();
+    let imp = match prompt_u64("impressions", input, output)? {
+        NumPick::Value(v) => v,
+        NumPick::Skip => return Ok(MetricsPick::Skip),
+        NumPick::SkipPost => return Ok(MetricsPick::SkipPost),
+        NumPick::Quit => return Ok(MetricsPick::Quit),
+    };
+    let react = match prompt_u64("reactions", input, output)? {
+        NumPick::Value(v) => v,
+        NumPick::Skip => return Ok(MetricsPick::Skip),
+        NumPick::SkipPost => return Ok(MetricsPick::SkipPost),
+        NumPick::Quit => return Ok(MetricsPick::Quit),
+    };
+    let comm = match prompt_u64("comments", input, output)? {
+        NumPick::Value(v) => v,
+        NumPick::Skip => return Ok(MetricsPick::Skip),
+        NumPick::SkipPost => return Ok(MetricsPick::SkipPost),
+        NumPick::Quit => return Ok(MetricsPick::Quit),
+    };
+    let repo = match prompt_u64("reposts", input, output)? {
+        NumPick::Value(v) => v,
+        NumPick::Skip => return Ok(MetricsPick::Skip),
+        NumPick::SkipPost => return Ok(MetricsPick::SkipPost),
+        NumPick::Quit => return Ok(MetricsPick::Quit),
+    };
+    Ok(MetricsPick::Values(TargetMetrics {
+        impressions: imp,
+        reactions: react,
+        comments: comm,
+        reposts: repo,
+        sampled_at: OffsetDateTime::now_utc(),
+    }))
+}
+
+enum NumPick {
+    Value(u64),
+    Skip,
+    SkipPost,
+    Quit,
+}
+
+fn prompt_u64<R: BufRead, W: Write>(label: &str, input: &mut R, output: &mut W) -> Result<NumPick> {
+    loop {
+        write!(output, "  {label}: ").ok();
+        output.flush().ok();
+        let line = read_line(input)?;
+        match line.as_str() {
+            "s" => return Ok(NumPick::Skip),
+            "S" => return Ok(NumPick::SkipPost),
+            "q" => return Ok(NumPick::Quit),
+            other => {
+                if let Ok(n) = other.parse::<u64>() {
+                    return Ok(NumPick::Value(n));
+                }
+                writeln!(output, "  (expected a non-negative integer; got {other:?})").ok();
+            }
+        }
+    }
+}
+
+fn read_line<R: BufRead>(input: &mut R) -> Result<String> {
+    let mut buf = String::new();
+    input.read_line(&mut buf).map_err(|e| Error::Io {
+        path: PathBuf::from("<stdin>"),
+        source: e,
+    })?;
+    Ok(buf.trim().to_string())
 }
 
 #[cfg(test)]
