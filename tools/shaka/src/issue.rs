@@ -1,10 +1,11 @@
 mod audit;
 mod brief;
+mod create;
 mod label;
 mod labels;
 mod list;
 
-use clap::{Subcommand, ValueEnum};
+use clap::{ArgGroup, Subcommand, ValueEnum};
 
 use crate::gh::ListState;
 
@@ -46,6 +47,40 @@ pub enum IssueCommand {
         /// Emit structured JSON instead of the human-readable tree
         #[arg(long)]
         json: bool,
+    },
+    /// Create a GitHub issue with enforced scope label + conv-commit title
+    #[command(group(ArgGroup::new("body_src").required(true).args(["body", "body_file"])))]
+    Create {
+        /// Repository in owner/repo format (auto-detected from git remote if omitted)
+        #[arg(long)]
+        repo: Option<String>,
+        /// Issue title — must match `<type>(<scope>): <subject>`
+        /// (`shaka commit lint`'s validator)
+        #[arg(long)]
+        title: String,
+        /// Issue body text
+        #[arg(long)]
+        body: Option<String>,
+        /// Path to a file containing the issue body
+        #[arg(long, value_name = "PATH")]
+        body_file: Option<String>,
+        /// Scope label — must be one of the canonical scope labels
+        /// declared in `.shaka/labels.cue`
+        #[arg(long)]
+        scope: String,
+        /// Parent issue number; links via GitHub's native sub-issue
+        /// API (no freeform `Sub-issue of #N` body text)
+        #[arg(long)]
+        parent: Option<u64>,
+        /// Milestone title
+        #[arg(long)]
+        milestone: Option<String>,
+        /// Extra labels beyond `--scope` (repeatable)
+        #[arg(long = "label")]
+        labels: Vec<String>,
+        /// Print the planned `gh` calls without executing them
+        #[arg(long)]
+        dry_run: bool,
     },
     /// List issues with optional filters
     List {
@@ -100,6 +135,27 @@ pub fn run(cmd: IssueCommand) {
             no_fetch,
             json,
         } => brief::run(number, no_fetch, json),
+        IssueCommand::Create {
+            repo,
+            title,
+            body,
+            body_file,
+            scope,
+            parent,
+            milestone,
+            labels,
+            dry_run,
+        } => create::run(create::CreateArgs {
+            repo,
+            title,
+            body,
+            body_file,
+            scope,
+            parent,
+            milestone,
+            labels,
+            dry_run,
+        }),
         IssueCommand::Label(LabelCommand::Sync {
             repo,
             apply,

@@ -434,6 +434,105 @@ pub fn issue_title(n: u64) -> Result<String, GhError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreatedIssue {
+    pub number: u64,
+    pub url: String,
+}
+
+/// Run `gh issue create` and return the created issue's number + URL.
+///
+/// `labels` and `milestone` are optional; both may be empty / `None`.
+/// `--repo` is always passed so this works from inside a jj workspace.
+pub fn issue_create(
+    repo: &str,
+    title: &str,
+    body: &str,
+    labels: &[String],
+    milestone: Option<&str>,
+) -> Result<CreatedIssue, GhError> {
+    let mut args: Vec<String> = vec![
+        "issue".into(),
+        "create".into(),
+        "--repo".into(),
+        repo.into(),
+        "--title".into(),
+        title.into(),
+        "--body".into(),
+        body.into(),
+    ];
+    for label in labels {
+        args.push("--label".into());
+        args.push(label.clone());
+    }
+    if let Some(m) = milestone {
+        args.push("--milestone".into());
+        args.push(m.to_string());
+    }
+
+    let output = Command::new("gh")
+        .args(&args)
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: "gh issue create".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let number = parse_issue_number_from_url(&url).with_context(|| SchemaSnafu {
+        message: format!("could not parse issue number from gh URL: {url}"),
+    })?;
+    Ok(CreatedIssue { number, url })
+}
+
+pub(crate) fn parse_issue_number_from_url(url: &str) -> Option<u64> {
+    url.rsplit('/').next().and_then(|s| s.parse().ok())
+}
+
+/// Fetch an issue's integer database id (distinct from its user-facing
+/// number). The sub-issues API expects this id, not the number.
+pub fn issue_db_id(repo: &str, number: u64) -> Result<u64, GhError> {
+    let endpoint = format!("/repos/{repo}/issues/{number}");
+    let value = api_get(&endpoint)?;
+    value["id"].as_u64().with_context(|| SchemaSnafu {
+        message: format!("issue {repo}#{number} response missing integer 'id'"),
+    })
+}
+
+/// Link `sub_id` (the integer db id of an existing issue) as a sub-issue
+/// of `{repo}#{parent_number}` via GitHub's native sub-issues API.
+///
+/// Retries up to 3 times with 1s then 3s backoff on any failure —
+/// distinguishing transient 5xx/network errors from permanent 4xx via
+/// `gh` stderr is brittle, and a permanent error wastes at most ~4s
+/// of backoff before surfacing.
+pub fn add_sub_issue(repo: &str, parent_number: u64, sub_id: u64) -> Result<(), GhError> {
+    let endpoint = format!("/repos/{repo}/issues/{parent_number}/sub_issues");
+    let body = serde_json::json!({ "sub_issue_id": sub_id });
+
+    let backoffs = [
+        std::time::Duration::from_secs(1),
+        std::time::Duration::from_secs(3),
+    ];
+    let mut last_err: Option<GhError> = None;
+    for attempt in 0..=backoffs.len() {
+        match api_post(&endpoint, &body) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+                if attempt < backoffs.len() {
+                    std::thread::sleep(backoffs[attempt]);
+                }
+            }
+        }
+    }
+    Err(last_err.expect("loop ran at least once"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenPr {
     pub number: u64,
     pub head_ref: String,
