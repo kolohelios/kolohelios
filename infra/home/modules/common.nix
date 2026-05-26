@@ -101,4 +101,10 @@
   # `programs.git.ignores` above so it never gets committed); Claude
   # merges the two with `.local.json` taking precedence.
   home.file.".claude/settings.json".source = ../dotfiles/claude/settings.json;
+
+  # Cross-project personal directives for Claude Code. Used to be
+  # hand-maintained at `~/.claude/CLAUDE.md`; now version-controlled
+  # so a clean-machine rebuild reproduces the same behavioral rules
+  # (per the "devboxes are ephemeral" tenet).
+  home.file.".claude/CLAUDE.md".source = ../dotfiles/claude/CLAUDE.md;
 }
