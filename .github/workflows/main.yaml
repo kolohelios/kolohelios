@@ -23,6 +23,7 @@ jobs:
     outputs:
       base_ref: ${{ steps.base.outputs.ref }}
       blogctl: ${{ steps.filter.outputs.blogctl }}
+      claude-hooks: ${{ steps.filter.outputs.claude-hooks }}
       home: ${{ steps.filter.outputs.home }}
       image: ${{ steps.filter.outputs.image }}
       nix-lib: ${{ steps.filter.outputs.nix-lib }}
@@ -51,6 +52,8 @@ jobs:
             - 'infra/home/**'
           nix-lib:
             - 'nix/kolohelios-nix/**'
+          claude-hooks:
+            - 'tools/claude-hooks/**'
           shaka:
             - 'tools/shaka/**'
   preflight:
@@ -207,6 +210,31 @@ jobs:
         name: kolohelios/kolohelios-nix
         rolling: true
         visibility: public
+  build-claude-hooks:
+    name: Build claude-hooks
+    needs:
+    - preflight
+    - changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.claude-hooks == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: actions/checkout@v6
+    - uses: DeterminateSystems/nix-installer-action@main
+      with:
+        determinate: true
+        flakehub: true
+    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - run: nix build ./tools/claude-hooks
+    - uses: DeterminateSystems/flakehub-push@main
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      with:
+        directory: tools/claude-hooks
+        name: kolohelios/claude-hooks
+        rolling: true
+        visibility: public
   build-shaka:
     name: Build shaka
     needs:
@@ -241,6 +269,7 @@ jobs:
     - build-image
     - build-home
     - build-nix-lib
+    - build-claude-hooks
     - build-shaka
     if: always()
     runs-on: ubuntu-latest

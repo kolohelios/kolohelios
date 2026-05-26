@@ -11,4 +11,17 @@ package project
 			fail: 0
 		}
 	}
+	ci: {
+		build: {
+			filterKey:   "claude-hooks"
+			jobId:       "claude-hooks"
+			displayName: "claude-hooks"
+			publish: {
+				kind:       "flakehub"
+				name:       "kolohelios/claude-hooks"
+				visibility: "public"
+				rolling:    true
+			}
+		}
+	}
 }
