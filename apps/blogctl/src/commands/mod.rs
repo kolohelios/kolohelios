@@ -1,3 +1,4 @@
+pub mod add_target;
 pub mod ai;
 pub mod analytics;
 pub mod backfill;

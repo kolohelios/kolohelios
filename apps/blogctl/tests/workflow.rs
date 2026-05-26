@@ -20,15 +20,15 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 
 use blogctl::commands::{
-    self, classify::ClassifyArgs, draft::DraftArgs, final_edit::FinalEditArgs, metrics::UpdateArgs,
-    refine::RefineArgs,
+    self, add_target::AddTargetArgs, classify::ClassifyArgs, draft::DraftArgs,
+    final_edit::FinalEditArgs, metrics::UpdateArgs, refine::RefineArgs,
 };
 use blogctl::error::Error;
 use blogctl::kind::Kind;
 use blogctl::stage::Stage;
 use blogctl::storage::{Repository, Workdir};
 use blogctl::sync::FakeJj;
-use blogctl::target::{Target, TargetEntry, TargetStatus};
+use blogctl::target::Target;
 
 // `tests/ai_endpoint.rs` also touches OPENROUTER_API_BASE; both
 // processes run in parallel by default. Process-level mutex keeps the
@@ -147,22 +147,21 @@ fn lifecycle_init_new_classify_promote_metrics() {
     // 4. promote — walk Concept → Published, four hops.
     promote_to_published(&workdir, slug);
 
-    // 5. metrics — `update` requires a target already in the post's
-    // targets[]. Adding a target is currently a manual frontmatter edit
-    // (no `add-target` command exists; tracked in #483 as part of the
-    // AI-integrated workflow gap survey). We rewrite the post directly
-    // to seed a `planned` linkedin target so metrics has something to
-    // update.
-    let repo = Repository::open(Workdir::new(&workdir)).expect("reopen pre-metrics");
-    let (handle, mut post) = repo.load_raw(slug).expect("load_raw pre-metrics");
-    post.metadata.targets.push(TargetEntry {
-        name: Target::Linkedin,
-        status: TargetStatus::Planned,
-        url: None,
-        published_at: None,
-        metrics: None,
-    });
-    std::fs::write(&handle.path, post.render().expect("render")).expect("write seeded target");
+    // 5. add-target → metrics update. `metrics update` requires a
+    // target already in the post's targets[]; `add-target` (added in
+    // #527) is how that target gets there. Before #527 this test
+    // hand-injected a TargetEntry via Post::render; now the same path
+    // exercises the real command.
+    commands::add_target::run(
+        &FakeJj::new(),
+        AddTargetArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            target: Target::Linkedin,
+            no_sync: true,
+        },
+    )
+    .expect("add-target");
 
     commands::metrics::update(
         &FakeJj::new(),
