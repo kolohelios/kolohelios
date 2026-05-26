@@ -207,6 +207,26 @@ fn new_accepts_explicit_slug_override() {
 }
 
 #[test]
+fn init_on_already_initialized_workdir_short_circuits() {
+    // The fast-path must fire before any jj orchestration — so this
+    // test deliberately does NOT call `jj_init` on the tempdir. If the
+    // sync layer ran, it would short-circuit on `NotAJjRepo` and we'd
+    // never reach (or observe) the `WorkdirAlreadyInitialized` path.
+    let tmp = TempDir::new().unwrap();
+    let wd = workdir_arg(tmp.path());
+
+    assert_success(&run(&["init", "--workdir", &wd]), "first init");
+
+    let out = run(&["init", "--workdir", &wd]);
+    assert!(!out.status.success(), "second init should fail");
+    let err = stderr(&out);
+    assert!(
+        err.contains("already initialized"),
+        "expected `already initialized` in stderr, got: {err}"
+    );
+}
+
+#[test]
 fn init_writes_readme_template() {
     let tmp = TempDir::new().unwrap();
     let wd = workdir_arg(tmp.path());
