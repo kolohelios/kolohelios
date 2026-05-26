@@ -133,6 +133,20 @@ pub trait Jj: Send + Sync {
         remote: &str,
         now: OffsetDateTime,
     ) -> Result<Option<UnpushedSummary>>;
+
+    /// Whether the named change has no diff against its parent. Used
+    /// by `blogctl update` to refuse moving `@` when doing so would
+    /// strand uncommitted edits.
+    fn change_is_empty(&self, workdir: &Path, change: &str) -> Result<bool>;
+
+    /// Create a new empty change with `parent` as its parent. `message`
+    /// is optional — `None` leaves the new change without a description.
+    /// Companion to `new_change`, which always parents on `@`.
+    fn new_change_at(&self, workdir: &Path, parent: &str, message: Option<&str>) -> Result<()>;
+
+    /// Move (or create) `bookmark` to point at the revision `target`.
+    /// Companion to `set_bookmark_to_head`, which always targets `@`.
+    fn set_bookmark_at(&self, workdir: &Path, bookmark: &str, target: &str) -> Result<()>;
 }
 
 /// Real `jj` binary. Each method shells out via `std::process::Command`;
@@ -391,6 +405,42 @@ impl Jj for RealJj {
             oldest_age_hours: age.whole_hours(),
         }))
     }
+
+    fn change_is_empty(&self, workdir: &Path, change: &str) -> Result<bool> {
+        // `jj diff --summary -r <change>` lists one path per line for
+        // any add/modify/delete/rename. Empty stdout = no diff.
+        let command_str = format!("{JJ} diff --summary -r {change}");
+        let out = Command::new(JJ)
+            .args(["diff", "--summary", "-r", change])
+            .current_dir(workdir)
+            .output()
+            .map_err(|source| Error::JjInvoke {
+                command: command_str.clone(),
+                source,
+            })?;
+        if !out.status.success() {
+            return Err(Error::JjCommandFailed {
+                command: command_str,
+                status: out.status.code().unwrap_or(-1),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            });
+        }
+        Ok(out.stdout.iter().all(u8::is_ascii_whitespace))
+    }
+
+    fn new_change_at(&self, workdir: &Path, parent: &str, message: Option<&str>) -> Result<()> {
+        let mut args: Vec<&str> = vec!["new", parent];
+        if let Some(m) = message {
+            args.extend(["-m", m]);
+        }
+        run_strict(workdir, &args)?;
+        Ok(())
+    }
+
+    fn set_bookmark_at(&self, workdir: &Path, bookmark: &str, target: &str) -> Result<()> {
+        run_strict(workdir, &["bookmark", "set", bookmark, "-r", target])?;
+        Ok(())
+    }
 }
 
 /// Per-invocation sync state: a `SyncConfig` (from `.blog-os.toml`)
@@ -597,6 +647,7 @@ struct FakeState {
     push_outcome: Option<PushOutcome>,
     unpushed_summary: Option<Option<UnpushedSummary>>,
     other_bookmarks: Option<Vec<String>>,
+    change_is_empty: Option<bool>,
 }
 
 /// One recorded call against `FakeJj`. Tests pop these and assert.
@@ -635,6 +686,20 @@ pub enum Call {
     OtherBookmarksInRange {
         workdir: PathBuf,
         bookmark: String,
+    },
+    ChangeIsEmpty {
+        workdir: PathBuf,
+        change: String,
+    },
+    NewChangeAt {
+        workdir: PathBuf,
+        parent: String,
+        message: Option<String>,
+    },
+    SetBookmarkAt {
+        workdir: PathBuf,
+        bookmark: String,
+        target: String,
     },
 }
 
@@ -676,6 +741,13 @@ impl FakeJj {
     /// an empty vec (no side branches in range) when unset.
     pub fn with_other_bookmarks(self, names: Vec<String>) -> Self {
         self.inner.lock().unwrap().other_bookmarks = Some(names);
+        self
+    }
+
+    /// Force `change_is_empty()` to return `is_empty`. Default is
+    /// `true` (matches the common case: an empty `@` between writes).
+    pub fn with_change_is_empty(self, is_empty: bool) -> Self {
+        self.inner.lock().unwrap().change_is_empty = Some(is_empty);
         self
     }
 
@@ -766,6 +838,33 @@ impl Jj for FakeJj {
             remote: remote.to_string(),
         });
         Ok(s.unpushed_summary.clone().unwrap_or(None))
+    }
+
+    fn change_is_empty(&self, workdir: &Path, change: &str) -> Result<bool> {
+        let mut s = self.inner.lock().unwrap();
+        s.calls.push(Call::ChangeIsEmpty {
+            workdir: workdir.to_path_buf(),
+            change: change.to_string(),
+        });
+        Ok(s.change_is_empty.unwrap_or(true))
+    }
+
+    fn new_change_at(&self, workdir: &Path, parent: &str, message: Option<&str>) -> Result<()> {
+        self.inner.lock().unwrap().calls.push(Call::NewChangeAt {
+            workdir: workdir.to_path_buf(),
+            parent: parent.to_string(),
+            message: message.map(str::to_string),
+        });
+        Ok(())
+    }
+
+    fn set_bookmark_at(&self, workdir: &Path, bookmark: &str, target: &str) -> Result<()> {
+        self.inner.lock().unwrap().calls.push(Call::SetBookmarkAt {
+            workdir: workdir.to_path_buf(),
+            bookmark: bookmark.to_string(),
+            target: target.to_string(),
+        });
+        Ok(())
     }
 }
 
