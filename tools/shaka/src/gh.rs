@@ -684,6 +684,139 @@ pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError>
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteLabel {
+    pub name: String,
+    pub color: String,
+    pub description: String,
+}
+
+/// List all labels in `repo` via `gh label list --json name,color,description`.
+pub fn list_labels(repo: &str) -> Result<Vec<RemoteLabel>, GhError> {
+    let output = Command::new("gh")
+        .args([
+            "label",
+            "list",
+            "--repo",
+            repo,
+            "--limit",
+            "1000",
+            "--json",
+            "name,color,description",
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: "gh label list".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_label_list(&body)
+}
+
+pub(crate) fn parse_label_list(body: &str) -> Result<Vec<RemoteLabel>, GhError> {
+    let value: Value = serde_json::from_str(body).context(JsonParseSnafu {
+        context: "failed to parse gh label list JSON".to_string(),
+    })?;
+    let arr = value.as_array().context(SchemaSnafu {
+        message: "gh label list did not return an array",
+    })?;
+    arr.iter()
+        .map(|v| {
+            let name = v["name"]
+                .as_str()
+                .context(SchemaSnafu {
+                    message: "label missing 'name'",
+                })?
+                .to_string();
+            let color = v["color"]
+                .as_str()
+                .with_context(|| SchemaSnafu {
+                    message: format!("label '{name}' missing 'color'"),
+                })?
+                .to_string();
+            let description = v["description"].as_str().unwrap_or("").to_string();
+            Ok(RemoteLabel {
+                name,
+                color,
+                description,
+            })
+        })
+        .collect()
+}
+
+pub fn label_create(repo: &str, name: &str, color: &str, description: &str) -> Result<(), GhError> {
+    let output = Command::new("gh")
+        .args([
+            "label",
+            "create",
+            name,
+            "--repo",
+            repo,
+            "--color",
+            color,
+            "--description",
+            description,
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: format!("gh label create {name}"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    Ok(())
+}
+
+pub fn label_edit(repo: &str, name: &str, color: &str, description: &str) -> Result<(), GhError> {
+    let output = Command::new("gh")
+        .args([
+            "label",
+            "edit",
+            name,
+            "--repo",
+            repo,
+            "--color",
+            color,
+            "--description",
+            description,
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: format!("gh label edit {name}"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    Ok(())
+}
+
+pub fn label_delete(repo: &str, name: &str) -> Result<(), GhError> {
+    let output = Command::new("gh")
+        .args(["label", "delete", name, "--repo", repo, "--yes"])
+        .output()
+        .context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: format!("gh label delete {name}"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    Ok(())
+}
+
 /// Detect owner/repo. Prefers `$GITHUB_REPOSITORY` (set in GitHub Actions),
 /// falling back to [`detect_repo`] for local invocations.
 pub fn detect_repo_or_env() -> Result<String, GhError> {
@@ -910,5 +1043,36 @@ mod tests {
             "labels": [], "url": "u", "createdAt": "", "updatedAt": ""
         }]"#;
         assert!(parse_issue_list(body).is_err());
+    }
+
+    #[test]
+    fn parse_label_list_extracts_fields() {
+        let body = r#"[
+            {"name": "shaka", "color": "5319e7", "description": "shaka CLI"},
+            {"name": "bug",   "color": "d73a4a", "description": "broken"}
+        ]"#;
+        let labels = parse_label_list(body).unwrap();
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].name, "shaka");
+        assert_eq!(labels[0].color, "5319e7");
+        assert_eq!(labels[1].description, "broken");
+    }
+
+    #[test]
+    fn parse_label_list_empty_description_ok() {
+        let body = r#"[{"name": "x", "color": "abcdef", "description": ""}]"#;
+        let labels = parse_label_list(body).unwrap();
+        assert_eq!(labels[0].description, "");
+    }
+
+    #[test]
+    fn parse_label_list_missing_color_errors() {
+        let body = r#"[{"name": "x", "description": ""}]"#;
+        assert!(parse_label_list(body).is_err());
+    }
+
+    #[test]
+    fn parse_label_list_empty() {
+        assert!(parse_label_list("[]").unwrap().is_empty());
     }
 }
