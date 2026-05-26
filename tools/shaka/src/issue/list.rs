@@ -8,6 +8,7 @@ pub fn run(
     state: ListState,
     labels: Vec<String>,
     milestone: Option<String>,
+    search: Option<String>,
     limit: u32,
     json_out: bool,
 ) {
@@ -23,7 +24,14 @@ pub fn run(
         },
     };
 
-    let issues = match gh::list_issues(&repo, state, &labels, milestone.as_deref(), limit) {
+    let issues = match gh::list_issues(
+        &repo,
+        state,
+        &labels,
+        milestone.as_deref(),
+        search.as_deref(),
+        limit,
+    ) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("{RED}{BOLD}error:{RESET} {e}");
@@ -32,7 +40,14 @@ pub fn run(
     };
 
     if json_out {
-        let payload = build_payload(&repo, state, &labels, milestone.as_deref(), &issues);
+        let payload = build_payload(
+            &repo,
+            state,
+            &labels,
+            milestone.as_deref(),
+            search.as_deref(),
+            &issues,
+        );
         match serde_json::to_string_pretty(&payload) {
             Ok(s) => println!("{s}"),
             Err(e) => {
@@ -41,15 +56,24 @@ pub fn run(
             }
         }
     } else {
-        print!("{}", render_tree(&repo, state, &issues));
+        print!("{}", render_tree(&repo, state, search.as_deref(), &issues));
     }
 }
 
-fn render_tree(repo: &str, state: ListState, issues: &[IssueSummary]) -> String {
+fn render_tree(
+    repo: &str,
+    state: ListState,
+    search: Option<&str>,
+    issues: &[IssueSummary],
+) -> String {
     let mut out = String::new();
     out.push_str(&format!("{BOLD}shaka issue list{RESET}\n"));
+    let search_suffix = match search {
+        Some(q) => format!("  search: {q:?}"),
+        None => String::new(),
+    };
     out.push_str(&format!(
-        "{DIM}├── repo: {repo}  state: {}  count: {}{RESET}\n",
+        "{DIM}├── repo: {repo}  state: {}{search_suffix}  count: {}{RESET}\n",
         state_arg_str(state),
         issues.len()
     ));
@@ -93,6 +117,7 @@ fn build_payload(
     state: ListState,
     labels: &[String],
     milestone: Option<&str>,
+    search: Option<&str>,
     issues: &[IssueSummary],
 ) -> Value {
     let issues_value: Vec<Value> = issues
@@ -115,6 +140,7 @@ fn build_payload(
             "state": state_arg_str(state),
             "labels": labels,
             "milestone": milestone,
+            "search": search,
         },
         "count": issues.len(),
         "issues": issues_value,
@@ -179,7 +205,7 @@ mod tests {
 
     #[test]
     fn renders_empty_list_with_summary_branch() {
-        let out = strip_ansi(&render_tree("o/r", ListState::Open, &[]));
+        let out = strip_ansi(&render_tree("o/r", ListState::Open, None, &[]));
         assert!(out.contains("shaka issue list"));
         assert!(out.contains("├── repo: o/r  state: open  count: 0"));
         assert!(out.contains("└── (no issues)"));
@@ -192,7 +218,7 @@ mod tests {
             issue(244, IssueState::Open, &["shaka"], "list slice"),
             issue(209, IssueState::Closed, &[], "audit slice"),
         ];
-        let out = strip_ansi(&render_tree("o/r", ListState::All, &issues));
+        let out = strip_ansi(&render_tree("o/r", ListState::All, None, &issues));
         assert!(out.contains("├── repo: o/r  state: all  count: 3"));
         // numbers right-padded to width 3 (longest is "244")
         assert!(out.contains("├── #15   OPEN  umbrella"));
@@ -204,6 +230,21 @@ mod tests {
     }
 
     #[test]
+    fn renders_search_in_header_when_present() {
+        let issues = vec![issue(7, IssueState::Open, &["shaka"], "found it")];
+        let out = strip_ansi(&render_tree(
+            "o/r",
+            ListState::Open,
+            Some("foo bar"),
+            &issues,
+        ));
+        assert!(
+            out.contains("├── repo: o/r  state: open  search: \"foo bar\"  count: 1"),
+            "header missing search segment: {out}"
+        );
+    }
+
+    #[test]
     fn payload_shape_is_normalized() {
         let issues = vec![issue(1, IssueState::Open, &["shaka"], "t")];
         let payload = build_payload(
@@ -211,12 +252,14 @@ mod tests {
             ListState::Open,
             &["shaka".to_string()],
             Some("v1"),
+            None,
             &issues,
         );
         assert_eq!(payload["repo"], "o/r");
         assert_eq!(payload["filters"]["state"], "open");
         assert_eq!(payload["filters"]["labels"], json!(["shaka"]));
         assert_eq!(payload["filters"]["milestone"], "v1");
+        assert!(payload["filters"]["search"].is_null());
         assert_eq!(payload["count"], 1);
         assert_eq!(payload["issues"][0]["number"], 1);
         assert_eq!(payload["issues"][0]["state"], "OPEN");
@@ -228,11 +271,18 @@ mod tests {
     }
 
     #[test]
-    fn payload_milestone_null_when_absent() {
-        let payload = build_payload("o/r", ListState::Open, &[], None, &[]);
+    fn payload_milestone_and_search_null_when_absent() {
+        let payload = build_payload("o/r", ListState::Open, &[], None, None, &[]);
         assert!(payload["filters"]["milestone"].is_null());
+        assert!(payload["filters"]["search"].is_null());
         assert_eq!(payload["filters"]["labels"], json!([]));
         assert_eq!(payload["count"], 0);
+    }
+
+    #[test]
+    fn payload_includes_search_when_set() {
+        let payload = build_payload("o/r", ListState::Open, &[], None, Some("blogctl sync"), &[]);
+        assert_eq!(payload["filters"]["search"], "blogctl sync");
     }
 
     #[test]

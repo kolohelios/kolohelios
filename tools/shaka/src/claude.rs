@@ -15,12 +15,11 @@
 //! exit 0 cheaply for tool calls it doesn't care about.
 
 use std::io::Read;
-use std::process::Command;
 
 use clap::Subcommand;
 use serde::Deserialize;
 
-use crate::gh;
+use crate::gh::{self, ListState};
 use crate::term::{BOLD, DIM, RED, RESET, YELLOW};
 
 /// Env-var prefix that lets the user opt out of the duplicate-check
@@ -32,7 +31,7 @@ const BYPASS_VAR: &str = "BYPASS_ISSUE_DUP_CHECK";
 /// Cap on the number of candidate matches we surface. Keeps the
 /// error output skimmable; if there are more, the user can re-run
 /// the search manually.
-const MAX_CANDIDATES: usize = 5;
+const MAX_CANDIDATES: u32 = 5;
 
 #[derive(Subcommand)]
 pub enum ClaudeCommand {
@@ -138,7 +137,7 @@ fn pre_issue_create() {
         "{RED}{BOLD}blocked:{RESET} duplicate-check found {} open issue(s) matching {title:?}:",
         candidates.len()
     );
-    for c in candidates.iter().take(MAX_CANDIDATES) {
+    for c in candidates.iter().take(MAX_CANDIDATES as usize) {
         eprintln!("  {BOLD}#{}{RESET} {}", c.number, c.title);
     }
     eprintln!();
@@ -208,34 +207,22 @@ fn search_open_issues(title: &str) -> Result<Vec<Candidate>, String> {
     // detection fails there. shaka's `detect_repo_or_env` reads the
     // remote via `jj git remote list`, which works in any workspace.
     let repo = gh::detect_repo_or_env().map_err(|e| format!("could not detect repo: {e}"))?;
-    let output = Command::new("gh")
-        .args([
-            "issue",
-            "list",
-            "--repo",
-            &repo,
-            "--state",
-            "open",
-            "--search",
-            title,
-            "--limit",
-            &MAX_CANDIDATES.to_string(),
-            "--json",
-            "number,title",
-        ])
-        .output()
-        .map_err(|e| format!("could not invoke gh: {e}"))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "gh exited with status {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-
-    serde_json::from_slice::<Vec<Candidate>>(&output.stdout)
-        .map_err(|e| format!("could not parse gh output: {e}"))
+    let issues = gh::list_issues(
+        &repo,
+        ListState::Open,
+        &[],
+        None,
+        Some(title),
+        MAX_CANDIDATES,
+    )
+    .map_err(|e| format!("could not search issues: {e}"))?;
+    Ok(issues
+        .into_iter()
+        .map(|i| Candidate {
+            number: i.number,
+            title: i.title,
+        })
+        .collect())
 }
 
 #[cfg(test)]

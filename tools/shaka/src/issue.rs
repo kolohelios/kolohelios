@@ -56,6 +56,11 @@ pub enum IssueCommand {
         /// Filter by milestone title
         #[arg(long)]
         milestone: Option<String>,
+        /// Full-text search query, passed through to GitHub's issue
+        /// search syntax. Combinable with `--state`, `--label`, and
+        /// `--milestone`.
+        #[arg(long)]
+        search: Option<String>,
         /// Maximum number of issues to return
         #[arg(long, default_value_t = 30)]
         limit: u32,
@@ -78,8 +83,9 @@ pub fn run(cmd: IssueCommand) {
             state,
             labels,
             milestone,
+            search,
             limit,
             json,
-        } => list::run(repo, state.into(), labels, milestone, limit, json),
+        } => list::run(repo, state.into(), labels, milestone, search, limit, json),
     }
 }
