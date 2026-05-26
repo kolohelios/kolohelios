@@ -92,4 +92,13 @@
   # (`/ship`, `/start` — both call `shaka`) stay in kolohelios's
   # `.claude/commands/`.
   home.file.".claude/commands/file-issue.md".source = ../dotfiles/claude/commands/file-issue.md;
+
+  # Cross-machine Claude Code harness config. Carries the
+  # `PreToolUse` duplicate-issue-create hook (#515 → #524 → #549 →
+  # #551) plus stable personal preferences (experimental agent
+  # teams, LSP plugins, push notifications). Per-machine overrides
+  # go to `~/.claude/settings.local.json` (already in
+  # `programs.git.ignores` above so it never gets committed); Claude
+  # merges the two with `.local.json` taking precedence.
+  home.file.".claude/settings.json".source = ../dotfiles/claude/settings.json;
 }
