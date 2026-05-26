@@ -1,12 +1,13 @@
 ---
-description: File a new GitHub issue with a duplicate-search gate (the well-lit path; the PreToolUse hook is the safety net)
-allowed-tools: Bash(gh issue *), Bash(shaka *), Bash(tools/shaka/bin/shaka *), Read
+description: File a new GitHub issue with a duplicate-search gate (the well-lit path; a PreToolUse hook may also be configured per-repo as the safety net)
+allowed-tools: Bash(gh issue *), Read
 ---
 
-File a new GitHub issue. The `PreToolUse` hook on `gh issue create`
-catches duplicates as a safety net; this skill is the well-lit path
-that runs the search up front so you see candidates before drafting
-a body.
+File a new GitHub issue. This skill is the well-lit path that runs the
+search up front so you see candidates before drafting a body. Some
+repos also configure a `PreToolUse` hook on `gh issue create` as a
+safety net (kolohelios is one); the skill works the same with or
+without the hook.
 
 ## Workflow
 
@@ -19,8 +20,8 @@ gh issue list --state open --search "<keywords>" --limit 10
 ```
 
 Pick keywords from the topic — typically the project scope plus the
-distinguishing nouns/verbs (for example, `blogctl refine command`
-or `shaka issue list search`).
+distinguishing nouns/verbs (for example, `analytics summary` or
+`auth token storage`).
 
 ### 2. Show candidates
 
@@ -41,8 +42,8 @@ to confirm one of:
 
 ### 3. Draft the issue body
 
-Once the user confirms "file as new," draft a body using this repo's
-standard issue shape:
+Once the user confirms "file as new," draft a body using a standard
+issue shape:
 
 - `## Problem` — what's broken or missing
 - `## Proposed implementation` — the shape, not every detail
@@ -55,10 +56,11 @@ Stop, show the draft, and wait for the user to confirm or tweak.
 
 Run `gh issue create --title "<title>" --body "<body>" [--label ...]`.
 
-The `PreToolUse` hook will re-run the search and block if it finds
-matches that this skill missed. That's fine — it's the safety net.
-If the hook blocks but the user has already confirmed in step 2 that
-filing is intended, re-run with `BYPASS_ISSUE_DUP_CHECK=1` prefix:
+If the repo has a `PreToolUse` hook configured, it will re-run the
+search and block on matches. If the hook blocks but the user has
+already confirmed in step 2 that filing is intended, re-run with a
+`BYPASS_ISSUE_DUP_CHECK=1` prefix (kolohelios convention; other repos
+may use a different bypass mechanism):
 
 ```
 BYPASS_ISSUE_DUP_CHECK=1 gh issue create --title ... --body ...

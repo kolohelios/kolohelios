@@ -79,4 +79,11 @@
   # Zellij's keybind tree is too elaborate to express idiomatically in
   # nix. Ship the kdl file as-is and let home-manager symlink it.
   xdg.configFile."zellij/config.kdl".source = ../dotfiles/zellij/config.kdl;
+
+  # Claude Code skills that aren't tied to a specific project. Lifted
+  # from `kolohelios/.claude/commands/` so they apply to claude
+  # sessions in any working directory. Project-specific skills
+  # (`/ship`, `/start` — both call `shaka`) stay in kolohelios's
+  # `.claude/commands/`.
+  home.file.".claude/commands/file-issue.md".source = ../dotfiles/claude/commands/file-issue.md;
 }
