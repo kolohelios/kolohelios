@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const API_BASE: &str = "https://api.todoist.com/rest/v2";
+pub const API_BASE: &str = "https://api.todoist.com/api/v1";
 
 #[derive(Debug)]
 pub enum ApiError {
@@ -29,6 +29,14 @@ impl std::error::Error for ApiError {}
 pub struct Project {
     pub id: String,
     pub name: String,
+}
+
+// Todoist v1 list endpoints wrap results in a paginated envelope.
+// `next_cursor` is set when more pages are available; this client
+// currently only consumes the first page.
+#[derive(Debug, Deserialize)]
+struct Paginated<T> {
+    results: Vec<T>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -96,13 +104,15 @@ impl TodoistClient for RealClient {
         if let Some(filter) = &query.filter {
             req = req.query("filter", filter);
         }
-        send_json(req.call())
+        let page: Paginated<serde_json::Value> = send_json(req.call())?;
+        Ok(page.results)
     }
 
     fn list_projects(&self, token: &str) -> Result<Vec<Project>, ApiError> {
         let req = ureq::get(&format!("{}/projects", self.base))
             .set("Authorization", &format!("Bearer {token}"));
-        send_json(req.call())
+        let page: Paginated<Project> = send_json(req.call())?;
+        Ok(page.results)
     }
 
     fn create_task(
@@ -197,6 +207,32 @@ mod tests {
         assert!(!json.contains("priority"));
         assert!(!json.contains("labels"));
         assert!(!json.contains("description"));
+    }
+
+    #[test]
+    fn paginated_envelope_extracts_results() {
+        // v1 list endpoints wrap the array in {results, next_cursor}. If
+        // serde drift breaks this, our list_tasks/list_projects collapse
+        // with "invalid type: map, expected sequence" at runtime.
+        let raw = r#"{"results":[{"id":"a","name":"Inbox"}],"next_cursor":null}"#;
+        let page: Paginated<Project> = serde_json::from_str(raw).unwrap();
+        assert_eq!(page.results.len(), 1);
+        assert_eq!(page.results[0].name, "Inbox");
+    }
+
+    #[test]
+    fn api_base_targets_v1() {
+        // Regression guard: the v2 REST endpoints were deprecated server-side
+        // (see #530); any drift back to `/rest/v2` would silently break against
+        // 410 in production.
+        assert!(
+            API_BASE.contains("/api/v1"),
+            "API_BASE should target /api/v1 (got {API_BASE:?})"
+        );
+        assert!(
+            !API_BASE.contains("/rest/v2"),
+            "API_BASE must not target deprecated /rest/v2 (got {API_BASE:?})"
+        );
     }
 
     #[test]
