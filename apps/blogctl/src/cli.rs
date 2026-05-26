@@ -226,6 +226,20 @@ pub enum Command {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Register a distribution target on a post. v1 fixes the new
+    /// entry's status at `planned`; `published` / `retracted` (which
+    /// require `--url` / `--published-at`) are deferred.
+    AddTarget {
+        slug: String,
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        #[arg(long, value_enum)]
+        target: Target,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Per-target performance metrics (impressions, reactions,
     /// comments, reposts).
     Metrics {
@@ -506,6 +520,20 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 clear_audience,
                 clear_strategic_role,
                 clear_theme,
+                no_sync,
+            },
+        ),
+        Command::AddTarget {
+            slug,
+            workdir,
+            target,
+            no_sync,
+        } => commands::add_target::run(
+            jj,
+            commands::add_target::AddTargetArgs {
+                slug,
+                workdir: workdir_or_pwd(workdir)?,
+                target,
                 no_sync,
             },
         ),
