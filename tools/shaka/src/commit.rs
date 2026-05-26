@@ -5,11 +5,12 @@ use clap::Subcommand;
 
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
-const TYPES: &[&str] = &[
-    "feat", "fix", "docs", "chore", "refactor", "test", "style", "perf", "ci", "build",
-];
+pub mod title;
+
+use title::TitleError;
+
 const SLOTS: &[&str] = &["apps", "infra", "packages", "services", "tools"];
-const TITLE_MAX: usize = 70;
+pub(crate) const TITLE_MAX: usize = 70;
 const BODY_LINE_MAX: usize = 80;
 
 #[derive(Subcommand)]
@@ -235,13 +236,10 @@ fn lint_commit(commit: &Commit) -> Vec<Finding> {
     let mut lines = desc.lines();
     let title = lines.next().unwrap_or("");
 
-    if !title_matches_format(title) {
+    if let Err(e) = title::validate(title) {
         findings.push(Finding {
             severity: Severity::Error,
-            message: format!(
-                "title does not match `<type>(<scope>): <subject>` (type ∈ {{{}}})",
-                TYPES.join(", ")
-            ),
+            message: title_finding_message(&e),
         });
     }
 
@@ -278,45 +276,19 @@ fn lint_commit(commit: &Commit) -> Vec<Finding> {
     findings
 }
 
-fn title_matches_format(title: &str) -> bool {
-    let Some(colon_idx) = title.find(": ") else {
-        return false;
-    };
-    let prefix = &title[..colon_idx];
-    let subject = &title[colon_idx + 2..];
-
-    if subject.is_empty() {
-        return false;
+/// Render a `TitleError` into the human-facing string `commit lint`
+/// surfaces. The grammar errors get a uniform `does not match` prefix
+/// (since the structural reason is usually less interesting than
+/// "title format is wrong"); type / scope errors carry their detail
+/// from the validator directly.
+fn title_finding_message(err: &TitleError) -> String {
+    match err {
+        TitleError::MissingSeparator | TitleError::EmptySubject => format!(
+            "title does not match `<type>(<scope>): <subject>` (type ∈ {{{}}})",
+            title::TYPES.join(", ")
+        ),
+        TitleError::UnknownType { .. } | TitleError::InvalidScope { .. } => err.to_string(),
     }
-
-    let (type_part, scope_part) = match prefix.find('(') {
-        Some(open) => {
-            if !prefix.ends_with(')') {
-                return false;
-            }
-            let close = prefix.len() - 1;
-            (&prefix[..open], Some(&prefix[open + 1..close]))
-        }
-        None => (prefix, None),
-    };
-
-    if !TYPES.contains(&type_part) {
-        return false;
-    }
-
-    if let Some(scope) = scope_part {
-        if scope.is_empty() {
-            return false;
-        }
-        if !scope
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/')
-        {
-            return false;
-        }
-    }
-
-    true
 }
 
 fn check_atomicity(files: &[String]) -> Option<Finding> {
@@ -370,39 +342,32 @@ mod tests {
         lint_commit(&commit)
     }
 
+    // Grammar-level coverage lives in `commit::title::tests`. The lint
+    // tests below only assert that lint_commit composes the validator
+    // correctly with the other checks (length, body wrap, atomicity).
+
     #[test]
-    fn title_format_matches_simple_type() {
-        assert!(title_matches_format("feat: add a thing"));
-        assert!(title_matches_format("fix: handle edge case"));
+    fn lint_flags_unknown_type_with_specific_message() {
+        let findings = lint_desc("frob: do thing");
+        assert!(
+            findings.iter().any(|f| f.message.contains("frob")),
+            "expected message to name the bad type, got: {findings:?}"
+        );
     }
 
     #[test]
-    fn title_format_matches_type_with_scope() {
-        assert!(title_matches_format("feat(shaka): add command"));
-        assert!(title_matches_format("ci(infra/devbox): scope job"));
-    }
-
-    #[test]
-    fn title_format_rejects_unknown_type() {
-        assert!(!title_matches_format("foo: do thing"));
-        assert!(!title_matches_format("FEAT: capital"));
-    }
-
-    #[test]
-    fn title_format_rejects_missing_subject() {
-        assert!(!title_matches_format("feat: "));
-        assert!(!title_matches_format("feat:"));
-    }
-
-    #[test]
-    fn title_format_rejects_missing_colon_space() {
-        assert!(!title_matches_format("feat:add thing"));
-    }
-
-    #[test]
-    fn title_format_rejects_empty_or_unclosed_scope() {
-        assert!(!title_matches_format("feat(): bad"));
-        assert!(!title_matches_format("feat(scope: bad"));
+    fn lint_flags_grammar_error_with_format_hint() {
+        // MissingSeparator / EmptySubject collapse to the uniform
+        // "does not match `<type>(<scope>): <subject>`" message so the
+        // hint stays the same regardless of which structural rule
+        // failed first.
+        let findings = lint_desc("feat add thing");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("does not match")),
+            "got: {findings:?}"
+        );
     }
 
     #[test]
