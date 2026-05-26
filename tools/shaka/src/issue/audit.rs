@@ -3,20 +3,8 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::gh;
+use crate::issue::labels;
 use crate::term::{BOLD, GREEN, RED, RESET};
-
-// Every open issue must carry at least one of these labels. New scope
-// labels must be added here AND created in the repo (`gh label create`).
-const SCOPE_LABELS: &[&str] = &[
-    "ci",
-    "claude",
-    "infra/devbox",
-    "meta",
-    "nix",
-    "pollen-alert",
-    "portfolio",
-    "shaka",
-];
 
 pub fn run(repo_arg: Option<String>) {
     let repo = match repo_arg {
@@ -31,8 +19,18 @@ pub fn run(repo_arg: Option<String>) {
         },
     };
 
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let label_set = match labels::load(&cwd) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} {e}");
+            std::process::exit(1);
+        }
+    };
+    let scope_labels: Vec<&str> = label_set.scope_names();
+
     println!("{BOLD}Auditing {repo}{RESET}");
-    println!("Scope labels: {}\n", SCOPE_LABELS.join(", "));
+    println!("Scope labels: {}\n", scope_labels.join(", "));
 
     let issues = match list_open_issues(&repo) {
         Ok(v) => v,
@@ -48,7 +46,7 @@ pub fn run(repo_arg: Option<String>) {
             .as_array()
             .map(|arr| arr.iter().filter_map(|l| l["name"].as_str()).collect())
             .unwrap_or_default();
-        let has_scope = labels.iter().any(|l| SCOPE_LABELS.contains(l));
+        let has_scope = labels.iter().any(|l| scope_labels.contains(l));
         if !has_scope {
             let n = issue["number"].as_u64().unwrap_or(0);
             let title = issue["title"].as_str().unwrap_or("").to_string();

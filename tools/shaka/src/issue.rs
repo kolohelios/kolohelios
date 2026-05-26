@@ -1,5 +1,6 @@
 mod audit;
 mod brief;
+mod labels;
 mod list;
 
 use clap::{Subcommand, ValueEnum};
