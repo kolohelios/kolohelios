@@ -176,6 +176,16 @@ pub enum Error {
     },
 
     #[error(
+        "bookmark `{bookmark}` is in a conflicted state ({} candidate(s): {}); resolve via `jj bookmark set {bookmark} -r <REVISION>`",
+        candidates.len(),
+        candidates.join(", "),
+    )]
+    JjBookmarkConflicted {
+        bookmark: String,
+        candidates: Vec<String>,
+    },
+
+    #[error(
         "rebase of @ onto {bookmark}@{remote} produced conflicts — resolve via `jj` before re-running blogctl"
     )]
     SyncRebaseConflict { bookmark: String, remote: String },

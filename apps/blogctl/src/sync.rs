@@ -215,6 +215,12 @@ impl Jj for RealJj {
             {
                 return Ok(Vec::new());
             }
+            if let Some(candidates) = parse_conflicted_bookmark_stderr(&stderr, bookmark) {
+                return Err(Error::JjBookmarkConflicted {
+                    bookmark: bookmark.to_string(),
+                    candidates,
+                });
+            }
             return Err(Error::JjCommandFailed {
                 command: command_str,
                 status: out.status.code().unwrap_or(-1),
@@ -266,6 +272,12 @@ impl Jj for RealJj {
             // so this method is a true no-op when nothing needs moving.
             if stderr.contains("Nothing changed") || stderr.contains("No revisions to rebase") {
                 return Ok(RebaseOutcome::Clean);
+            }
+            if let Some(candidates) = parse_conflicted_bookmark_stderr(&stderr, bookmark) {
+                return Err(Error::JjBookmarkConflicted {
+                    bookmark: bookmark.to_string(),
+                    candidates,
+                });
             }
             return Err(Error::JjCommandFailed {
                 command: command_str,
@@ -383,10 +395,19 @@ impl Jj for RealJj {
                 source,
             })?;
         if !out.status.success() {
-            // Usually means <bookmark>@<remote> doesn't exist yet
-            // (first push pending). Treat as "no unpushed-from-remote
-            // info"; doctor's other findings will still surface real
-            // problems.
+            // A conflicted bookmark is a real, actionable error — surface
+            // it rather than silently treating it as "no unpushed info".
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if let Some(candidates) = parse_conflicted_bookmark_stderr(&stderr, bookmark) {
+                return Err(Error::JjBookmarkConflicted {
+                    bookmark: bookmark.to_string(),
+                    candidates,
+                });
+            }
+            // Otherwise this usually means <bookmark>@<remote> doesn't
+            // exist yet (first push pending). Treat as "no
+            // unpushed-from-remote info"; doctor's other findings will
+            // still surface real problems.
             return Ok(None);
         }
         let stdout = String::from_utf8_lossy(&out.stdout);
@@ -605,6 +626,38 @@ fn cause_is_missing_remote(err: &Error) -> bool {
         err,
         Error::JjCommandFailed { stderr, .. } if stderr.contains("No git remotes")
     )
+}
+
+/// Detect `jj`'s "conflicted bookmark" error in stderr and pull the
+/// candidate commit IDs out of the accompanying hint. `jj` emits:
+///
+/// ```text
+/// Error: Name `main` is conflicted
+/// Hint: Use commit ID to select single revision from: e1214238e693, e92e7587f4f1
+/// ```
+///
+/// Returns `Some(candidates)` when stderr names `bookmark` as
+/// conflicted (the vec is empty if the hint line is absent or
+/// unparsable — still a conflict). Returns `None` when stderr is
+/// unrelated.
+fn parse_conflicted_bookmark_stderr(stderr: &str, bookmark: &str) -> Option<Vec<String>> {
+    let marker = format!("Name `{bookmark}` is conflicted");
+    if !stderr.contains(&marker) {
+        return None;
+    }
+    const HINT_PREFIX: &str = "Use commit ID to select single revision from:";
+    let candidates = stderr
+        .lines()
+        .find_map(|line| line.split_once(HINT_PREFIX).map(|(_, rest)| rest))
+        .map(|ids| {
+            ids.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Some(candidates)
 }
 
 /// Shell `jj <args>` in `workdir`, treating any non-zero exit as a
@@ -897,6 +950,40 @@ mod tests {
             stderr: "Error: connection refused\n".into(),
         };
         assert!(!cause_is_missing_remote(&err));
+    }
+
+    #[test]
+    fn parse_conflicted_bookmark_extracts_candidate_ids_from_hint() {
+        let stderr = "\
+Error: Name `main` is conflicted
+Hint: Use commit ID to select single revision from: e1214238e693, e92e7587f4f1
+Hint: Use `bookmarks(exact:main)` to select all revisions
+Hint: To set which revision the bookmark points to, run `jj bookmark set main -r <REVISION>`
+";
+        let got = parse_conflicted_bookmark_stderr(stderr, "main").expect("matches");
+        assert_eq!(got, vec!["e1214238e693", "e92e7587f4f1"]);
+    }
+
+    #[test]
+    fn parse_conflicted_bookmark_returns_none_for_unrelated_stderr() {
+        assert!(parse_conflicted_bookmark_stderr("Error: connection refused\n", "main").is_none());
+    }
+
+    #[test]
+    fn parse_conflicted_bookmark_returns_none_for_different_bookmark() {
+        // The conflict is on `feature/x`, not the bookmark we asked about.
+        let stderr = "Error: Name `feature/x` is conflicted\n";
+        assert!(parse_conflicted_bookmark_stderr(stderr, "main").is_none());
+    }
+
+    #[test]
+    fn parse_conflicted_bookmark_handles_missing_hint_line() {
+        // Older or differently-configured jj versions might omit the
+        // candidate hint. Still a conflict — just no candidates to
+        // surface.
+        let stderr = "Error: Name `main` is conflicted\n";
+        let got = parse_conflicted_bookmark_stderr(stderr, "main").expect("matches");
+        assert!(got.is_empty());
     }
 
     #[test]
