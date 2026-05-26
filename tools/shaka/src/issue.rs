@@ -1,5 +1,6 @@
 mod audit;
 mod brief;
+mod label;
 mod labels;
 mod list;
 
@@ -32,6 +33,9 @@ pub enum IssueCommand {
         #[arg(long)]
         repo: Option<String>,
     },
+    /// Manage the canonical GitHub label set declared in .shaka/labels.cue
+    #[command(subcommand)]
+    Label(LabelCommand),
     /// Fetch + view + comments for an issue in one shot
     Brief {
         /// GitHub issue number
@@ -71,6 +75,23 @@ pub enum IssueCommand {
     },
 }
 
+#[derive(Subcommand)]
+pub enum LabelCommand {
+    /// Diff canonical .shaka/labels.cue against GitHub; reconcile with --apply
+    Sync {
+        /// Repository in owner/repo format (auto-detected from git remote if omitted)
+        #[arg(long)]
+        repo: Option<String>,
+        /// Apply create + edit operations; otherwise report drift only
+        #[arg(long)]
+        apply: bool,
+        /// Also delete labels present on GitHub but not in .shaka/labels.cue
+        /// (requires --apply)
+        #[arg(long)]
+        delete: bool,
+    },
+}
+
 pub fn run(cmd: IssueCommand) {
     match cmd {
         IssueCommand::Audit { repo } => audit::run(repo),
@@ -79,6 +100,11 @@ pub fn run(cmd: IssueCommand) {
             no_fetch,
             json,
         } => brief::run(number, no_fetch, json),
+        IssueCommand::Label(LabelCommand::Sync {
+            repo,
+            apply,
+            delete,
+        }) => label::run(repo, apply, delete),
         IssueCommand::List {
             repo,
             state,
