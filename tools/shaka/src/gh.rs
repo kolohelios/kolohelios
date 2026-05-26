@@ -571,12 +571,15 @@ pub struct IssueSummary {
 /// List GitHub issues from `repo` matching the given filters.
 ///
 /// Shells out to `gh issue list --json number,title,state,labels,url,createdAt,updatedAt`.
-/// `labels` are AND-combined when more than one is supplied.
+/// `labels` are AND-combined when more than one is supplied. When
+/// `search` is `Some`, the query is passed through verbatim as GitHub
+/// search syntax (combinable with the other filters).
 pub fn list_issues(
     repo: &str,
     state: ListState,
     labels: &[String],
     milestone: Option<&str>,
+    search: Option<&str>,
     limit: u32,
 ) -> Result<Vec<IssueSummary>, GhError> {
     let limit = limit.to_string();
@@ -599,6 +602,10 @@ pub fn list_issues(
     if let Some(m) = milestone {
         args.push("--milestone".into());
         args.push(m.to_string());
+    }
+    if let Some(q) = search {
+        args.push("--search".into());
+        args.push(q.to_string());
     }
 
     let output = Command::new("gh")
