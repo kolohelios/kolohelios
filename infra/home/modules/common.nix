@@ -2,22 +2,28 @@
 # (via nix-darwin) and Linux (via NixOS). `home.username` and
 # `home.homeDirectory` are set by the host system's user list; this
 # module stays platform-agnostic.
-{ pkgs, ... }:
+{ pkgs, claude-hooks, ... }:
 
 {
   home.stateVersion = "25.05";
 
   # CLI toolchain. Tools managed via `programs.*` (git, jujutsu, helix,
   # direnv, zsh) install their own binaries; only list the rest here.
-  home.packages = with pkgs; [
-    ripgrep
-    fd
-    jq
-    curl
-    bat
-    eza
-    zellij
-    claude-code
+  home.packages = [
+    pkgs.ripgrep
+    pkgs.fd
+    pkgs.jq
+    pkgs.curl
+    pkgs.bat
+    pkgs.eza
+    pkgs.zellij
+    pkgs.claude-code
+    # Portable Claude Code harness hooks. The duplicate-issue-create
+    # gate (#515) calls `claude-hooks pre-issue-create` from
+    # `~/.claude/settings.json` (wired in #534); having it on PATH
+    # globally lets the hook fire in any working directory, not just
+    # inside the kolohelios checkout.
+    claude-hooks.packages.${pkgs.stdenv.hostPlatform.system}.default
   ];
 
   programs.git = {

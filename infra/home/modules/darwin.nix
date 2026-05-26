@@ -1,4 +1,4 @@
-{ ... }:
+{ claude-hooks, ... }:
 
 {
   system.stateVersion = 5;
@@ -24,5 +24,6 @@
 
   home-manager.useGlobalPkgs = true;
   home-manager.useUserPackages = true;
+  home-manager.extraSpecialArgs = { inherit claude-hooks; };
   home-manager.users.jedwards = import ./common.nix;
 }
