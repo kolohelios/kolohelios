@@ -1,0 +1,5 @@
+package labels
+
+#LabelSet & {
+	labels: []
+}
