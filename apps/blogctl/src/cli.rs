@@ -122,6 +122,18 @@ pub enum Command {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Bring the workdir into a known-good shape against the remote:
+    /// fetch, move `@` directly onto `<bookmark>@<remote>`, fast-forward
+    /// the local bookmark. Refuses if `@` has uncommitted edits or the
+    /// local bookmark has unpushed commits.
+    Update {
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Refuse to run (sync is the whole point of `update`).
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// LLM interaction subcommands.
     Ai {
         #[command(subcommand)]
@@ -436,6 +448,9 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             dry_run,
             no_sync,
         } => commands::fix::run(jj, workdir_or_pwd(workdir)?, dry_run, no_sync),
+        Command::Update { workdir, no_sync } => {
+            commands::update::run(jj, workdir_or_pwd(workdir)?, no_sync)
+        }
         Command::Ai { action } => match action {
             AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
         },
@@ -706,6 +721,8 @@ mod tests {
             vec!["blogctl", "fix", "--workdir", "/tmp/wd"],
             vec!["blogctl", "fix", "--workdir", "/tmp/wd", "--dry-run"],
             vec!["blogctl", "fix", "--workdir", "/tmp/wd", "--no-sync"],
+            vec!["blogctl", "update", "--workdir", "/tmp/wd"],
+            vec!["blogctl", "update", "--workdir", "/tmp/wd", "--no-sync"],
             vec!["blogctl", "ai", "ping", "hello"],
             vec![
                 "blogctl",
@@ -974,6 +991,7 @@ mod tests {
             vec!["blogctl", "readme", "regenerate"],
             vec!["blogctl", "doctor"],
             vec!["blogctl", "fix"],
+            vec!["blogctl", "update"],
             vec!["blogctl", "classify", "hello"],
             vec![
                 "blogctl",

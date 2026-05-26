@@ -181,13 +181,31 @@ pub enum Error {
     SyncRebaseConflict { bookmark: String, remote: String },
 
     #[error(
-        "@ has commits from side branch(es) {} below it; bring @ on top of {bookmark} before writing",
+        "@ has commits from side branch(es) {} below it; run `blogctl update` to bring @ on top of {bookmark}",
         side_bookmarks.join(", "),
     )]
     WorkdirOnSideBranch {
         bookmark: String,
         side_bookmarks: Vec<String>,
     },
+
+    #[error(
+        "@ has uncommitted changes; commit via a blogctl write command (or `jj describe @`) before running `blogctl update`"
+    )]
+    UpdateHasUncommittedEdits,
+
+    #[error(
+        "local {bookmark} has {count} unpushed commit(s); resolve via `jj git push --bookmark {bookmark}` before running `blogctl update`"
+    )]
+    UpdateHasUnpushedCommits { bookmark: String, count: usize },
+
+    #[error("`blogctl update` requires sync to be enabled (config: `sync.enabled = true`, and don't pass `--no-sync`)")]
+    UpdateRequiresSyncEnabled,
+
+    #[error(
+        "`blogctl update` needs `jj`: install it (and run `jj git init --colocate` in the workdir)"
+    )]
+    UpdateRequiresJj,
 
     #[error(
         "`blogctl {0}` is not yet implemented (CLI surface only; behavior lands in a follow-up)"
