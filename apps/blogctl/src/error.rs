@@ -251,6 +251,13 @@ pub enum Error {
         source: time::error::Parse,
     },
 
+    #[error("invalid --published-at {value:?}: expected RFC 3339 timestamp ({source})")]
+    InvalidPublishedAt {
+        value: String,
+        #[source]
+        source: time::error::Parse,
+    },
+
     #[error("could not parse backfill import file: {0}")]
     BackfillImportParse(#[source] serde_json::Error),
 
