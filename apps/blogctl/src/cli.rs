@@ -343,6 +343,31 @@ pub enum MetricsAction {
         #[arg(long, value_name = "PATH")]
         workdir: Option<PathBuf>,
     },
+    /// Walk a daily batch of published posts whose target needs a
+    /// metrics refresh (no metrics, or `sampled_at` older than
+    /// `--stale-after`). Prompts interactively for each, then commits
+    /// the whole batch.
+    Collect {
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Required — picks which venue's metrics this run refreshes.
+        #[arg(long, value_enum)]
+        target: Target,
+        /// Posts with `sampled_at` older than this are eligible.
+        /// `humantime`-shaped: `7d`, `1w`, `24h`. Default: 7 days.
+        #[arg(long, value_name = "DURATION", default_value = "7d")]
+        stale_after: String,
+        /// Cap on how many posts to walk per invocation. Default 10
+        /// gives a manageable daily rotation without forcing the
+        /// whole backlog every time. Pass a large number to do all
+        /// eligible in one sitting.
+        #[arg(long, default_value_t = 10)]
+        batch_size: usize,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -582,6 +607,30 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                     slug,
                     workdir: workdir_or_pwd(workdir)?,
                 })
+            }
+            MetricsAction::Collect {
+                workdir,
+                target,
+                stale_after,
+                batch_size,
+                no_sync,
+            } => {
+                let stdin = io::stdin();
+                let stdout = io::stdout();
+                let mut input = io::BufReader::new(stdin.lock());
+                let mut output = stdout.lock();
+                commands::metrics::collect(
+                    jj,
+                    commands::metrics::CollectArgs {
+                        workdir: workdir_or_pwd(workdir)?,
+                        target,
+                        stale_after,
+                        batch_size,
+                        no_sync,
+                    },
+                    &mut input,
+                    &mut output,
+                )
             }
         },
         Command::Backfill {

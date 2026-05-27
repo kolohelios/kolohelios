@@ -60,6 +60,8 @@ blogctl metrics update <slug> --workdir <path> \
   --impressions N --reactions N --comments N --reposts N \
   [--sampled-at <RFC3339>]
 blogctl metrics show <slug> --workdir <path>
+blogctl metrics collect --workdir <path> --target <linkedin|blog> \
+  [--stale-after <duration>] [--batch-size N]
 blogctl backfill --workdir <path> [--import <file.json>]
 ```
 
@@ -213,6 +215,13 @@ blogctl classify the-only-way-out-is-through \
 # 5. Refresh metrics weekly. `metrics show` prints the current
 #    snapshot per target.
 blogctl metrics show the-only-way-out-is-through --workdir ~/blog-os
+
+# 5a. Or — once a daily habit kicks in — walk a rotating batch of
+#     posts whose target metrics are stale or missing.
+blogctl metrics collect --workdir ~/blog-os --target linkedin
+# (default: 10 posts per run, sampled_at older than 7d. The walker
+#  prompts for the four counts; pressing `q` partway through still
+#  commits whatever was already entered.)
 
 # 6. Once you have ~15+ measured posts, look at signals:
 blogctl analytics summary         --workdir ~/blog-os
