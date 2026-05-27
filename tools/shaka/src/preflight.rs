@@ -38,6 +38,20 @@ const CHECKS: &[Check] = &[
         run: shaka_domain_schema_check,
     },
     Check {
+        // Drift between CUE-declared expected state and live WHOIS / NS
+        // delegation. Network-dependent (whois + dig), so it only runs
+        // when the registry or the check itself changed — registry
+        // edits should re-verify the live world, and check-code edits
+        // should re-test against the live world.
+        name: "shaka domain check",
+        paths: &[
+            "tools/shaka/src/domain/check.rs",
+            "tools/shaka/schema/domain/**",
+            "infra/cloudflare-dns/domains/**",
+        ],
+        run: shaka_domain_check,
+    },
+    Check {
         name: "shaka token cloudflare schema-check",
         paths: &[
             "tools/shaka/schema/cloudflare-token.cue",
@@ -340,6 +354,10 @@ fn shaka_project_schema_check() -> CheckResult {
 
 fn shaka_domain_schema_check() -> CheckResult {
     spawn_self(&["domain", "schema-check"])
+}
+
+fn shaka_domain_check() -> CheckResult {
+    spawn_self(&["domain", "check"])
 }
 
 fn shaka_token_cloudflare_schema_check() -> CheckResult {

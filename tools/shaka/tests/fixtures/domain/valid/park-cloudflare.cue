@@ -5,4 +5,5 @@ package domain
 	disposition:    "park"
 	nameservers:    "cloudflare"
 	dnssec_enabled: false
+	ns_pair: ["alice.ns.cloudflare.com.", "bob.ns.cloudflare.com."]
 }
