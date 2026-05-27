@@ -6,15 +6,19 @@
 //! The sequence:
 //! 1. Open the repo (refuse if not initialized).
 //! 2. Check `jj.status` — hard-fail if jj missing or workdir isn't a repo.
-//! 3. Refuse if `@` has uncommitted edits (would be stranded).
-//! 4. Fetch remote.
-//! 5. Refuse if local `<bookmark>` has unpushed commits.
-//! 6. `jj new <bookmark>@<remote>` — position `@` directly on the remote tip.
-//! 7. `jj bookmark set <bookmark> -r <bookmark>@<remote>` — fast-forward
+//! 3. Fetch remote.
+//! 4. Refuse if local `<bookmark>` has unpushed commits.
+//! 5. `jj new <bookmark>@<remote>` — position `@` directly on the remote tip.
+//! 6. `jj bookmark set <bookmark> -r <bookmark>@<remote>` — fast-forward
 //!    the local bookmark.
 //!
 //! Each step prints a one-line progress note so it's obvious what
 //! happened if a write-shaped command later trips on something else.
+//!
+//! Non-empty `@` is fine here: the normal post-write state is a
+//! described, pushed `@`. The `unpushed_summary` check is the real
+//! guard against stranding work — `jj new <remote_ref>` preserves
+//! the old `@` regardless (reachable via `jj edit`).
 
 use std::path::PathBuf;
 
@@ -39,10 +43,6 @@ pub fn run(jj: &dyn Jj, workdir: PathBuf, no_sync: bool) -> Result<()> {
         Status::JjNotInstalled | Status::NotAJjRepo => {
             return Err(Error::UpdateRequiresJj);
         }
-    }
-
-    if !jj.change_is_empty(&workdir, "@")? {
-        return Err(Error::UpdateHasUncommittedEdits);
     }
 
     println!("fetching {}", opts.config.remote);
@@ -97,29 +97,35 @@ mod tests {
         let jj = FakeJj::new();
         run(&jj, path.clone(), false).unwrap();
         let calls = jj.calls();
-        // Status → ChangeIsEmpty(@) → Fetch → UnpushedSummary
+        // Status → Fetch → UnpushedSummary
         // → NewChangeAt(main@origin, None) → SetBookmarkAt(main, main@origin)
-        assert_eq!(calls.len(), 6, "got: {calls:?}");
+        assert_eq!(calls.len(), 5, "got: {calls:?}");
         assert!(matches!(calls[0], Call::Status { .. }));
         assert!(matches!(
             calls[1],
-            Call::ChangeIsEmpty { ref change, .. } if change == "@"
-        ));
-        assert!(matches!(
-            calls[2],
             Call::Fetch { ref remote, .. } if remote == "origin"
         ));
-        assert!(matches!(calls[3], Call::UnpushedSummary { .. }));
+        assert!(matches!(calls[2], Call::UnpushedSummary { .. }));
         assert!(matches!(
-            &calls[4],
+            &calls[3],
             Call::NewChangeAt { parent, message, .. }
                 if parent == "main@origin" && message.is_none()
         ));
         assert!(matches!(
-            &calls[5],
+            &calls[4],
             Call::SetBookmarkAt { bookmark, target, .. }
                 if bookmark == "main" && target == "main@origin"
         ));
+    }
+
+    #[test]
+    fn run_succeeds_when_at_is_non_empty_and_pushed() {
+        // Post-write state: `@` is the just-pushed commit with content.
+        // Update should still proceed — `unpushed_summary` is the load-
+        // bearing guard against losing work, not `@`'s emptiness.
+        let (_tmp, path) = fresh_workdir();
+        let jj = FakeJj::new().with_change_is_empty(false);
+        run(&jj, path, false).unwrap();
     }
 
     #[test]
@@ -161,17 +167,6 @@ mod tests {
         let jj = FakeJj::new().with_status(Status::NotAJjRepo);
         let err = run(&jj, path, false).unwrap_err();
         assert!(matches!(err, Error::UpdateRequiresJj));
-    }
-
-    #[test]
-    fn run_refuses_when_at_has_uncommitted_edits() {
-        let (_tmp, path) = fresh_workdir();
-        let jj = FakeJj::new().with_change_is_empty(false);
-        let err = run(&jj, path, false).unwrap_err();
-        assert!(matches!(err, Error::UpdateHasUncommittedEdits));
-        // Refused before fetch.
-        let calls = jj.calls();
-        assert!(!calls.iter().any(|c| matches!(c, Call::Fetch { .. })));
     }
 
     #[test]
