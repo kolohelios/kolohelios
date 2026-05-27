@@ -147,6 +147,18 @@ pub trait Jj: Send + Sync {
     /// Move (or create) `bookmark` to point at the revision `target`.
     /// Companion to `set_bookmark_to_head`, which always targets `@`.
     fn set_bookmark_at(&self, workdir: &Path, bookmark: &str, target: &str) -> Result<()>;
+
+    /// Description text of `change`. Returns the empty string when the
+    /// change has no description set. Used by `commit_and_push` to
+    /// decide whether to describe `@` in place (no description yet) or
+    /// stack a new described commit on top of it.
+    fn change_description(&self, workdir: &Path, change: &str) -> Result<String>;
+
+    /// Set the description of `@` to `message` in place. Companion to
+    /// `new_change`, which always creates a fresh child commit. Used
+    /// when `@` is an empty undescribed change that should *become* the
+    /// commit for this write, rather than being orphaned beneath one.
+    fn describe(&self, workdir: &Path, message: &str) -> Result<()>;
 }
 
 /// Real `jj` binary. Each method shells out via `std::process::Command`;
@@ -462,6 +474,35 @@ impl Jj for RealJj {
         run_strict(workdir, &["bookmark", "set", bookmark, "-r", target])?;
         Ok(())
     }
+
+    fn change_description(&self, workdir: &Path, change: &str) -> Result<String> {
+        // `description` in a jj template emits the full multi-line
+        // description text (empty string when unset). `--no-graph`
+        // strips the leading graph glyphs so we get the description
+        // verbatim.
+        let command_str = format!("{JJ} log -r {change} -T description");
+        let out = Command::new(JJ)
+            .args(["log", "-r", change, "--no-graph", "-T", "description"])
+            .current_dir(workdir)
+            .output()
+            .map_err(|source| Error::JjInvoke {
+                command: command_str.clone(),
+                source,
+            })?;
+        if !out.status.success() {
+            return Err(Error::JjCommandFailed {
+                command: command_str,
+                status: out.status.code().unwrap_or(-1),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            });
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
+    fn describe(&self, workdir: &Path, message: &str) -> Result<()> {
+        run_strict(workdir, &["describe", "-m", message])?;
+        Ok(())
+    }
 }
 
 /// Per-invocation sync state: a `SyncConfig` (from `.blog-os.toml`)
@@ -595,7 +636,19 @@ where
         }
     }
 
-    jj.new_change(workdir, message)?;
+    // If `@` is already an empty undescribed change, describe it in
+    // place rather than creating a new described child. Otherwise the
+    // old empty `@` becomes the new commit's parent — `jj` doesn't
+    // auto-abandon parents-with-children — and `jj git push` refuses
+    // to push commits without descriptions, breaking the next push
+    // until the user manually abandons the orphan.
+    let at_empty = jj.change_is_empty(workdir, "@")?;
+    let at_desc = jj.change_description(workdir, "@")?;
+    if at_empty && at_desc.trim().is_empty() {
+        jj.describe(workdir, message)?;
+    } else {
+        jj.new_change(workdir, message)?;
+    }
     let result = write()?;
     jj.set_bookmark_to_head(workdir, &opts.config.bookmark)?;
 
@@ -701,6 +754,7 @@ struct FakeState {
     unpushed_summary: Option<Option<UnpushedSummary>>,
     other_bookmarks: Option<Vec<String>>,
     change_is_empty: Option<bool>,
+    change_description: Option<String>,
 }
 
 /// One recorded call against `FakeJj`. Tests pop these and assert.
@@ -754,6 +808,14 @@ pub enum Call {
         bookmark: String,
         target: String,
     },
+    ChangeDescription {
+        workdir: PathBuf,
+        change: String,
+    },
+    Describe {
+        workdir: PathBuf,
+        message: String,
+    },
 }
 
 impl FakeJj {
@@ -801,6 +863,16 @@ impl FakeJj {
     /// `true` (matches the common case: an empty `@` between writes).
     pub fn with_change_is_empty(self, is_empty: bool) -> Self {
         self.inner.lock().unwrap().change_is_empty = Some(is_empty);
+        self
+    }
+
+    /// Force `change_description()` to return `desc`. Default is a
+    /// non-empty placeholder so existing tests that don't set this
+    /// stay on the `new_change` path in `commit_and_push`; the
+    /// describe-in-place branch fires only when this is explicitly an
+    /// empty string AND `change_is_empty` is `true`.
+    pub fn with_change_description(self, desc: impl Into<String>) -> Self {
+        self.inner.lock().unwrap().change_description = Some(desc.into());
         self
     }
 
@@ -916,6 +988,27 @@ impl Jj for FakeJj {
             workdir: workdir.to_path_buf(),
             bookmark: bookmark.to_string(),
             target: target.to_string(),
+        });
+        Ok(())
+    }
+
+    fn change_description(&self, workdir: &Path, change: &str) -> Result<String> {
+        let mut s = self.inner.lock().unwrap();
+        s.calls.push(Call::ChangeDescription {
+            workdir: workdir.to_path_buf(),
+            change: change.to_string(),
+        });
+        // Default to non-empty so existing flow-tests that don't
+        // touch this stay on the new_change path.
+        Ok(s.change_description
+            .clone()
+            .unwrap_or_else(|| "preexisting description".to_string()))
+    }
+
+    fn describe(&self, workdir: &Path, message: &str) -> Result<()> {
+        self.inner.lock().unwrap().calls.push(Call::Describe {
+            workdir: workdir.to_path_buf(),
+            message: message.to_string(),
         });
         Ok(())
     }
@@ -1095,6 +1188,8 @@ Hint: To set which revision the bookmark points to, run `jj bookmark set main -r
 
     #[test]
     fn commit_and_push_runs_full_flow_in_order() {
+        // FakeJj defaults to a non-empty description on `@`, so we
+        // stay on the new_change path (the historical behavior).
         let jj = FakeJj::new();
         let executed = std::cell::Cell::new(false);
         commit_and_push(&jj, &wd(), &active_opts(), "msg", || {
@@ -1104,17 +1199,90 @@ Hint: To set which revision the bookmark points to, run `jj bookmark set main -r
         .unwrap();
         assert!(executed.get());
         let calls = jj.calls();
-        assert_eq!(calls.len(), 7, "got: {calls:?}");
+        assert_eq!(calls.len(), 9, "got: {calls:?}");
         assert!(matches!(calls[0], Call::Status { .. }));
         assert!(matches!(calls[1], Call::OtherBookmarksInRange { .. }));
         assert!(matches!(calls[2], Call::Fetch { .. }));
         assert!(matches!(calls[3], Call::Rebase { .. }));
         assert!(matches!(
             calls[4],
+            Call::ChangeIsEmpty { ref change, .. } if change == "@"
+        ));
+        assert!(matches!(
+            calls[5],
+            Call::ChangeDescription { ref change, .. } if change == "@"
+        ));
+        assert!(matches!(
+            calls[6],
             Call::NewChange { ref message, .. } if message == "msg"
         ));
-        assert!(matches!(calls[5], Call::SetBookmark { .. }));
-        assert!(matches!(calls[6], Call::Push { .. }));
+        assert!(matches!(calls[7], Call::SetBookmark { .. }));
+        assert!(matches!(calls[8], Call::Push { .. }));
+    }
+
+    #[test]
+    fn commit_and_push_describes_empty_undescribed_at_in_place() {
+        // `@` is empty AND has no description → describe @ rather than
+        // stack a new described commit on top of it. Closes the
+        // "orphaned undescribed parent" trap (#572).
+        let jj = FakeJj::new()
+            .with_change_is_empty(true)
+            .with_change_description("");
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || Ok::<(), Error>(())).unwrap();
+        let calls = jj.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|c| matches!(c, Call::Describe { message, .. } if message == "msg")),
+            "expected Describe call, got: {calls:?}"
+        );
+        assert!(
+            !calls.iter().any(|c| matches!(c, Call::NewChange { .. })),
+            "did not expect NewChange call, got: {calls:?}"
+        );
+    }
+
+    #[test]
+    fn commit_and_push_uses_new_change_when_at_is_described() {
+        // Empty `@` but it already carries a description (the user
+        // typed `jj describe` themselves) — don't clobber. Create a
+        // fresh child.
+        let jj = FakeJj::new()
+            .with_change_is_empty(true)
+            .with_change_description("user's WIP note");
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || Ok::<(), Error>(())).unwrap();
+        let calls = jj.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|c| matches!(c, Call::NewChange { message, .. } if message == "msg")),
+            "expected NewChange, got: {calls:?}"
+        );
+        assert!(
+            !calls.iter().any(|c| matches!(c, Call::Describe { .. })),
+            "did not expect Describe, got: {calls:?}"
+        );
+    }
+
+    #[test]
+    fn commit_and_push_uses_new_change_when_at_has_diff() {
+        // `@` has working-copy edits (non-empty) — don't clobber by
+        // describing in place. Create a fresh child commit.
+        let jj = FakeJj::new()
+            .with_change_is_empty(false)
+            .with_change_description("");
+        commit_and_push(&jj, &wd(), &active_opts(), "msg", || Ok::<(), Error>(())).unwrap();
+        let calls = jj.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|c| matches!(c, Call::NewChange { message, .. } if message == "msg")),
+            "expected NewChange, got: {calls:?}"
+        );
+        assert!(
+            !calls.iter().any(|c| matches!(c, Call::Describe { .. })),
+            "did not expect Describe, got: {calls:?}"
+        );
     }
 
     #[test]
@@ -1194,8 +1362,10 @@ Hint: To set which revision the bookmark points to, run `jj bookmark set main -r
         });
         assert!(result.is_ok(), "push failure must NOT fail the command");
         assert!(executed.get(), "write must still have run");
-        // Full call sequence happened, including push.
-        assert_eq!(jj.calls().len(), 7);
+        // Full call sequence happened, including push. Nine calls
+        // because the @-state probes (change_is_empty +
+        // change_description) sit between rebase and new_change.
+        assert_eq!(jj.calls().len(), 9);
     }
 
     #[test]
