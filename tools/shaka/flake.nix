@@ -131,6 +131,12 @@
               # `tofu fmt`) and by the integration tests under
               # tests/terraform_emit.rs.
               pkgs.opentofu
+              # taplo runs the `taplo fmt --check` preflight gate over
+              # the repo's TOML files. Listed directly (not just via
+              # `workflowPackages`) so this PR's CI passes before the
+              # next `bump-kolohelios-nix` cycle propagates the lib
+              # change into shaka's lock. Safe to drop once that lands.
+              pkgs.taplo
             ]
             ++ (workflowPackages pkgs)
             # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks

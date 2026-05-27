@@ -1,9 +1,9 @@
 [package]
-name = "kolohelios-portfolio"
-version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
+name    = "kolohelios-portfolio"
 publish = false
+version = "0.1.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -13,29 +13,31 @@ crate-type = ["cdylib"]
 # so the cdylib (the Worker) compiled to wasm32 doesn't pull in
 # native-only deps like `askama` / `tempfile`.
 [[bin]]
-name = "build-site"
-path = "src/bin/build-site.rs"
+name              = "build-site"
+path              = "src/bin/build-site.rs"
 required-features = ["build-site"]
 
 [features]
-default = []
 build-site = ["dep:askama", "dep:serde", "dep:serde_json", "dep:tempfile"]
+default    = []
 
 [dependencies]
 worker = "0.8"
 
 # build-site-only deps. Optional + behind the `build-site` feature
 # above so the wasm worker compile doesn't even resolve them.
-askama = { version = "0.12", default-features = false, features = ["config"], optional = true }
+askama = { version = "0.12", default-features = false, features = [
+  "config",
+], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 tempfile = { version = "3", optional = true }
 
 [profile.release]
-opt-level = "s"
-lto = true
 codegen-units = 1
-strip = true
+lto           = true
+opt-level     = "s"
+strip         = true
 
 [lints.clippy]
 mod_module_files = "deny"

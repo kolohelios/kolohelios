@@ -121,6 +121,11 @@ const CHECKS: &[Check] = &[
         paths: &[],
         run: vale_check,
     },
+    Check {
+        name: "taplo fmt --check",
+        paths: &["**/*.toml", "taplo.toml"],
+        run: taplo_check,
+    },
 ];
 
 pub fn run(keep_going: bool, since: Option<String>) {
@@ -419,6 +424,20 @@ fn vale_check() -> CheckResult {
             detail: format!("failed to spawn vale (gate pass): {e}"),
         },
     }
+}
+
+fn taplo_check() -> CheckResult {
+    // Driver invokes `taplo fmt --check` from the repo root; taplo
+    // auto-discovers `taplo.toml` and applies its include/exclude globs
+    // to enumerate files itself. No need to list paths via `jj` here —
+    // taplo's `exclude` already covers `target/` and test fixtures, the
+    // two cases where filesystem walk would otherwise pick up files we
+    // don't want formatted. `RUST_LOG=warn` mutes taplo's INFO-level
+    // "found N files" stderr; failures still print at ERROR.
+    let mut cmd = Command::new("taplo");
+    cmd.args(["fmt", "--check"]);
+    cmd.env("RUST_LOG", "warn");
+    run_command(&mut cmd)
 }
 
 fn actionlint_check() -> CheckResult {

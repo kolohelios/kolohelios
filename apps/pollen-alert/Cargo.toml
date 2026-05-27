@@ -1,9 +1,9 @@
 [package]
-name = "pollen-alert"
-version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
+name    = "pollen-alert"
 publish = false
+version = "0.1.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -18,13 +18,13 @@ async-trait = "0.1"
 # `wasm32-unknown-unknown`). The forecast parser captures Open-Meteo
 # timestamps as `String` and uses `NaiveDateTime::parse_from_str` to
 # handle the seconds-less format — no chrono `serde` feature needed.
-chrono = { version = "0.4", default-features = false, features = ["std"] }
-serde = { version = "1", features = ["derive"] }
+chrono     = { version = "0.4", default-features = false, features = ["std"] }
+serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Form-encode Pushover's POST body without hand-rolling percent
 # escaping. Pure-rust, builds on `wasm32-unknown-unknown`.
 serde_urlencoded = "0.7"
-worker = "0.8"
+worker           = "0.8"
 
 [dev-dependencies]
 # `tokio = { rt, macros }` lets native integration tests run async
@@ -33,10 +33,10 @@ worker = "0.8"
 tokio = { version = "1", features = ["rt", "macros"] }
 
 [profile.release]
-opt-level = "s"
-lto = true
 codegen-units = 1
-strip = true
+lto           = true
+opt-level     = "s"
+strip         = true
 
 [lints.clippy]
 mod_module_files = "deny"

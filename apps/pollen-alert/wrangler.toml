@@ -1,6 +1,6 @@
-name = "pollen-alert"
-main = "build/worker/shim.mjs"
 compatibility_date = "2026-05-14"
+main               = "build/worker/shim.mjs"
+name               = "pollen-alert"
 
 # `worker-build` compiles the crate to wasm32-unknown-unknown and emits
 # `build/worker/shim.mjs` + the WASM module that wrangler uploads. The
@@ -28,9 +28,9 @@ crons = ["0 2 * * *"]
 #   wrangler secret put PUSHOVER_APP_TOKEN
 #   wrangler secret put PUSHOVER_USER_KEY
 [vars]
-LAT = "47.625"
-LON = "-122.5"
-TZ = "America/Los_Angeles"
-THRESHOLD = "5"
+DRY_RUN               = "true"
+LAT                   = "47.625"
+LON                   = "-122.5"
 MIN_CONSECUTIVE_HOURS = "3"
-DRY_RUN = "true"
+THRESHOLD             = "5"
+TZ                    = "America/Los_Angeles"

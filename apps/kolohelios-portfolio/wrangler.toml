@@ -10,8 +10,8 @@ name = "kolohelios-portfolio"
 # which in our CI ends up resolving to a rustc that isn't the one we
 # declared in the devshell. Pulling the build out of wrangler keeps
 # the probe inside a process whose `$PATH` we control.
-main = "build/worker/shim.mjs"
 compatibility_date = "2026-05-01"
+main               = "build/worker/shim.mjs"
 
 # Workers Static Assets: CF serves files from `./dist/` directly at
 # the edge, bypassing the Worker for matched paths. Cache rules
