@@ -200,11 +200,6 @@ pub enum Error {
     },
 
     #[error(
-        "@ has uncommitted changes; commit via a blogctl write command (or `jj describe @`) before running `blogctl update`"
-    )]
-    UpdateHasUncommittedEdits,
-
-    #[error(
         "local {bookmark} has {count} unpushed commit(s); resolve via `jj git push --bookmark {bookmark}` before running `blogctl update`"
     )]
     UpdateHasUnpushedCommits { bookmark: String, count: usize },
