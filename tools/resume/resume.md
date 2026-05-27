@@ -1,3 +1,11 @@
+---
+header-includes: |
+  \usepackage[default]{sourcesanspro}
+  \usepackage{sourceserifpro}
+  \usepackage{sectsty}
+  \allsectionsfont{\rmfamily\bfseries}
+---
+
 # Jon Edwards
 
 **Principal Software Engineer**
