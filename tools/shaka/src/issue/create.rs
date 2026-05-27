@@ -59,11 +59,18 @@ fn run_inner(args: CreateArgs, cwd: &Path) -> Result<(), String> {
     //    enforces the structural rule; this resolves the file path.
     let body = resolve_body(&args.body, &args.body_file)?;
 
-    // 3. Scope — must be one of the canonical scope labels.
+    // 3. No freeform parent references. `--parent <N>` is the only way
+    //    to set a parent (uses GitHub's native sub-issue API); freeform
+    //    `Sub-issue of #N` / `Tracked in #N` body text rots silently
+    //    and is what `shaka issue audit` flags. Refuse at create time
+    //    so we never write the freeform shape in the first place.
+    reject_freeform_parent_refs(&body, args.parent)?;
+
+    // 4. Scope — must be one of the canonical scope labels.
     let label_set = labels::load(cwd)?;
     validate_scope(&args.scope, &label_set)?;
 
-    // 4. Repo — explicit flag wins; otherwise infer.
+    // 5. Repo — explicit flag wins; otherwise infer.
     let repo = match args.repo {
         Some(r) => r,
         None => gh::detect_repo_or_env().map_err(|e| format!("could not detect repo: {e}"))?,
@@ -118,6 +125,28 @@ fn validate_scope(scope: &str, set: &LabelSet) -> Result<(), String> {
     Err(format!(
         "scope `{scope}` is not a canonical scope label; valid: {}",
         valid.join(", ")
+    ))
+}
+
+/// Reject bodies that contain freeform parent-pointer phrases (`Sub-issue
+/// of #N`, `Tracked in #N`). `--parent <N>` is the only sanctioned way
+/// to set a parent — it uses GitHub's native sub-issue API, which is
+/// what `shaka issue audit` enforces. The text-only shape rots silently
+/// and is exactly what audit flags; refusing here keeps new issues from
+/// being born in the bad state.
+///
+/// `_parent` is accepted but ignored — even with `--parent N` set, the
+/// freeform body text is still wrong (it duplicates the link in a
+/// brittle form). One canonical signal, no second source of truth.
+fn reject_freeform_parent_refs(body: &str, _parent: Option<u64>) -> Result<(), String> {
+    let refs = super::audit::extract_parent_refs(body);
+    if refs.is_empty() {
+        return Ok(());
+    }
+    let phrases: Vec<String> = refs.iter().map(|r| r.phrase.clone()).collect();
+    Err(format!(
+        "body contains freeform parent reference(s) {phrases:?} — use `--parent <N>` \
+         instead (sets GitHub's native sub-issue link) and drop the freeform text"
     ))
 }
 
@@ -273,5 +302,37 @@ mod tests {
         // Reaching dry-run without an error is the assertion — file
         // was readable and resolved.
         run_inner(a, tmp.path()).unwrap();
+    }
+
+    #[test]
+    fn rejects_body_with_sub_issue_of() {
+        let tmp = workdir_with_labels(&["shaka"]);
+        let mut a = args("feat(shaka): add x", "shaka");
+        a.body = Some("Sub-issue of #15. Adds a thing.".into());
+        let err = run_inner(a, tmp.path()).unwrap_err();
+        assert!(err.contains("Sub-issue of #15"), "got: {err}");
+        assert!(err.contains("--parent"), "should hint at --parent: {err}");
+    }
+
+    #[test]
+    fn rejects_body_with_tracked_in() {
+        let tmp = workdir_with_labels(&["shaka"]);
+        let mut a = args("feat(shaka): add x", "shaka");
+        a.body = Some("Tracked in #209.".into());
+        let err = run_inner(a, tmp.path()).unwrap_err();
+        assert!(err.contains("Tracked in #209"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_freeform_even_with_parent_set() {
+        // --parent N doesn't whitelist freeform body text; the two
+        // would duplicate the link in incompatible shapes. One source
+        // of truth (the native API), no freeform.
+        let tmp = workdir_with_labels(&["shaka"]);
+        let mut a = args("feat(shaka): add x", "shaka");
+        a.body = Some("Sub-issue of #15".into());
+        a.parent = Some(15);
+        let err = run_inner(a, tmp.path()).unwrap_err();
+        assert!(err.contains("Sub-issue of #15"), "got: {err}");
     }
 }
