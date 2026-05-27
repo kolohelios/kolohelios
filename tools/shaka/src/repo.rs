@@ -5,6 +5,7 @@ pub mod describe;
 mod policy;
 mod pr;
 mod rebase_open_prs;
+mod rebase_wip;
 pub mod send;
 mod ship;
 mod status;
@@ -131,6 +132,18 @@ pub enum RepoCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Rebase every local WIP bookmark onto main@origin
+    ///
+    /// Fetches first, then for each local bookmark ahead of `main@origin`
+    /// (excluding `main` itself) runs `jj rebase -b <name> -d main@origin`
+    /// and classifies the outcome as clean / conflict / up-to-date. With
+    /// `--push`, the clean ones get pushed; conflicts are left for manual
+    /// resolution.
+    RebaseWip {
+        /// Also push the cleanly-rebased bookmarks
+        #[arg(long)]
+        push: bool,
+    },
     /// Run `nix flake update <input>` across every project that consumes the
     /// input, leaving the changed `flake.lock`s in the working copy.
     ///
@@ -191,6 +204,7 @@ pub fn run(cmd: RepoCommand) {
         RepoCommand::Status { json } => status::run(json),
         RepoCommand::Describe { json } => describe::run(json),
         RepoCommand::RebaseOpenPrs { dry_run } => rebase_open_prs::run(dry_run),
+        RepoCommand::RebaseWip { push } => rebase_wip::run(push),
         RepoCommand::BumpLocks {
             input,
             pr_branch,
