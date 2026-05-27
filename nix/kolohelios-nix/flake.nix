@@ -73,6 +73,7 @@
           nixfmt-rfc-style
           nil
           typos
+          taplo
           cargo-deny
           cargo-machete
           vale
