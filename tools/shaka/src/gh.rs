@@ -227,12 +227,14 @@ pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
 ///
 /// Returns `Ok(None)` if the issue is open, has no closing PR reference, or
 /// the issue does not exist. Returns the first referenced PR if multiple.
-pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
+pub fn merged_pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError> {
     let output = Command::new("gh")
         .args([
             "issue",
             "view",
             &n.to_string(),
+            "--repo",
+            repo,
             "--json",
             "state,closedByPullRequestsReferences",
         ])
@@ -242,7 +244,7 @@ pub fn merged_pr_for_issue(n: u64) -> Result<Option<PrInfo>, GhError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return GhCommandSnafu {
-            command: format!("gh issue view {n}"),
+            command: format!("gh issue view {n} --repo {repo}"),
             stderr: stderr.trim().to_string(),
         }
         .fail();

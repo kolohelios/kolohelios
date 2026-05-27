@@ -3,6 +3,7 @@ mod forget;
 mod issue_link;
 mod list;
 mod new;
+pub(crate) mod staleness;
 mod status;
 
 use std::path::{Path, PathBuf};

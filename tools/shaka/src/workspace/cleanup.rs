@@ -1,4 +1,5 @@
 use super::issue_link;
+use super::staleness;
 use super::{die, workspace_path, BOLD, DIM, GREEN, RED, RESET};
 use crate::{gh, jj};
 use std::fs;
@@ -115,43 +116,17 @@ pub fn run(dry_run: bool) {
 }
 
 /// Try each detection strategy in order and return the merged-PR URL on the
-/// first hit.
+/// first hit. Thin wrapper that bridges `cleanup`'s pre-existing call site
+/// to `staleness::resolve_merged_pr` (the shared implementation).
 fn resolve_merged_pr(repo_root: &Path, repo: &str, name: &str) -> Option<String> {
-    // 1. Persisted issue link.
     let issue_from_link = issue_link::read(repo_root, name)
         .map_err(|e| eprintln!("{DIM}warn:{RESET} reading issue link for {name}: {e}"))
         .ok()
         .flatten()
         .map(|l| l.issue);
 
-    // 2. Name inference: i<N>.
-    let issue_from_name = name
-        .strip_prefix('i')
-        .and_then(|s| s.parse::<u64>().ok())
-        .filter(|_| issue_from_link.is_none());
-
-    if let Some(issue) = issue_from_link.or(issue_from_name) {
-        match gh::merged_pr_for_issue(issue) {
-            Ok(Some(pr)) => return Some(pr.url),
-            Ok(None) => {} // issue not yet closed by a merged PR
-            Err(e) => {
-                eprintln!("{DIM}warn:{RESET} could not query PR for issue #{issue}: {e}");
-            }
-        }
-    }
-
-    // 3. Bookmark scan (legacy path; works only pre-sync).
     let revset = format!("main@origin..{name}@");
     let bookmarks = jj::bookmarks_on(&revset).unwrap_or_default();
-    for bookmark in &bookmarks {
-        match gh::pr_for_head(repo, bookmark) {
-            Ok(Some(pr)) if pr.state == gh::PrState::Merged => return Some(pr.url),
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("{DIM}warn:{RESET} could not query PR for bookmark {bookmark}: {e}");
-            }
-        }
-    }
 
-    None
+    staleness::resolve_merged_pr(repo, name, &bookmarks, issue_from_link)
 }

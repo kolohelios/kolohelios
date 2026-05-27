@@ -29,6 +29,10 @@ pub enum RepoCommand {
         /// Print the commands that would run without executing them
         #[arg(long)]
         dry_run: bool,
+        /// Suppress the post-sync hint listing workspaces eligible for
+        /// `shaka workspace cleanup`. The sync itself runs unchanged.
+        #[arg(long)]
+        no_cleanup_hint: bool,
     },
     /// Refresh an in-flight PR's bookmark onto the latest main@origin
     ///
@@ -168,7 +172,10 @@ pub enum RepoCommand {
 pub fn run(cmd: RepoCommand) {
     match cmd {
         RepoCommand::Audit { repo, fix } => audit::run(repo, fix),
-        RepoCommand::Sync { dry_run } => sync::run(dry_run),
+        RepoCommand::Sync {
+            dry_run,
+            no_cleanup_hint,
+        } => sync::run(dry_run, no_cleanup_hint),
         RepoCommand::Bump { bookmark, dry_run } => bump::run(bookmark, dry_run),
         RepoCommand::Send {
             bookmark,
