@@ -22,11 +22,15 @@ fn workdir() -> (TempDir, PathBuf) {
     (tmp, path)
 }
 
-/// Verify the canonical 7-call shape one write-shaped command produces:
-/// Status, OtherBookmarksInRange, Fetch, Rebase, NewChange, SetBookmark,
-/// Push (in order).
+/// Verify the canonical 9-call shape one write-shaped command produces
+/// when `@` is already described (the FakeJj default): Status,
+/// OtherBookmarksInRange, Fetch, Rebase, ChangeIsEmpty(@),
+/// ChangeDescription(@), NewChange, SetBookmark, Push (in order).
+/// The two `@`-state probes drive the empty-undescribed-@ handling
+/// added with #572; with the FakeJj default description they branch
+/// to NewChange.
 fn assert_full_sync_flow(calls: &[Call], expected_message: &str) {
-    assert_eq!(calls.len(), 7, "expected 7 jj calls, got: {calls:?}");
+    assert_eq!(calls.len(), 9, "expected 9 jj calls, got: {calls:?}");
     assert!(
         matches!(calls[0], Call::Status { .. }),
         "first call must be Status, got: {:?}",
@@ -47,28 +51,38 @@ fn assert_full_sync_flow(calls: &[Call], expected_message: &str) {
         "fourth call must be Rebase, got: {:?}",
         calls[3]
     );
-    match &calls[4] {
+    assert!(
+        matches!(calls[4], Call::ChangeIsEmpty { ref change, .. } if change == "@"),
+        "fifth call must be ChangeIsEmpty(@), got: {:?}",
+        calls[4]
+    );
+    assert!(
+        matches!(calls[5], Call::ChangeDescription { ref change, .. } if change == "@"),
+        "sixth call must be ChangeDescription(@), got: {:?}",
+        calls[5]
+    );
+    match &calls[6] {
         Call::NewChange { message, .. } => {
             assert_eq!(message, expected_message, "wrong commit message",)
         }
-        other => panic!("fifth call must be NewChange, got: {other:?}"),
+        other => panic!("seventh call must be NewChange, got: {other:?}"),
     }
     assert!(
-        matches!(calls[5], Call::SetBookmark { ref bookmark, .. } if bookmark == "main"),
-        "sixth call must be SetBookmark main, got: {:?}",
-        calls[5]
+        matches!(calls[7], Call::SetBookmark { ref bookmark, .. } if bookmark == "main"),
+        "eighth call must be SetBookmark main, got: {:?}",
+        calls[7]
     );
     assert!(
         matches!(
-            calls[6],
+            calls[8],
             Call::Push {
                 ref remote,
                 ref bookmark,
                 ..
             } if remote == "origin" && bookmark == "main"
         ),
-        "seventh call must be Push origin main, got: {:?}",
-        calls[6]
+        "ninth call must be Push origin main, got: {:?}",
+        calls[8]
     );
 }
 
@@ -406,8 +420,8 @@ fn push_failure_does_not_fail_the_command() {
     assert!(path.join("concepts/hi.md").is_file());
     // And we did go through the full sync flow including the failed push.
     let calls = jj.calls();
-    assert_eq!(calls.len(), 7);
-    assert!(matches!(calls[6], Call::Push { .. }));
+    assert_eq!(calls.len(), 9);
+    assert!(matches!(calls[8], Call::Push { .. }));
 }
 
 #[test]
