@@ -1,0 +1,2 @@
+kolohelios.com.		172800	IN	NS	nora.ns.cloudflare.com.
+kolohelios.com.		172800	IN	NS	kayden.ns.cloudflare.com.

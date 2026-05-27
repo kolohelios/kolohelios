@@ -35,6 +35,13 @@ package domain
 } & ({
 	nameservers:    "cloudflare"
 	dnssec_enabled: bool
+	// Expected authoritative NS pair (lowercase, trailing-dot-stripped,
+	// sorted). `shaka domain check` digs the registrar delegation and
+	// compares to this. CF assigns the pair when the zone is created;
+	// record it here so drift on either side (registrar or CF) is
+	// detectable. Two entries because that's what CF assigns; the
+	// schema would have to widen if a provider ever returned more.
+	ns_pair: [string, string]
 } | {
 	nameservers: "linode-legacy" | "unmanaged"
 })

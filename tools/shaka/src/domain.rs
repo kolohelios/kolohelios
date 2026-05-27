@@ -1,3 +1,4 @@
+mod check;
 mod inventory;
 mod schema_check;
 
@@ -26,6 +27,20 @@ pub enum DomainCommand {
         #[arg(long, value_name = "DIR", default_value = DEFAULT_REGISTRY_DIR)]
         registry_dir: PathBuf,
     },
+    /// Check live state of owned domains for drift (WHOIS expiry + lock, NS pair)
+    Check {
+        /// Restrict the check to a single domain by name
+        #[arg(long, value_name = "DOMAIN")]
+        domain: Option<String>,
+        /// Override `expiry_warn_days` for every domain in this run.
+        /// Without it, each `#Domain` uses its declared value (or the
+        /// default 30).
+        #[arg(long, value_name = "DAYS")]
+        expiry_warn_days: Option<i64>,
+        /// Directory of per-domain CUE registry files (one #Domain instance per file)
+        #[arg(long, value_name = "DIR", default_value = DEFAULT_REGISTRY_DIR)]
+        registry_dir: PathBuf,
+    },
 }
 
 pub fn run(cmd: DomainCommand) {
@@ -35,5 +50,10 @@ pub fn run(cmd: DomainCommand) {
             registry_dir,
         } => inventory::run(&input, &registry_dir),
         DomainCommand::SchemaCheck { registry_dir } => schema_check::run(&registry_dir),
+        DomainCommand::Check {
+            domain,
+            expiry_warn_days,
+            registry_dir,
+        } => check::run(&registry_dir, domain.as_deref(), expiry_warn_days),
     }
 }

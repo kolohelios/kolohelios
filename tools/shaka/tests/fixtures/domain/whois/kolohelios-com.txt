@@ -1,0 +1,15 @@
+Domain Name: KOLOHELIOS.COM
+   Registry Domain ID: example-redacted
+   Registrar WHOIS Server: whois.tucows.com
+   Updated Date: 2025-02-26T17:11:24Z
+   Creation Date: 2024-03-26T03:39:14Z
+   Registry Expiry Date: 2027-03-26T03:39:14Z
+   Registrar: Tucows Domains Inc.
+   Registrar IANA ID: 69
+   Domain Status: clientTransferProhibited https://icann.org/epp#clientTransferProhibited
+   Domain Status: clientUpdateProhibited https://icann.org/epp#clientUpdateProhibited
+   Name Server: KAYDEN.NS.CLOUDFLARE.COM
+   Name Server: NORA.NS.CLOUDFLARE.COM
+   DNSSEC: unsigned
+   URL of the ICANN Whois Inaccuracy Complaint Form: https://www.icann.org/wicf/
+>>> Last update of whois database: 2026-05-26T22:00:00Z <<<

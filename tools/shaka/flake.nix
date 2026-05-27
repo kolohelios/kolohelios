@@ -137,6 +137,13 @@
               # next `bump-kolohelios-nix` cycle propagates the lib
               # change into shaka's lock. Safe to drop once that lands.
               pkgs.taplo
+              # `shaka domain check` shells out to `whois` (expiry +
+              # lock) and `dig` (NS authoritative delegation). macOS
+              # ships both via the base system, but the Linux CI image
+              # doesn't, so the devshell carries them. `dnsutils`
+              # provides `dig`.
+              pkgs.whois
+              pkgs.dnsutils
             ]
             ++ (workflowPackages pkgs)
             # cargo-llvm-cov is needed by `just coverage`. Nixpkgs marks

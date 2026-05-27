@@ -7,4 +7,5 @@ domains: "kolohelios.com": schema.#Domain & {
 	disposition:    "portfolio-canonical"
 	nameservers:    "cloudflare"
 	dnssec_enabled: false
+	ns_pair: ["kayden.ns.cloudflare.com.", "nora.ns.cloudflare.com."]
 }

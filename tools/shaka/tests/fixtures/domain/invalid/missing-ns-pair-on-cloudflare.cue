@@ -4,6 +4,6 @@ package domain
 	name:           "kolohelios.com"
 	disposition:    "portfolio-canonical"
 	nameservers:    "cloudflare"
-	dnssec_enabled: true
-	ns_pair: ["alice.ns.cloudflare.com.", "bob.ns.cloudflare.com."]
+	dnssec_enabled: false
+	// ns_pair omitted — the cloudflare arm requires it.
 }
