@@ -34,6 +34,13 @@ const HAND_AUTHORED: &[&str] = &[
     "auto-rebase-prs.yaml",
     "bump-kolohelios-nix.yaml",
     "codeql.yml",
+    // Hand-authored darwin build of infra/home — runs on macos-latest
+    // to populate the FlakeHub Cache so cold-bootstrap on a fresh
+    // aarch64-darwin host pulls cached artifacts instead of compiling
+    // direnv (which OOMs on its fish-test phase). #279. Once the CI
+    // generator grows a per-platform `build` field, this migrates to
+    // generated and leaves the allowlist.
+    "home-build-darwin.yaml",
 ];
 
 #[derive(Deserialize)]
