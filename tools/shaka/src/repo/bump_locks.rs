@@ -129,6 +129,9 @@ fn run_remote(input: &str, branch: &str, slug: &str, auto_merge: bool) -> Result
     git_in(&work, &["add", "flake.lock"])?;
     let title = format!("chore(deps): bump {input} flake input");
     git_in(&work, &["commit", "-m", &title])?;
+    // Re-anchor on live `main`: previous bump's PR may have merged since the clone (#563).
+    git_in(&work, &["fetch", "--depth", "1", "origin", "main"])?;
+    git_in(&work, &["rebase", "origin/main"])?;
     git_in(&work, &["push", "--force", "origin", branch])?;
 
     if let Some(pr) = gh::pr_for_head(slug, branch).map_err(|e| e.to_string())? {
