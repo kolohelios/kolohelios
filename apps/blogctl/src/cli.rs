@@ -252,6 +252,50 @@ pub enum Command {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Import an already-published post directly into `published/`,
+    /// pre-populating a `targets:` entry with the venue URL and
+    /// publish date. Used to backfill posts that went out on another
+    /// surface (LinkedIn, an external blog) before the workdir existed.
+    Import {
+        /// Post title — slug is derived from this unless `--slug` is given.
+        #[arg(long)]
+        title: String,
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Override the auto-derived slug.
+        #[arg(long)]
+        slug: Option<String>,
+        /// Surface this targets: `post` (short-form feed) or `article`
+        /// (long-form).
+        #[arg(long, value_enum, default_value_t = Kind::Post)]
+        kind: Kind,
+        /// Narrative theme. Defaults to the workdir's
+        /// `defaults.theme`; must be declared in `[themes.*]`.
+        #[arg(long)]
+        theme: Option<String>,
+        /// Distribution venue this post was published to.
+        #[arg(long, value_enum)]
+        target: Target,
+        /// URL of the already-published post on `--target`.
+        #[arg(long)]
+        url: String,
+        /// RFC 3339 timestamp the post went live on `--target`.
+        /// Also used as the post's `created_at` and `updated_at`.
+        #[arg(long, value_name = "RFC3339")]
+        published_at: String,
+        /// Path to a file containing the post body. Use `-` to read
+        /// from stdin. Body is written verbatim — no formatting
+        /// munging.
+        #[arg(long, value_name = "PATH")]
+        body_file: PathBuf,
+        /// Free-form tag for the post. Repeatable.
+        #[arg(long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Per-target performance metrics (impressions, reactions,
     /// comments, reposts).
     Metrics {
@@ -577,6 +621,34 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 no_sync,
             },
         ),
+        Command::Import {
+            title,
+            workdir,
+            slug,
+            kind,
+            theme,
+            target,
+            url,
+            published_at,
+            body_file,
+            tags,
+            no_sync,
+        } => commands::import::run(
+            jj,
+            commands::import::ImportArgs {
+                title,
+                workdir: workdir_or_pwd(workdir)?,
+                slug,
+                kind,
+                theme,
+                target,
+                url,
+                published_at,
+                body_file,
+                tags,
+                no_sync,
+            },
+        ),
         Command::Metrics { action } => match action {
             MetricsAction::Update {
                 slug,
@@ -871,6 +943,50 @@ mod tests {
                 "--workdir",
                 "/tmp/wd",
             ],
+            // import — backfill an already-published post.
+            vec![
+                "blogctl",
+                "import",
+                "--title",
+                "Hello",
+                "--workdir",
+                "/tmp/wd",
+                "--target",
+                "linkedin",
+                "--url",
+                "https://www.linkedin.com/posts/x",
+                "--published-at",
+                "2026-05-08T14:32:00Z",
+                "--body-file",
+                "/tmp/body.md",
+            ],
+            vec![
+                "blogctl",
+                "import",
+                "--title",
+                "Hello",
+                "--workdir",
+                "/tmp/wd",
+                "--slug",
+                "custom-slug",
+                "--kind",
+                "article",
+                "--theme",
+                "parable",
+                "--target",
+                "blog",
+                "--url",
+                "https://example.com/x",
+                "--published-at",
+                "2026-05-08T14:32:00Z",
+                "--body-file",
+                "-",
+                "--tag",
+                "rust",
+                "--tag",
+                "blogctl",
+                "--no-sync",
+            ],
             // backfill — interactive + import.
             vec!["blogctl", "backfill", "--workdir", "/tmp/wd"],
             vec![
@@ -1059,6 +1175,20 @@ mod tests {
                 "0",
             ],
             vec!["blogctl", "metrics", "show", "hello"],
+            vec![
+                "blogctl",
+                "import",
+                "--title",
+                "Hello",
+                "--target",
+                "linkedin",
+                "--url",
+                "https://www.linkedin.com/posts/x",
+                "--published-at",
+                "2026-05-08T14:32:00Z",
+                "--body-file",
+                "/tmp/body.md",
+            ],
             vec!["blogctl", "backfill"],
             vec!["blogctl", "analytics", "summary"],
             vec!["blogctl", "analytics", "compare", "format", "hook"],
