@@ -105,6 +105,38 @@ pub(crate) fn workspace_path(repo_root: &Path, name: &str) -> PathBuf {
     parent.join(format!("{basename}-{name}"))
 }
 
+/// Return the issue number persisted for the workspace containing `cwd`,
+/// if any. Returns `None` for the default workspace, for siblings without
+/// a persisted link, and for cwds outside any workspace.
+///
+/// The workspace name is derived from the path delta between
+/// [`jj::repo_root`] and [`jj::primary_workspace_root`]; the link is then
+/// read from `<primary>/.shaka/workspaces/<name>.json`.
+pub fn current_issue() -> Option<u64> {
+    let cur = jj::repo_root().ok()?;
+    let primary = jj::primary_workspace_root().ok()?;
+    let name = workspace_name_from_paths(&cur, &primary)?;
+    if name == "default" {
+        return None;
+    }
+    let link = issue_link::read(&primary, &name).ok().flatten()?;
+    Some(link.issue)
+}
+
+/// Pure helper: given the current workspace root and the primary root,
+/// derive the workspace name. Returns `Some("default")` when the two
+/// paths are equal, or the suffix after `<primary-basename>-` for
+/// siblings. Returns `None` if the convention doesn't hold.
+fn workspace_name_from_paths(cur: &Path, primary: &Path) -> Option<String> {
+    if cur == primary {
+        return Some("default".to_string());
+    }
+    let primary_basename = primary.file_name()?.to_string_lossy().into_owned();
+    let cur_basename = cur.file_name()?.to_string_lossy().into_owned();
+    let prefix = format!("{primary_basename}-");
+    cur_basename.strip_prefix(&prefix).map(|s| s.to_string())
+}
+
 pub(crate) fn die(msg: &str) -> ! {
     eprintln!("{RED}{BOLD}error:{RESET} {msg}");
     std::process::exit(1);
@@ -125,6 +157,30 @@ mod tests {
     fn workspace_path_handles_temp_style_parent() {
         let p = workspace_path(Path::new("/tmp/abc/repo"), "i42");
         assert_eq!(p, Path::new("/tmp/abc/repo-i42"));
+    }
+
+    #[test]
+    fn workspace_name_default_when_paths_equal() {
+        let p = Path::new("/Users/me/code/kolohelios");
+        assert_eq!(workspace_name_from_paths(p, p).as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn workspace_name_extracts_suffix_after_primary_basename() {
+        let cur = Path::new("/Users/me/code/kolohelios-i146");
+        let primary = Path::new("/Users/me/code/kolohelios");
+        assert_eq!(
+            workspace_name_from_paths(cur, primary).as_deref(),
+            Some("i146")
+        );
+    }
+
+    #[test]
+    fn workspace_name_none_when_basename_doesnt_match_convention() {
+        // Unrelated cwd that doesn't sit next to the primary.
+        let cur = Path::new("/Users/me/code/somewhere-else");
+        let primary = Path::new("/Users/me/code/kolohelios");
+        assert!(workspace_name_from_paths(cur, primary).is_none());
     }
 
     #[test]
