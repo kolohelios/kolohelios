@@ -502,6 +502,49 @@ pub fn issue_db_id(repo: &str, number: u64) -> Result<u64, GhError> {
     })
 }
 
+/// Fetch the native parent issue number for `{repo}#{number}`, if any.
+///
+/// GitHub's REST issue endpoint exposes `.parent` (object or null) for
+/// issues linked via the native sub-issue API. Freeform `Sub-issue of #N`
+/// body text does *not* populate this field — which is exactly the drift
+/// `shaka issue audit` flags.
+pub fn issue_parent(repo: &str, number: u64) -> Result<Option<u64>, GhError> {
+    let endpoint = format!("/repos/{repo}/issues/{number}");
+    let value = api_get(&endpoint)?;
+    Ok(value
+        .get("parent")
+        .and_then(|p| p.get("number"))
+        .and_then(|n| n.as_u64()))
+}
+
+/// Returns `Ok(true)` if `{repo}#{number}` resolves, `Ok(false)` on 404,
+/// or propagates any other error. Used to flag freeform references to
+/// nonexistent issues.
+pub fn issue_exists(repo: &str, number: u64) -> Result<bool, GhError> {
+    let endpoint = format!("/repos/{repo}/issues/{number}");
+    let output = Command::new("gh")
+        .args([
+            "api",
+            &endpoint,
+            "-H",
+            "Accept: application/vnd.github+json",
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+    if output.status.success() {
+        return Ok(true);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("HTTP 404") || stderr.contains("Not Found") {
+        return Ok(false);
+    }
+    GhCommandSnafu {
+        command: format!("gh api {endpoint}"),
+        stderr: stderr.trim().to_string(),
+    }
+    .fail()
+}
+
 /// Link `sub_id` (the integer db id of an existing issue) as a sub-issue
 /// of `{repo}#{parent_number}` via GitHub's native sub-issues API.
 ///
