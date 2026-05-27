@@ -256,6 +256,13 @@ pub enum Error {
 
     #[error("backfill completed with {0} warning(s) — see stderr for details")]
     BackfillPartialFailure(usize),
+
+    #[error("invalid --stale-after {value:?}: expected a humantime duration like `7d` or `24h` ({source})")]
+    InvalidStaleAfter {
+        value: String,
+        #[source]
+        source: humantime::DurationError,
+    },
 }
 
 impl Error {
