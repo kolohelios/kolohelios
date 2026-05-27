@@ -225,13 +225,13 @@ fn merge_classifications(target: &mut Classifications, source: &Classifications)
 }
 
 #[derive(Debug, PartialEq)]
-enum MergeMetricsOutcome {
+pub(crate) enum MergeMetricsOutcome {
     Applied,
     Unchanged,
     TargetMissing,
 }
 
-fn merge_metrics(
+pub(crate) fn merge_metrics(
     targets: &mut [TargetEntry],
     target: Target,
     source: &TargetMetrics,
@@ -464,7 +464,7 @@ enum DimPick {
     Quit,
 }
 
-enum MetricsPick {
+pub(crate) enum MetricsPick {
     Values(TargetMetrics),
     Skip,
     SkipPost,
@@ -519,7 +519,7 @@ fn prompt_dimension<R: BufRead, W: Write>(
     }
 }
 
-fn prompt_metrics<R: BufRead, W: Write>(
+pub(crate) fn prompt_metrics<R: BufRead, W: Write>(
     target: Target,
     input: &mut R,
     output: &mut W,
