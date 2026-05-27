@@ -3,8 +3,11 @@ use std::process::Command;
 
 use clap::Subcommand;
 
+use crate::jj;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
+use crate::workspace;
 
+pub mod issue_ref;
 pub mod title;
 
 use title::TitleError;
@@ -20,16 +23,24 @@ pub enum CommitCommand {
         /// Revset to lint (jj syntax). Defaults to the working copy commit.
         #[arg(short = 'r', long, default_value = "@")]
         revset: String,
+        /// Suppress the "issue-tied branch missing Closes #N" check. Use
+        /// for branches that legitimately don't close an issue (chores,
+        /// docs sweeps, exploratory branches).
+        #[arg(long)]
+        allow_no_issue_link: bool,
     },
 }
 
 pub fn run(cmd: CommitCommand) {
     match cmd {
-        CommitCommand::Lint { revset } => lint(&revset),
+        CommitCommand::Lint {
+            revset,
+            allow_no_issue_link,
+        } => lint(&revset, allow_no_issue_link),
     }
 }
 
-fn lint(revset: &str) {
+fn lint(revset: &str, allow_no_issue_link: bool) {
     let commits = match collect_commits(revset) {
         Ok(c) => c,
         Err(e) => {
@@ -43,12 +54,17 @@ fn lint(revset: &str) {
         return;
     }
 
+    let ctx = LintContext {
+        allow_no_issue_link,
+        tied_issues: gather_tied_issues(revset),
+    };
+
     let mut total_errors = 0usize;
     let mut total_warnings = 0usize;
     let mut clean = 0usize;
 
     for commit in &commits {
-        let findings = lint_commit(commit);
+        let findings = lint_commit(commit, &ctx);
         let errors = findings
             .iter()
             .filter(|f| matches!(f.severity, Severity::Error))
@@ -113,6 +129,20 @@ struct Commit {
     /// (≥ 2 parents); a regular commit has exactly one parent (or
     /// zero for the root, which doesn't reach `commit lint`).
     parent_count: usize,
+    /// `true` for the tip of the linted revset — the commit closest
+    /// to the PR head. The `Closes #N` enforcement only applies to
+    /// the tip; intermediate commits often don't close the issue.
+    is_tip: bool,
+}
+
+/// Context shared across every commit in the linted revset.
+struct LintContext {
+    allow_no_issue_link: bool,
+    /// Issue numbers the branch appears to be tied to, gathered from
+    /// bookmark names matching the `iN` convention and from the
+    /// workspace's persisted `--issue` link. Empty when no heuristic
+    /// matched — in that case the issue-link check is skipped.
+    tied_issues: Vec<u64>,
 }
 
 impl Commit {
@@ -152,6 +182,7 @@ fn collect_commits(revset: &str) -> Result<Vec<Commit>, String> {
             .to_string());
     }
 
+    let at_change_id = jj_template("@", "change_id")?.trim().to_string();
     let mut commits = Vec::new();
     for line in String::from_utf8_lossy(&ids_output.stdout).lines() {
         let id = line.trim();
@@ -164,12 +195,22 @@ fn collect_commits(revset: &str) -> Result<Vec<Commit>, String> {
             .trim()
             .parse::<usize>()
             .map_err(|e| format!("could not parse parent count for {id}: {e}"))?;
+        let is_tip = id == at_change_id;
         commits.push(Commit {
             change_id: id.to_string(),
             description,
             files,
             parent_count,
+            is_tip,
         });
+    }
+    // If `@` isn't in the revset (e.g. `-r main..main@origin`), fall back
+    // to marking the first reported commit — `jj log` defaults to
+    // newest-first, so the head of the requested set is at the top.
+    if !commits.iter().any(|c| c.is_tip) {
+        if let Some(first) = commits.first_mut() {
+            first.is_tip = true;
+        }
     }
     Ok(commits)
 }
@@ -200,7 +241,83 @@ fn jj_files(rev: &str) -> Result<Vec<String>, String> {
         .collect())
 }
 
-fn lint_commit(commit: &Commit) -> Vec<Finding> {
+/// Collect issue numbers the linted branch appears to be tied to.
+/// Two heuristics, OR-combined:
+///
+/// 1. Any bookmark on a commit in the revset has an `iN` segment
+///    (matches `iN-`, `iN/`, `-iN`, or bare `iN`). This is the
+///    "branch name carries the issue" pattern the issue body cites.
+/// 2. The workspace this command runs in has a persisted `--issue` link
+///    (`shaka workspace new --issue N` writes one). This catches our
+///    convention of descriptive bookmark names (`feat/shaka-foo`) that
+///    don't encode the issue in the name.
+///
+/// PR-body cross-reference (third heuristic mentioned in #146) is
+/// deferred — only relevant post-push, when the user has already lost
+/// the chance for the lint to catch the missing `Closes #N`.
+fn gather_tied_issues(revset: &str) -> Vec<u64> {
+    let mut out: BTreeSet<u64> = BTreeSet::new();
+    if let Ok(names) = jj::bookmarks_on(revset) {
+        for n in issue_numbers_from_bookmarks(&names) {
+            out.insert(n);
+        }
+    }
+    if let Some(n) = workspace::current_issue() {
+        out.insert(n);
+    }
+    out.into_iter().collect()
+}
+
+/// Pure helper: extract issue numbers from bookmark names that match
+/// the `iN` convention. Recognized shapes within a bookmark's
+/// `-`/`/`-separated segments: `iN`, `iN-...`, `...-iN`, `iN/...`.
+/// Order-preserving by first occurrence; deduplicated across the slice.
+pub(crate) fn issue_numbers_from_bookmarks(names: &[String]) -> Vec<u64> {
+    let mut out: Vec<u64> = Vec::new();
+    let mut seen: BTreeSet<u64> = BTreeSet::new();
+    for name in names {
+        for segment in name.split(['/', '-']) {
+            if let Some(rest) = segment.strip_prefix('i') {
+                if let Ok(n) = rest.parse::<u64>() {
+                    if seen.insert(n) {
+                        out.push(n);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Check that the tip commit's body has a GitHub-autoclose reference
+/// to one of `tied_issues`. Returns `None` when the rule passes (or
+/// doesn't apply); `Some(Finding)` when the tip is missing the link.
+fn check_issue_link(commit: &Commit, tied_issues: &[u64]) -> Option<Finding> {
+    if !commit.is_tip || tied_issues.is_empty() {
+        return None;
+    }
+    let body = commit
+        .description
+        .split_once('\n')
+        .map(|(_, rest)| rest)
+        .unwrap_or("");
+    let body_refs = issue_ref::extract_autoclose_refs(body);
+    if tied_issues.iter().any(|n| body_refs.contains(n)) {
+        return None;
+    }
+    let expected: Vec<String> = tied_issues.iter().map(|n| format!("#{n}")).collect();
+    Some(Finding {
+        severity: Severity::Error,
+        message: format!(
+            "tip commit lacks `Closes #N` for tied issue(s) {} — \
+             add `Closes #<N>` to the body, or pass `--allow-no-issue-link` \
+             if this branch legitimately doesn't close an issue",
+            expected.join(", ")
+        ),
+    })
+}
+
+fn lint_commit(commit: &Commit, ctx: &LintContext) -> Vec<Finding> {
     let mut findings = Vec::new();
     let desc = commit.description.trim_end();
 
@@ -273,6 +390,12 @@ fn lint_commit(commit: &Commit) -> Vec<Finding> {
         findings.push(f);
     }
 
+    if !ctx.allow_no_issue_link {
+        if let Some(f) = check_issue_link(commit, &ctx.tied_issues) {
+            findings.push(f);
+        }
+    }
+
     findings
 }
 
@@ -338,8 +461,16 @@ mod tests {
             description: desc.into(),
             files: vec![],
             parent_count,
+            is_tip: true,
         };
-        lint_commit(&commit)
+        lint_commit(&commit, &noop_ctx())
+    }
+
+    fn noop_ctx() -> LintContext {
+        LintContext {
+            allow_no_issue_link: false,
+            tied_issues: vec![],
+        }
     }
 
     // Grammar-level coverage lives in `commit::title::tests`. The lint
@@ -517,5 +648,116 @@ mod tests {
     fn _ignore_unused_warning() {
         // ensure the err helper compiles even if unused; used to gate findings construction
         let _ = err("ignored");
+    }
+
+    // -- issue-link rule -----------------------------------------------
+
+    fn commit_at_tip(desc: &str) -> Commit {
+        Commit {
+            change_id: "abc12345".into(),
+            description: desc.into(),
+            files: vec![],
+            parent_count: 1,
+            is_tip: true,
+        }
+    }
+
+    #[test]
+    fn issue_numbers_from_bookmarks_extracts_i_segments() {
+        let names = vec![
+            "feat/i42-foo".to_string(),
+            "fix/some-thing".to_string(),
+            "i101".to_string(),
+            "feat/shaka/i200-bar".to_string(),
+        ];
+        let nums = issue_numbers_from_bookmarks(&names);
+        assert_eq!(nums, vec![42, 101, 200]);
+    }
+
+    #[test]
+    fn issue_numbers_from_bookmarks_dedupes() {
+        let names = vec!["feat/i42".to_string(), "feat/i42-foo".to_string()];
+        assert_eq!(issue_numbers_from_bookmarks(&names), vec![42]);
+    }
+
+    #[test]
+    fn issue_numbers_from_bookmarks_ignores_non_issue_segments() {
+        // `int` starts with `i` but isn't `i<digits>`.
+        let names = vec!["feat/int-types".to_string()];
+        assert!(issue_numbers_from_bookmarks(&names).is_empty());
+    }
+
+    #[test]
+    fn issue_link_passes_when_body_has_closes_for_tied_issue() {
+        let commit = commit_at_tip("feat(shaka): add thing\n\nBody text.\n\nCloses #42");
+        assert!(check_issue_link(&commit, &[42]).is_none());
+    }
+
+    #[test]
+    fn issue_link_passes_with_alternate_autoclose_keywords() {
+        for body in ["Fixes #42", "Resolves #42", "fixes #42"] {
+            let commit = commit_at_tip(&format!("feat: x\n\n{body}"));
+            assert!(
+                check_issue_link(&commit, &[42]).is_none(),
+                "expected pass for body {body:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn issue_link_fails_when_body_lacks_autoclose_for_tied_issue() {
+        let commit = commit_at_tip("feat(shaka): add thing\n\nBody text.");
+        let f = check_issue_link(&commit, &[42]).unwrap();
+        assert!(matches!(f.severity, Severity::Error));
+        assert!(f.message.contains("#42"), "got: {}", f.message);
+        assert!(f.message.contains("Closes"), "got: {}", f.message);
+        assert!(
+            f.message.contains("--allow-no-issue-link"),
+            "should mention the escape hatch: {}",
+            f.message
+        );
+    }
+
+    #[test]
+    fn issue_link_fails_when_body_only_has_refs_keyword() {
+        // `Refs #N` isn't an autoclose keyword — doesn't satisfy the rule.
+        let commit = commit_at_tip("feat: x\n\nRefs #42");
+        let f = check_issue_link(&commit, &[42]).unwrap();
+        assert!(matches!(f.severity, Severity::Error));
+    }
+
+    #[test]
+    fn issue_link_skipped_when_no_tied_issues() {
+        let commit = commit_at_tip("feat: x\n\nNo closes here.");
+        assert!(check_issue_link(&commit, &[]).is_none());
+    }
+
+    #[test]
+    fn issue_link_skipped_for_non_tip_commits() {
+        let mut commit = commit_at_tip("feat: intermediate\n\nNo closes.");
+        commit.is_tip = false;
+        assert!(check_issue_link(&commit, &[42]).is_none());
+    }
+
+    #[test]
+    fn issue_link_passes_when_one_of_multiple_tied_issues_referenced() {
+        // Branch tied to both #42 and #99 (e.g. bookmark `feat/i42-foo`
+        // plus workspace link to #99). Closing either satisfies the rule.
+        let commit = commit_at_tip("feat: x\n\nCloses #99");
+        assert!(check_issue_link(&commit, &[42, 99]).is_none());
+    }
+
+    #[test]
+    fn allow_no_issue_link_suppresses_check_via_context() {
+        let commit = commit_at_tip("feat: x\n\nNo closes here.");
+        let ctx = LintContext {
+            allow_no_issue_link: true,
+            tied_issues: vec![42],
+        };
+        let findings = lint_commit(&commit, &ctx);
+        assert!(
+            !findings.iter().any(|f| f.message.contains("Closes #")),
+            "expected suppression, got: {findings:?}"
+        );
     }
 }
