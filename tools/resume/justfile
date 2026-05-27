@@ -27,6 +27,9 @@ build-docx:
 
 build: build-pdf build-docx
 
+fmt-toml:
+    taplo fmt
+
 drift-check:
     #!/usr/bin/env bash
     set -euo pipefail

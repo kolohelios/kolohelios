@@ -23,6 +23,9 @@ fmt:
 fmt-check:
     cargo fmt --check
 
+fmt-toml:
+    taplo fmt
+
 lint:
     cargo clippy --all-targets -- -D warnings
 
@@ -63,7 +66,10 @@ whitespace-check:
 validate: fmt-check lint doc-check deny machete test coverage nix-fmt-check flake-check whitespace-check
 "#;
 
-const NIX_LIB_TEMPLATE: &str = r#"nix-fmt-check:
+const NIX_LIB_TEMPLATE: &str = r#"fmt-toml:
+    taplo fmt
+
+nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
 flake-check:
@@ -109,6 +115,9 @@ fmt:
 
 fmt-check:
     cargo fmt --check
+
+fmt-toml:
+    taplo fmt
 
 lint:
     cargo clippy --all-targets -- -D warnings
@@ -164,6 +173,9 @@ validate: fmt-check lint doc-check deny machete test coverage wasm-check worker-
 const INFRA_TEMPLATE_WITH_TF: &str = r#"tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
 
+fmt-toml:
+    taplo fmt
+
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
@@ -198,6 +210,9 @@ apply *ARGS: _env-check
 const INFRA_TEMPLATE_WITH_TF_BARE: &str = r#"tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
 
+fmt-toml:
+    taplo fmt
+
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
@@ -225,7 +240,10 @@ apply *ARGS:
 // (`nixosModules`/`darwinConfigurations`/`devShells`) eval cheaply and
 // benefit from local/CI parity. If a future nix-only infra project ships
 // a NixOS toplevel and trips #170, branch the template then.
-const INFRA_TEMPLATE_NO_TF: &str = r#"nix-fmt-check:
+const INFRA_TEMPLATE_NO_TF: &str = r#"fmt-toml:
+    taplo fmt
+
+nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
 flake-check:
@@ -268,6 +286,9 @@ build-docx:
     done
 
 build: build-pdf build-docx
+
+fmt-toml:
+    taplo fmt
 
 drift-check:
     #!/usr/bin/env bash
@@ -651,6 +672,28 @@ mod tests {
                 tpl.contains("whitespace-check\n"),
                 "validate chain must include whitespace-check"
             );
+        }
+    }
+
+    #[test]
+    fn all_templates_offer_fmt_toml_recipe() {
+        // `fmt-toml` is fix-mode local convenience; the check-mode gate
+        // lives at the repo level in `shaka preflight` (the `taplo fmt
+        // --check` entry), so it deliberately isn't in any `validate`
+        // chain. Keeping the recipe in every template means a future
+        // project that gains a TOML doesn't need to wait on a generator
+        // change.
+        for tpl in [
+            RUST_TEMPLATE,
+            RUST_WORKER_TEMPLATE,
+            NIX_LIB_TEMPLATE,
+            INFRA_TEMPLATE_WITH_TF,
+            INFRA_TEMPLATE_WITH_TF_BARE,
+            INFRA_TEMPLATE_NO_TF,
+            DOCUMENT_TEMPLATE,
+        ] {
+            assert!(tpl.contains("fmt-toml:"));
+            assert!(tpl.contains("taplo fmt"));
         }
     }
 

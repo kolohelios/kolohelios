@@ -1,0 +1,8 @@
+exclude = ["tools/shaka/tests/fixtures/**", "**/target/**"]
+include = ["**/*.toml"]
+
+[formatting]
+align_entries = true
+column_width  = 80
+indent_string = "  "
+reorder_keys  = true

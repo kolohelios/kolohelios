@@ -4,6 +4,9 @@
 tofu-validate:
     cd terraform && tofu init -backend=false -input=false && tofu validate
 
+fmt-toml:
+    taplo fmt
+
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
