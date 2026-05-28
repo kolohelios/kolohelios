@@ -8,9 +8,9 @@ header-includes: |
 
 # Jon Edwards
 
-**Principal Software Engineer**
+**Principal Software Engineer/Engineering Manager**
 
-*Product Engineering · Data Platforms · AI · Scaling Systems, Growing Engineers*
+*Product Engineering · Data Platforms · AI · Scaling Systems · Team Leadership*
 
 (360) 509-8185 • jkedwards@me.com • US Person • Bainbridge Island, WA
 
@@ -48,17 +48,14 @@ Principal Software Engineer building streaming data platforms over datasets in t
 - Sustained high-volume, substantive peer code review across the platform org — 261 reviews in the first 15 weeks of 2026 alone (~75/month, mean 6 / median 4 comments per PR, ~1,000-line PR average) — reinforcing engineering standards and a small-PR discipline.
 - *Technology used:* Python, Rust, Scala, CUE, Nix, Kubernetes, Helm, Databricks, Delta Lake, MCP.
 
-**Engineering Manager** — Aug 2022 – Jun 2023
-
-- Managed and mentored a team of 6 engineers on the consumer web platform (SEO, Core Web Vitals, conversion optimization, GDPR compliance), leading delivery on LCP regression fixes for high-traffic page types, INP tracking ahead of Google's CWV INP rollout, and an org-wide cookie consent rollout.
-- Returned to the IC track in Jun 2023 to focus on data platform architecture.
-
-**Lead Sr. Software Engineer, Web & Mobile Apps** — Dec 2021 – Aug 2022
+**Lead Sr. Software Engineer, Engineering Manager** — Dec 2021 – Jun 2023
 
 - Reversed a multi-quarter decline in Google indexation, increasing indexed page count by 30%.
 - Drove dozens of millions of SERP-indexed URLs from red LCP (Core Web Vitals failure) to zero, with monitoring automation to keep them green.
 - Increased mobile revenue by 20% YoY by focusing on stability and adding new features.
 - Lifted mobile app release cadence from every other week to several times per week, focused on SEO performance and mobile feature delivery.
+- Managed and mentored a team of 6 engineers on the consumer web platform and mobile app team (SEO, Core Web Vitals, conversion optimization, legal compliance), leading delivery on LCP regression fixes for high-traffic page types, INP tracking ahead of Google's CWV INP rollout, and an org-wide cookie consent rollout.
+- Returned to the IC track in Jun 2023 to focus on data platform architecture.
 
 ### LIFX / Buddy Technologies
 
@@ -100,7 +97,11 @@ Principal Software Engineer building streaming data platforms over datasets in t
 
 ### Earlier Career (1997–2015)
 
-Leadership roles spanning engineering, operations, sales and marketing, and general business management at manufacturing and industrial automation companies. Co-inventor on US patent 7,610,734 for siding installation tools, plus two related fiber-cement cutting applications, developed through 3D CAD, CNC prototyping, and 3D printing.
+Leadership roles spanning engineering, operations, sales and marketing, and general business management at manufacturing and industrial automation companies.
+
+## Innovations
+
+Co-inventor on US patent 7,610,734 for siding installation tools, plus two related fiber-cement cutting applications, developed through 3D CAD, CNC prototyping, and 3D printing.
 
 ## Education
 
