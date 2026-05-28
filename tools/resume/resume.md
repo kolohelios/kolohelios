@@ -4,6 +4,9 @@ header-includes: |
   \usepackage{sourceserifpro}
   \usepackage{sectsty}
   \allsectionsfont{\rmfamily\bfseries}
+  \usepackage[document]{ragged2e}
+  \hyphenpenalty=10000
+  \exhyphenpenalty=10000
 geometry:
   - top=0.75in
   - bottom=0.75in
