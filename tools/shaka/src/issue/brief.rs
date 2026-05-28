@@ -12,7 +12,15 @@ const RED: &str = "\x1b[31m";
 const YELLOW: &str = "\x1b[33m";
 const RESET: &str = "\x1b[0m";
 
-pub fn run(n: u64, no_fetch: bool, json_out: bool) {
+pub fn run(input: &str, no_fetch: bool, json_out: bool) {
+    let numbers = match parse_numbers(input) {
+        Ok(ns) => ns,
+        Err(e) => {
+            eprintln!("{RED}{BOLD}error:{RESET} {e}");
+            std::process::exit(1);
+        }
+    };
+
     let fetch_output = if no_fetch {
         None
     } else {
@@ -33,33 +41,51 @@ pub fn run(n: u64, no_fetch: bool, json_out: bool) {
         }
     };
 
-    let issue = match fetch_issue(&repo, n) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let workspace = workspace::find_for_issue(n);
-    let pr = match gh::pr_for_issue(&repo, n) {
-        Ok(p) => p,
-        Err(e) => {
-            // PR lookup is best-effort metadata, not load-bearing. A search
-            // failure (rate limit, transient API hiccup) shouldn't fail the
-            // whole brief — warn and continue with `pr: null`.
-            eprintln!("{DIM}warn:{RESET} could not query PR for issue #{n}: {e}");
-            None
-        }
-    };
+    // Fetch the per-issue facts up-front so a failure on any number
+    // aborts before partial output. With three numbers and a typo on
+    // the third, we'd rather not have printed two real briefs first.
+    let mut briefs: Vec<BriefBundle> = Vec::with_capacity(numbers.len());
+    for &n in &numbers {
+        let issue = match fetch_issue(&repo, n) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("{RED}{BOLD}error:{RESET} {e}");
+                std::process::exit(1);
+            }
+        };
+        let workspace = workspace::find_for_issue(n);
+        let pr = match gh::pr_for_issue(&repo, n) {
+            Ok(p) => p,
+            Err(e) => {
+                // PR lookup is best-effort metadata, not load-bearing.
+                // A search failure (rate limit, transient API hiccup)
+                // shouldn't fail the whole brief — warn and continue
+                // with `pr: null`.
+                eprintln!("{DIM}warn:{RESET} could not query PR for issue #{n}: {e}");
+                None
+            }
+        };
+        briefs.push(BriefBundle {
+            number: n,
+            issue,
+            workspace,
+            pr,
+        });
+    }
 
     if json_out {
-        let payload = build_payload(
-            fetch_output.as_deref(),
-            &issue,
-            workspace.as_ref(),
-            pr.as_ref(),
-        );
+        let bundles: Vec<Value> = briefs
+            .iter()
+            .map(|b| {
+                build_payload(
+                    fetch_output.as_deref(),
+                    &b.issue,
+                    b.workspace.as_ref(),
+                    b.pr.as_ref(),
+                )
+            })
+            .collect();
+        let payload = json!({ "briefs": bundles });
         match serde_json::to_string_pretty(&payload) {
             Ok(s) => println!("{s}"),
             Err(e) => {
@@ -68,17 +94,50 @@ pub fn run(n: u64, no_fetch: bool, json_out: bool) {
             }
         }
     } else {
-        print!(
-            "{}",
-            render_tree(
-                n,
-                fetch_output.as_deref(),
-                &issue,
-                workspace.as_ref(),
-                pr.as_ref()
-            )
-        );
+        for (i, b) in briefs.iter().enumerate() {
+            if i > 0 {
+                println!();
+            }
+            print!(
+                "{}",
+                render_tree(
+                    b.number,
+                    fetch_output.as_deref(),
+                    &b.issue,
+                    b.workspace.as_ref(),
+                    b.pr.as_ref()
+                )
+            );
+        }
     }
+}
+
+struct BriefBundle {
+    number: u64,
+    issue: Value,
+    workspace: Option<WorkspaceRef>,
+    pr: Option<PrInfo>,
+}
+
+/// Pure: parse a comma-delimited list of issue numbers. Accepts
+/// surrounding whitespace per element (`"345, 427"`); rejects empty
+/// elements (`"345,,427"`) and non-numeric tokens.
+pub(crate) fn parse_numbers(input: &str) -> Result<Vec<u64>, String> {
+    if input.trim().is_empty() {
+        return Err("no issue numbers given".into());
+    }
+    let mut out: Vec<u64> = Vec::new();
+    for raw in input.split(',') {
+        let token = raw.trim();
+        if token.is_empty() {
+            return Err(format!("empty element in issue number list: {input:?}"));
+        }
+        let n: u64 = token
+            .parse()
+            .map_err(|_| format!("not a positive integer: {token:?}"))?;
+        out.push(n);
+    }
+    Ok(out)
 }
 
 fn build_payload(
@@ -281,6 +340,51 @@ fn render_tree(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn parse_numbers_single() {
+        assert_eq!(parse_numbers("586").unwrap(), vec![586]);
+    }
+
+    #[test]
+    fn parse_numbers_multiple() {
+        assert_eq!(parse_numbers("345,427,483").unwrap(), vec![345, 427, 483]);
+    }
+
+    #[test]
+    fn parse_numbers_tolerates_whitespace() {
+        assert_eq!(
+            parse_numbers(" 345 , 427, 483 ").unwrap(),
+            vec![345, 427, 483]
+        );
+    }
+
+    #[test]
+    fn parse_numbers_rejects_empty_input() {
+        let err = parse_numbers("").unwrap_err();
+        assert!(err.contains("no issue numbers"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_numbers_rejects_empty_element() {
+        // `586,,427` would otherwise silently drop the empty token —
+        // surface it so the user notices the stray comma.
+        let err = parse_numbers("586,,427").unwrap_err();
+        assert!(err.contains("empty element"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_numbers_rejects_trailing_comma() {
+        let err = parse_numbers("586,").unwrap_err();
+        assert!(err.contains("empty element"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_numbers_rejects_non_numeric() {
+        let err = parse_numbers("586,notnum,427").unwrap_err();
+        assert!(err.contains("not a positive integer"), "got: {err}");
+        assert!(err.contains("notnum"), "got: {err}");
+    }
 
     fn strip_ansi(s: &str) -> String {
         let mut out = String::new();
