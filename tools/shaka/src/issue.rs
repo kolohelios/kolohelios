@@ -37,14 +37,18 @@ pub enum IssueCommand {
     /// Manage the canonical GitHub label set declared in .shaka/labels.cue
     #[command(subcommand)]
     Label(LabelCommand),
-    /// Fetch + view + comments for an issue in one shot
+    /// Fetch + view + comments for one or more issues in one shot
     Brief {
-        /// GitHub issue number
-        number: u64,
+        /// Issue number(s). Single (`586`) or comma-delimited
+        /// (`345,427,483`) — multi-issue invocations render each brief
+        /// separated by a blank line and share one `jj git fetch`.
+        numbers: String,
         /// Skip the `jj git fetch` step
         #[arg(long)]
         no_fetch: bool,
-        /// Emit structured JSON instead of the human-readable tree
+        /// Emit structured JSON instead of the human-readable tree.
+        /// Always wraps results in `{"briefs": [...]}` so single- and
+        /// multi-issue invocations have the same shape.
         #[arg(long)]
         json: bool,
     },
@@ -131,10 +135,10 @@ pub fn run(cmd: IssueCommand) {
     match cmd {
         IssueCommand::Audit { repo } => audit::run(repo),
         IssueCommand::Brief {
-            number,
+            numbers,
             no_fetch,
             json,
-        } => brief::run(number, no_fetch, json),
+        } => brief::run(&numbers, no_fetch, json),
         IssueCommand::Create {
             repo,
             title,
