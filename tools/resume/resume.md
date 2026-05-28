@@ -4,6 +4,11 @@ header-includes: |
   \usepackage{sourceserifpro}
   \usepackage{sectsty}
   \allsectionsfont{\rmfamily\bfseries}
+geometry:
+  - top=0.75in
+  - bottom=0.75in
+  - left=1in
+  - right=1in
 ---
 
 # Jon Edwards
