@@ -15,3 +15,8 @@ extend-exclude = [
 # justified with a brief comment so future readers know why each one is
 # pinned.
 AKS = "AKS" # Azure Kubernetes Service
+
+[default.extend-identifiers]
+# typos splits on case boundaries, so allow whole mixed-case identifiers
+# here when the post-split tokens would otherwise trip the typo check.
+PnP = "PnP" # Property and People (tools/resume)
