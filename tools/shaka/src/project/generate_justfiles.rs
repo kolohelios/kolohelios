@@ -278,11 +278,13 @@ build-docx:
     #!/usr/bin/env bash
     set -euo pipefail
     shopt -s nullglob
+    ref_arg=()
+    [ -f reference.docx ] && ref_arg=(--reference-doc=reference.docx)
     for md in *.md; do
         [ "$md" = "README.md" ] && continue
         out="${md%.md}.docx"
         echo "  building $out"
-        SOURCE_DATE_EPOCH=0 pandoc "$md" -o "$out"
+        SOURCE_DATE_EPOCH=0 pandoc "$md" "${ref_arg[@]}" -o "$out"
     done
 
 build: build-pdf build-docx
@@ -296,6 +298,8 @@ drift-check:
     shopt -s nullglob
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
+    ref_arg=()
+    [ -f reference.docx ] && ref_arg=(--reference-doc=reference.docx)
     drift=0
     for md in *.md; do
         [ "$md" = "README.md" ] && continue
@@ -309,7 +313,7 @@ drift-check:
             if [ "$ext" = "pdf" ]; then
                 SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=tectonic -o "$tmpdir/$out"
             else
-                SOURCE_DATE_EPOCH=0 pandoc "$md" -o "$tmpdir/$out"
+                SOURCE_DATE_EPOCH=0 pandoc "$md" "${ref_arg[@]}" -o "$tmpdir/$out"
             fi
             if cmp -s "$out" "$tmpdir/$out"; then
                 echo "  ok      $out"
