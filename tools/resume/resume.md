@@ -8,10 +8,11 @@ header-includes: |
   \hyphenpenalty=10000
   \exhyphenpenalty=10000
 geometry:
-  - top=0.75in
-  - bottom=0.75in
-  - left=1in
-  - right=1in
+  - top=0.375in
+  - bottom=0.375in
+  - left=0.5in
+  - right=0.5in
+  - includefoot
 ---
 
 # Jon Edwards
