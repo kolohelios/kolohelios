@@ -159,6 +159,45 @@ impl Classifications {
         }
     }
 
+    /// Names of dimensions that are required at `stage` (per each
+    /// declared dimension's `required_by`) but unset on this post.
+    /// "Unset" means `None` for single-valued, empty for multi-valued.
+    ///
+    /// `Abandoned` posts always come back empty — they bypass the
+    /// completeness check entirely; see
+    /// `Stage::triggers_required_by`. Dimensions the taxonomy doesn't
+    /// declare are silent (consistent with `violations`).
+    pub fn missing_at_stage(
+        &self,
+        taxonomy: &Taxonomy,
+        stage: crate::stage::Stage,
+    ) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        for (name, opt) in self.single_valued_entries() {
+            let Some(dim) = taxonomy.dimension(name) else {
+                continue;
+            };
+            let Some(threshold) = dim.required_by else {
+                continue;
+            };
+            if stage.triggers_required_by(threshold) && opt.is_none() {
+                out.push(name);
+            }
+        }
+        for (name, values) in self.multi_valued_entries() {
+            let Some(dim) = taxonomy.dimension(name) else {
+                continue;
+            };
+            let Some(threshold) = dim.required_by else {
+                continue;
+            };
+            if stage.triggers_required_by(threshold) && values.is_empty() {
+                out.push(name);
+            }
+        }
+        out
+    }
+
     fn single_valued_entries(&self) -> [(&'static str, Option<&str>); 8] {
         [
             ("format", self.format.as_deref()),
@@ -410,5 +449,157 @@ mod tests {
         let c = Classifications::default();
         let t = Taxonomy::current_v1();
         assert!(c.validate(&t).is_ok());
+    }
+
+    use crate::stage::Stage;
+    use crate::taxonomy::Dimension;
+    use std::collections::BTreeMap;
+
+    fn taxonomy_with(name: &str, dim: Dimension) -> Taxonomy {
+        let mut m = BTreeMap::new();
+        m.insert(name.to_string(), dim);
+        Taxonomy::new(m)
+    }
+
+    #[test]
+    fn missing_at_stage_flags_unset_required_single_dim() {
+        let t = taxonomy_with(
+            "format",
+            Dimension {
+                values: vec!["essay".into(), "parable".into()],
+                required_by: Some(Stage::Published),
+                ..Default::default()
+            },
+        );
+        let c = Classifications::default();
+        assert_eq!(
+            c.missing_at_stage(&t, Stage::Published),
+            vec!["format"],
+            "published post with missing required format should be flagged",
+        );
+    }
+
+    #[test]
+    fn missing_at_stage_silent_when_post_has_not_reached_threshold() {
+        let t = taxonomy_with(
+            "format",
+            Dimension {
+                values: vec!["essay".into()],
+                required_by: Some(Stage::Published),
+                ..Default::default()
+            },
+        );
+        let c = Classifications::default();
+        // Earlier stages skip — required-ness only activates at the
+        // threshold.
+        for &stage in &[
+            Stage::Concept,
+            Stage::Ideation,
+            Stage::Editing,
+            Stage::FinalEditing,
+        ] {
+            assert!(
+                c.missing_at_stage(&t, stage).is_empty(),
+                "stage {stage} should bypass `required_by = published`",
+            );
+        }
+    }
+
+    #[test]
+    fn missing_at_stage_silent_when_dim_is_set() {
+        let t = taxonomy_with(
+            "format",
+            Dimension {
+                values: vec!["essay".into()],
+                required_by: Some(Stage::Published),
+                ..Default::default()
+            },
+        );
+        let c = Classifications {
+            format: Some("essay".into()),
+            ..Default::default()
+        };
+        assert!(c.missing_at_stage(&t, Stage::Published).is_empty());
+    }
+
+    #[test]
+    fn missing_at_stage_silent_for_abandoned_posts() {
+        // Abandoned posts always bypass — the check never fires
+        // regardless of `required_by`.
+        let t = taxonomy_with(
+            "format",
+            Dimension {
+                values: vec!["essay".into()],
+                required_by: Some(Stage::Published),
+                ..Default::default()
+            },
+        );
+        let c = Classifications::default();
+        assert!(c.missing_at_stage(&t, Stage::Abandoned).is_empty());
+    }
+
+    #[test]
+    fn missing_at_stage_flags_empty_required_multi_dim() {
+        let t = taxonomy_with(
+            "audience",
+            Dimension {
+                multi: true,
+                values: vec!["engineering".into(), "general".into()],
+                required_by: Some(Stage::Published),
+            },
+        );
+        let c = Classifications::default(); // audience: Vec is empty
+        assert_eq!(c.missing_at_stage(&t, Stage::Published), vec!["audience"],);
+    }
+
+    #[test]
+    fn missing_at_stage_silent_when_multi_dim_has_at_least_one_value() {
+        let t = taxonomy_with(
+            "audience",
+            Dimension {
+                multi: true,
+                values: vec!["engineering".into(), "general".into()],
+                required_by: Some(Stage::Published),
+            },
+        );
+        let c = Classifications {
+            audience: vec!["engineering".into()],
+            ..Default::default()
+        };
+        assert!(c.missing_at_stage(&t, Stage::Published).is_empty());
+    }
+
+    #[test]
+    fn missing_at_stage_silent_on_dimensions_without_required_by() {
+        // Without `required_by`, the dimension is always optional —
+        // even for published posts.
+        let t = taxonomy_with(
+            "format",
+            Dimension {
+                values: vec!["essay".into()],
+                required_by: None,
+                ..Default::default()
+            },
+        );
+        let c = Classifications::default();
+        assert!(c.missing_at_stage(&t, Stage::Published).is_empty());
+    }
+
+    #[test]
+    fn missing_at_stage_required_by_abandoned_is_no_op() {
+        // Declaring `required_by = "abandoned"` never triggers — no
+        // post ever needs to "reach abandoned" in pipeline order.
+        let t = taxonomy_with(
+            "format",
+            Dimension {
+                values: vec!["essay".into()],
+                required_by: Some(Stage::Abandoned),
+                ..Default::default()
+            },
+        );
+        let c = Classifications::default();
+        for &stage in Stage::ALL {
+            assert!(c.missing_at_stage(&t, stage).is_empty());
+        }
     }
 }

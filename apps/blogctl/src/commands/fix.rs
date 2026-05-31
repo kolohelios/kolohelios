@@ -63,6 +63,7 @@ pub enum SkipReason {
     UnpushedCommits,
     InvalidClassification,
     TagsExceedMax,
+    MissingClassification,
     JjUnavailable,
 }
 
@@ -83,6 +84,9 @@ impl fmt::Display for SkipReason {
             }
             Self::TagsExceedMax => {
                 "manual: prune the post's `tags` list or raise `[tags] max` in .blog-os.toml"
+            }
+            Self::MissingClassification => {
+                "manual: `blogctl classify` to set the value, or relax `required_by` in .blog-os.toml"
             }
             Self::JjUnavailable => {
                 "manual: install jj and run `jj git init --colocate` in the workdir"
@@ -155,6 +159,10 @@ pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
             f @ Finding::TagsExceedMax { .. } => skips.push(Repair::Skip {
                 finding: f,
                 reason: SkipReason::TagsExceedMax,
+            }),
+            f @ Finding::MissingClassification { .. } => skips.push(Repair::Skip {
+                finding: f,
+                reason: SkipReason::MissingClassification,
             }),
             f @ (Finding::JjNotInstalled | Finding::NotAJjRepo { .. }) => {
                 skips.push(Repair::Skip {

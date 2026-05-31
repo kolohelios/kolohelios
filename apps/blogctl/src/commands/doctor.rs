@@ -102,6 +102,16 @@ pub enum Finding {
         count: usize,
         max: u32,
     },
+    /// The post has reached or passed the declared `required_by`
+    /// stage for `dimension`, but the field is unset on the post.
+    /// Abandoned posts never trip this — they bypass the
+    /// completeness check entirely.
+    MissingClassification {
+        path: PathBuf,
+        dimension: String,
+        stage: Stage,
+        required_by: Stage,
+    },
 }
 
 impl fmt::Display for Finding {
@@ -196,6 +206,16 @@ impl fmt::Display for Finding {
                 "too many tags in {}: {count} tags exceeds max {max}",
                 path.display(),
             ),
+            Self::MissingClassification {
+                path,
+                dimension,
+                stage,
+                required_by,
+            } => write!(
+                f,
+                "missing classification in {}: {dimension} is required by {required_by} (post is at {stage})",
+                path.display(),
+            ),
         }
     }
 }
@@ -286,6 +306,25 @@ pub fn audit(workdir: &Workdir) -> Result<Vec<Finding>> {
                             dimension: v.dimension,
                             value: v.value,
                             allowed: v.allowed,
+                        });
+                    }
+                    // Completeness check: dimensions with
+                    // `required_by` set, where the post has reached
+                    // the threshold but the field is unset. Abandoned
+                    // posts always bypass.
+                    for dim_name in meta
+                        .classifications
+                        .missing_at_stage(&taxonomy, meta.status)
+                    {
+                        let threshold = taxonomy
+                            .dimension(dim_name)
+                            .and_then(|d| d.required_by)
+                            .expect("missing_at_stage only returns dims with required_by set");
+                        findings.push(Finding::MissingClassification {
+                            path: path.clone(),
+                            dimension: dim_name.to_string(),
+                            stage: meta.status,
+                            required_by: threshold,
                         });
                     }
                     // Tag cap. Workdirs that haven't declared
@@ -761,6 +800,186 @@ mod tests {
                 .any(|f| matches!(f, Finding::TagsExceedMax { .. })),
             "expected no TagsExceedMax findings without `[tags] max`: {findings:?}",
         );
+    }
+
+    #[test]
+    fn audit_flags_missing_required_classification_at_or_past_threshold() {
+        // Declare `format` required at `published`. Write a published
+        // post with no `format` → expect a MissingClassification
+        // finding.
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            concat!(
+                "version = 1\n",
+                "[themes.standard]\n",
+                "[classifications.format]\n",
+                "values = [\"essay\", \"parable\"]\n",
+                "required_by = \"published\"\n",
+            ),
+        )
+        .unwrap();
+
+        let post = fixture_post("incomplete-published", Stage::Published);
+        fs::write(
+            tmp.path().join("published/incomplete-published.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        let missing: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| matches!(f, Finding::MissingClassification { .. }))
+            .collect();
+        assert_eq!(
+            missing.len(),
+            1,
+            "expected one missing finding: {findings:?}"
+        );
+        if let Finding::MissingClassification {
+            dimension,
+            stage,
+            required_by,
+            ..
+        } = missing[0]
+        {
+            assert_eq!(dimension, "format");
+            assert_eq!(*stage, Stage::Published);
+            assert_eq!(*required_by, Stage::Published);
+        }
+    }
+
+    #[test]
+    fn audit_silent_when_post_set_required_dimension_at_published() {
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            concat!(
+                "version = 1\n",
+                "[themes.standard]\n",
+                "[classifications.format]\n",
+                "values = [\"essay\", \"parable\"]\n",
+                "required_by = \"published\"\n",
+            ),
+        )
+        .unwrap();
+
+        let mut post = fixture_post("complete-published", Stage::Published);
+        post.metadata.classifications.format = Some("parable".into());
+        fs::write(
+            tmp.path().join("published/complete-published.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        assert!(
+            !findings
+                .iter()
+                .any(|f| matches!(f, Finding::MissingClassification { .. })),
+            "expected no MissingClassification findings: {findings:?}",
+        );
+    }
+
+    #[test]
+    fn audit_silent_on_missing_classification_before_threshold() {
+        // Required at `published`, but post is at `concept` — bypass.
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            concat!(
+                "version = 1\n",
+                "[themes.standard]\n",
+                "[classifications.format]\n",
+                "values = [\"essay\", \"parable\"]\n",
+                "required_by = \"published\"\n",
+            ),
+        )
+        .unwrap();
+
+        let post = fixture_post("draft-with-no-format", Stage::Concept);
+        fs::write(
+            tmp.path().join("concepts/draft-with-no-format.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        assert!(
+            !findings
+                .iter()
+                .any(|f| matches!(f, Finding::MissingClassification { .. })),
+            "concept-stage post must bypass `required_by = published`: {findings:?}",
+        );
+    }
+
+    #[test]
+    fn audit_silent_on_missing_classification_for_abandoned_post() {
+        // Abandoned posts always bypass, regardless of threshold.
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            concat!(
+                "version = 1\n",
+                "[themes.standard]\n",
+                "[classifications.format]\n",
+                "values = [\"essay\", \"parable\"]\n",
+                "required_by = \"published\"\n",
+            ),
+        )
+        .unwrap();
+
+        let post = fixture_post("killed", Stage::Abandoned);
+        fs::write(
+            tmp.path().join("abandoned/killed.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        assert!(
+            !findings
+                .iter()
+                .any(|f| matches!(f, Finding::MissingClassification { .. })),
+            "abandoned posts must bypass completeness: {findings:?}",
+        );
+    }
+
+    #[test]
+    fn audit_flags_missing_multi_valued_required_dim_when_empty() {
+        // Multi-valued `audience` with `required_by = published`. An
+        // empty audience list on a published post should flag.
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            concat!(
+                "version = 1\n",
+                "[themes.standard]\n",
+                "[classifications.audience]\n",
+                "multi = true\n",
+                "values = [\"engineering\", \"general\"]\n",
+                "required_by = \"published\"\n",
+            ),
+        )
+        .unwrap();
+
+        let post = fixture_post("audience-empty-published", Stage::Published);
+        fs::write(
+            tmp.path().join("published/audience-empty-published.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        let missing: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| matches!(f, Finding::MissingClassification { .. }))
+            .collect();
+        assert_eq!(missing.len(), 1);
+        if let Finding::MissingClassification { dimension, .. } = missing[0] {
+            assert_eq!(dimension, "audience");
+        }
     }
 
     #[test]

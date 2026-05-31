@@ -334,7 +334,13 @@ mod tests {
 
     #[test]
     fn dimension_required_by_parses_each_stage() {
-        for stage_str in ["concept", "ideation", "editing", "final-editing", "published"] {
+        for stage_str in [
+            "concept",
+            "ideation",
+            "editing",
+            "final-editing",
+            "published",
+        ] {
             let raw = format!("values = [\"x\"]\nrequired_by = \"{stage_str}\"\n");
             let d: Dimension = toml::from_str(&raw).unwrap();
             assert!(
