@@ -179,9 +179,6 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		line: {
 			fail: number & >=0 & <=100
 		}
-		branch: {
-			fail: number & >=0 & <=100
-		}
 	}
 	ci?: {
 		build?: #CiBuild
@@ -233,9 +230,6 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	kind: "rust-worker"
 	coverage?: {
 		line: {
-			fail: number & >=0 & <=100
-		}
-		branch: {
 			fail: number & >=0 & <=100
 		}
 	}

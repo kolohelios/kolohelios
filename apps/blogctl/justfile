@@ -34,9 +34,7 @@ coverage:
     #!/usr/bin/env bash
     # Line coverage only — `cargo llvm-cov --branch` requires nightly
     # (`-Z coverage-options=branch`), incompatible with the pinned
-    # stable toolchain. Schema/audit residue (the unused
-    # `coverage.branch.fail` field, the carry-over justification in
-    # `RustCoverageThresholdNonzero`) lives until #671 lands.
+    # stable toolchain.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')

@@ -1,4 +1,0 @@
-test:
-    cargo test
-
-validate: test

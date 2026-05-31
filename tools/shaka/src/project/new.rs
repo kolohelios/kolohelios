@@ -108,9 +108,6 @@ fn project_cue(name: &str) -> String {
          \t\tline: {{\n\
          \t\t\tfail: 1\n\
          \t\t}}\n\
-         \t\tbranch: {{\n\
-         \t\t\tfail: 0\n\
-         \t\t}}\n\
          \t}}\n\
          \tci: {{\n\
          \t\tbuild: {{\n\

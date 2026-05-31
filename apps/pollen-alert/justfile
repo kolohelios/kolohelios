@@ -36,8 +36,7 @@ machete:
 
 coverage:
     #!/usr/bin/env bash
-    # Line coverage only — see the rust-cli template for why; tracked
-    # cleanup in #671.
+    # Line coverage only — see the rust-cli template for why.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then

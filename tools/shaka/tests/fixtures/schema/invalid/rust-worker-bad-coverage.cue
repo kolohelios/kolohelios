@@ -9,8 +9,5 @@ package project
 		line: {
 			fail: 150
 		}
-		branch: {
-			fail: 50
-		}
 	}
 }

@@ -60,8 +60,6 @@ pub struct CoverageThreshold {
 #[derive(Debug, Deserialize)]
 pub struct Coverage {
     pub line: CoverageThreshold,
-    #[allow(dead_code)]
-    pub branch: CoverageThreshold,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,12 +194,10 @@ impl Rule for RustCoverageThresholdNonzero {
                 _ => RuleResult::Pass,
             };
         };
-        // Branch threshold is allowed to be zero: `cargo-llvm-cov --branch`
-        // is unstable and doesn't count `match` arms or `matches!()`, only
-        // short-circuit booleans. A fresh scaffold has no measurable
-        // branches, so requiring `branch.fail > 0` would make every new
-        // project unshippable until it grew `&&`/`||` chains. Line coverage
-        // remains gated.
+        // Branch coverage isn't measured at all — `cargo-llvm-cov --branch`
+        // requires nightly, and every rust crate is pinned to stable. The
+        // schema dropped `coverage.branch.fail` in #671; only line
+        // coverage is gated here.
         if cov.line.fail == 0 {
             return RuleResult::Fail(format!(
                 "line coverage threshold must be non-zero (line={})",
@@ -846,7 +842,6 @@ mod tests {
             kind: ProjectKind::RustCli,
             coverage: Some(Coverage {
                 line: CoverageThreshold { fail: 30 },
-                branch: CoverageThreshold { fail: 20 },
             }),
             audit: None,
             cli: None,
@@ -1048,29 +1043,12 @@ mod tests {
         let meta = ProjectMeta {
             coverage: Some(Coverage {
                 line: CoverageThreshold { fail: 0 },
-                branch: CoverageThreshold { fail: 20 },
             }),
             ..rust_meta()
         };
         assert!(matches!(
             RustCoverageThresholdNonzero.check(tmp.path(), &meta),
             RuleResult::Fail(_)
-        ));
-    }
-
-    #[test]
-    fn coverage_threshold_passes_for_zero_branch() {
-        let tmp = TempDir::new().unwrap();
-        let meta = ProjectMeta {
-            coverage: Some(Coverage {
-                line: CoverageThreshold { fail: 30 },
-                branch: CoverageThreshold { fail: 0 },
-            }),
-            ..rust_meta()
-        };
-        assert!(matches!(
-            RustCoverageThresholdNonzero.check(tmp.path(), &meta),
-            RuleResult::Pass
         ));
     }
 
@@ -1104,7 +1082,6 @@ mod tests {
         let meta = ProjectMeta {
             coverage: Some(Coverage {
                 line: CoverageThreshold { fail: 0 },
-                branch: CoverageThreshold { fail: 50 },
             }),
             ..rust_worker_meta()
         };

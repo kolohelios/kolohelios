@@ -11,7 +11,6 @@ package project
 	}
 	coverage: {
 		line: {fail:   30}
-		branch: {fail: 20}
 	}
 	ci: {
 		apply: {

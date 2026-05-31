@@ -15,9 +15,6 @@ package project
 		line: {
 			fail: 1
 		}
-		branch: {
-			fail: 0
-		}
 	}
 	audit: {
 		overrides: [
