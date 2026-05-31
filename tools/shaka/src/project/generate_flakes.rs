@@ -334,6 +334,14 @@ fn render_devshell(cli: &CliMeta) -> String {
     out.push_str(
         "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
     );
+
+    if cli.shell_completions {
+        let bin = &cli.binary_name;
+        out.push_str(&format!(
+            "            shellHook = ''\n              if command -v {bin} &>/dev/null; then\n                _completions_dir=\"''${{XDG_CACHE_HOME:-$HOME/.cache}}/kolohelios-completions/{bin}\"\n                mkdir -p \"$_completions_dir\"\n                {bin} completions zsh > \"$_completions_dir/_{bin}\" 2>/dev/null\n                FPATH=\"$_completions_dir:$FPATH\"\n                unset _completions_dir\n              fi\n            '';\n"
+        ));
+    }
+
     out.push_str("          };\n        }\n      );\n");
     out
 }
@@ -878,5 +886,26 @@ mod tests {
         let outputs_pos = out.find("outputs =").expect("outputs");
         let extra_pos = out.find("supportedSystems = []").expect("extra");
         assert!(outputs_pos < extra_pos);
+    }
+
+    #[test]
+    fn shell_completions_emit_devshell_shell_hook() {
+        let cli = CliMeta {
+            shell_completions: true,
+            ..minimal_cli()
+        };
+        let out = render_flake("demo", &cli);
+        assert!(out.contains("shellHook"));
+        assert!(out.contains("demo completions zsh"));
+        assert!(out.contains("kolohelios-completions/demo"));
+        assert!(out.contains("FPATH="));
+        // Verify nix escaping: ''${ produces a literal ${ in the shell
+        assert!(out.contains("''${XDG_CACHE_HOME:-"));
+    }
+
+    #[test]
+    fn no_shell_hook_without_shell_completions() {
+        let out = render_flake("demo", &minimal_cli());
+        assert!(!out.contains("shellHook"));
     }
 }

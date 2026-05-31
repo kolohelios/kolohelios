@@ -123,6 +123,15 @@
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
+            shellHook = ''
+              if command -v shaka &>/dev/null; then
+                _completions_dir="''${XDG_CACHE_HOME:-$HOME/.cache}/kolohelios-completions/shaka"
+                mkdir -p "$_completions_dir"
+                shaka completions zsh > "$_completions_dir/_shaka" 2>/dev/null
+                FPATH="$_completions_dir:$FPATH"
+                unset _completions_dir
+              fi
+            '';
           };
         }
       );
