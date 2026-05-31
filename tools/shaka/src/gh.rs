@@ -332,18 +332,36 @@ pub(crate) fn parse_pr_for_issue(body: &str) -> Result<Option<PrInfo>, GhError> 
     let Some(first) = value.as_array().and_then(|a| a.first()) else {
         return Ok(None);
     };
-    let number = first["number"].as_u64().context(SchemaSnafu {
+    parse_one_pr_list_entry(first).map(Some)
+}
+
+/// Parse a `gh pr list --json number,state,url` JSON array into a
+/// `Vec<PrInfo>`. Empty input yields an empty Vec; one malformed entry
+/// short-circuits with an error rather than silently dropping it.
+pub(crate) fn parse_all_prs(body: &str) -> Result<Vec<PrInfo>, GhError> {
+    let value: Value = serde_json::from_str(body).context(JsonParseSnafu {
+        context: "failed to parse gh pr list JSON".to_string(),
+    })?;
+    let Some(arr) = value.as_array() else {
+        return Ok(Vec::new());
+    };
+    arr.iter().map(parse_one_pr_list_entry).collect()
+}
+
+/// Lift one entry from a `gh pr list --json number,state,url` array
+/// into a `PrInfo`. State strings are upper-case here (unlike the REST
+/// API's lower-case `open`/`closed` + separate `merged_at`).
+fn parse_one_pr_list_entry(value: &Value) -> Result<PrInfo, GhError> {
+    let number = value["number"].as_u64().context(SchemaSnafu {
         message: "PR missing 'number' field",
     })?;
-    let url = first["url"]
+    let url = value["url"]
         .as_str()
         .with_context(|| SchemaSnafu {
             message: format!("PR #{number} missing 'url' field"),
         })?
         .to_string();
-    // gh pr list reports state as upper-case OPEN/CLOSED/MERGED (unlike the
-    // REST API which uses lower-case open/closed plus a separate merged_at).
-    let state = match first["state"].as_str() {
+    let state = match value["state"].as_str() {
         Some("OPEN") => PrState::Open,
         Some("MERGED") => PrState::Merged,
         Some("CLOSED") => PrState::Closed,
@@ -354,7 +372,44 @@ pub(crate) fn parse_pr_for_issue(body: &str) -> Result<Option<PrInfo>, GhError> 
             .fail();
         }
     };
-    Ok(Some(PrInfo { number, url, state }))
+    Ok(PrInfo { number, url, state })
+}
+
+/// All OPEN PRs whose body references `Closes #n`. Returns an empty
+/// Vec if none. See [`pr_for_issue`] for the single-PR (any-state)
+/// variant; this helper exists so `shaka workspace status` can surface
+/// live work even when the PR's bookmark isn't on the workspace's `@`.
+pub fn open_prs_for_issue(repo: &str, n: u64) -> Result<Vec<PrInfo>, GhError> {
+    let query = format!("in:body Closes #{n}");
+    let output = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--search",
+            &query,
+            "--state",
+            "open",
+            "--limit",
+            "10",
+            "--json",
+            "number,state,url",
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: format!("gh pr list (open, search Closes #{n})"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_all_prs(&body)
 }
 
 /// Run `gh pr create` and return the PR URL.
@@ -1135,6 +1190,32 @@ mod tests {
     fn parse_pr_for_issue_unknown_state_errors() {
         let body = r#"[{"number": 1, "state": "WAT", "url": "u"}]"#;
         assert!(parse_pr_for_issue(body).is_err());
+    }
+
+    #[test]
+    fn parse_all_prs_multiple() {
+        let body = r#"[
+            {"number": 1, "state": "OPEN", "url": "u1"},
+            {"number": 2, "state": "OPEN", "url": "u2"}
+        ]"#;
+        let prs = parse_all_prs(body).unwrap();
+        assert_eq!(prs.len(), 2);
+        assert_eq!(prs[0].number, 1);
+        assert_eq!(prs[1].number, 2);
+    }
+
+    #[test]
+    fn parse_all_prs_empty() {
+        assert!(parse_all_prs("[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_all_prs_short_circuits_on_bad_entry() {
+        let body = r#"[
+            {"number": 1, "state": "OPEN", "url": "u1"},
+            {"number": 2, "state": "WAT", "url": "u2"}
+        ]"#;
+        assert!(parse_all_prs(body).is_err());
     }
 
     #[test]
