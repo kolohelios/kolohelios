@@ -2,7 +2,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use aof::{render, todoist};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 #[derive(Parser)]
 #[command(
@@ -32,6 +33,8 @@ enum Command {
         #[arg(long)]
         from: PathBuf,
     },
+    #[command(hide = true)]
+    Completions { shell: Shell },
 }
 
 fn main() -> ExitCode {
@@ -55,6 +58,12 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Command::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            ExitCode::SUCCESS
+        }
     }
 }
 
@@ -82,7 +91,6 @@ fn unimplemented(name: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
 
     #[test]
     fn cli_definition_is_valid() {
