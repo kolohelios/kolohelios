@@ -94,6 +94,15 @@
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
+            shellHook = ''
+              if command -v blogctl &>/dev/null; then
+                _completions_dir="''${XDG_CACHE_HOME:-$HOME/.cache}/kolohelios-completions/blogctl"
+                mkdir -p "$_completions_dir"
+                blogctl completions zsh > "$_completions_dir/_blogctl" 2>/dev/null
+                FPATH="$_completions_dir:$FPATH"
+                unset _completions_dir
+              fi
+            '';
           };
         }
       );
