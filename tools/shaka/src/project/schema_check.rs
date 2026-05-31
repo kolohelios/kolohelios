@@ -18,7 +18,7 @@ use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 /// `CARGO_MANIFEST_DIR` keeps it findable regardless of cwd.
 const SCHEMA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/schema/project-schema.cue");
 
-const SLOTS: &[&str] = &["apps", "infra", "nix", "packages", "services", "tools"];
+use super::SLOTS;
 
 enum ProjectResult {
     Pass,
@@ -244,7 +244,11 @@ mod tests {
     #[test]
     fn discover_ignores_non_slot_directories() {
         let tmp = TempDir::new().unwrap();
-        mkdir(tmp.path(), "projects/legacy");
+        // `docs/` and `.git/` are not slots and never will be; this
+        // test guards the slot filter, not the slot list itself.
+        // (Pre-#628 this test used `projects/legacy` as the non-slot
+        // example — `projects/` was missing from the discovery list
+        // at the time, but only because of the bug we're fixing.)
         mkdir(tmp.path(), ".git/refs");
         mkdir(tmp.path(), "docs/intro");
         mkdir(tmp.path(), "tools/shaka");
