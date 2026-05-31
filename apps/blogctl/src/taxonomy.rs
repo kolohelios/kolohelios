@@ -13,17 +13,32 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// One dimension of the taxonomy: a list of allowed values plus a
-/// `multi` flag that documents whether the dimension is single- or
-/// multi-valued semantically. The Rust type system carries the
+use crate::stage::Stage;
+
+/// One dimension of the taxonomy: a list of allowed values, a `multi`
+/// flag documenting the cardinality, and an optional `required_by`
+/// stage threshold for the completeness check.
+///
+/// `multi` is informational — the Rust type system carries the
 /// single/multi distinction (each `Classifications` field is either
-/// `Option<String>` or `Vec<String>`), so `multi` is informational
-/// only — kept for the taxonomy file's self-documentation.
+/// `Option<String>` or `Vec<String>`), so `multi = true` here is
+/// self-documentation for the taxonomy file.
+///
+/// `required_by` activates the completeness check (see
+/// `Classifications::missing_at_stage`): the dimension must be set on
+/// posts whose status has reached the named stage. Absence means
+/// "never required" — the previous behavior before #602.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dimension {
     #[serde(default)]
     pub multi: bool,
     pub values: Vec<String>,
+    /// Stage at (and beyond) which the dimension is required. `None`
+    /// means the dimension is always optional. `Some(Stage::Abandoned)`
+    /// is a meaningless config — no post ever needs to "reach
+    /// abandoned" — but parses cleanly and is a no-op at check time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_by: Option<Stage>,
 }
 
 impl Dimension {
@@ -116,6 +131,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "format".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&[
                 "parable",
                 "thesis",
@@ -130,6 +146,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "hook".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&[
                 "proverb",
                 "contradiction",
@@ -144,6 +161,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "tone".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&["gentle", "sharp", "vulnerable", "reflective", "provocative"]),
         },
     );
@@ -151,6 +169,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "audience".into(),
         Dimension {
             multi: true,
+            required_by: None,
             values: strs(&[
                 "engineering",
                 "product",
@@ -164,6 +183,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "topic".into(),
         Dimension {
             multi: true,
+            required_by: None,
             values: strs(&["engineering", "leadership", "product", "career", "general"]),
         },
     );
@@ -171,6 +191,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "narrative_structure".into(),
         Dimension {
             multi: true,
+            required_by: None,
             values: strs(&[
                 "direct-statement",
                 "personal-anecdote",
@@ -184,6 +205,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "call_to_action".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&["none", "reflection", "discussion"]),
         },
     );
@@ -191,6 +213,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "visual_type".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&["text-only", "diagram", "illustration", "screenshot"]),
         },
     );
@@ -198,6 +221,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "complexity".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&["simple", "moderate", "dense"]),
         },
     );
@@ -205,6 +229,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "vulnerability".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&["none", "low", "medium", "high"]),
         },
     );
@@ -212,6 +237,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "outcome_prediction".into(),
         Dimension {
             multi: false,
+            required_by: None,
             values: strs(&["low", "medium", "high"]),
         },
     );
@@ -219,6 +245,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "motifs".into(),
         Dimension {
             multi: true,
+            required_by: None,
             values: strs(&[
                 "ambiguity",
                 "delivery",
@@ -296,5 +323,42 @@ mod tests {
         let raw = "values = [\"x\", \"y\"]\n";
         let d: Dimension = toml::from_str(raw).unwrap();
         assert!(!d.multi);
+    }
+
+    #[test]
+    fn dimension_required_by_defaults_to_none() {
+        let raw = "values = [\"x\"]\n";
+        let d: Dimension = toml::from_str(raw).unwrap();
+        assert!(d.required_by.is_none());
+    }
+
+    #[test]
+    fn dimension_required_by_parses_each_stage() {
+        for stage_str in ["concept", "ideation", "editing", "final-editing", "published"] {
+            let raw = format!("values = [\"x\"]\nrequired_by = \"{stage_str}\"\n");
+            let d: Dimension = toml::from_str(&raw).unwrap();
+            assert!(
+                d.required_by.is_some(),
+                "expected required_by = {stage_str:?} to parse",
+            );
+        }
+    }
+
+    #[test]
+    fn dimension_required_by_rejects_unknown_stage() {
+        let raw = "values = [\"x\"]\nrequired_by = \"draft\"\n";
+        assert!(toml::from_str::<Dimension>(raw).is_err());
+    }
+
+    #[test]
+    fn dimension_required_by_round_trips_through_toml() {
+        let d = Dimension {
+            multi: false,
+            values: vec!["x".into()],
+            required_by: Some(Stage::Published),
+        };
+        let raw = toml::to_string(&d).unwrap();
+        let back: Dimension = toml::from_str(&raw).unwrap();
+        assert_eq!(back, d);
     }
 }

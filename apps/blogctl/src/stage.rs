@@ -52,6 +52,36 @@ impl Stage {
         Stage::ALL.iter().copied().find(|s| s.dirname() == dir)
     }
 
+    /// Linear position in the editorial pipeline: `Concept` is 0,
+    /// `Published` is 4. `Abandoned` sits off the pipeline and returns
+    /// `None` — callers that compare ranks (e.g. completeness checks)
+    /// must handle the bypass explicitly.
+    pub fn pipeline_rank(self) -> Option<u8> {
+        match self {
+            Stage::Concept => Some(0),
+            Stage::Ideation => Some(1),
+            Stage::Editing => Some(2),
+            Stage::FinalEditing => Some(3),
+            Stage::Published => Some(4),
+            Stage::Abandoned => None,
+        }
+    }
+
+    /// True when a `required_by = <threshold>` rule kicks in for a post
+    /// at `self`. `Abandoned` posts always bypass (they're being killed,
+    /// no need to enforce classification); otherwise the post has to
+    /// have reached `threshold` (in pipeline order).
+    pub fn triggers_required_by(self, threshold: Stage) -> bool {
+        match (self.pipeline_rank(), threshold.pipeline_rank()) {
+            (Some(here), Some(at)) => here >= at,
+            // self is abandoned → always bypass.
+            // threshold is abandoned → never triggers (declaring
+            // `required_by = "abandoned"` is meaningless config, not
+            // an error).
+            _ => false,
+        }
+    }
+
     /// Promote along the linear workflow: concept → ideation → editing →
     /// final-editing → published. Abandoned and Published are terminal.
     pub fn promote(self) -> Result<Stage> {
@@ -177,5 +207,49 @@ mod tests {
             assert_eq!(Stage::from_dirname(s.dirname()), Some(s));
         }
         assert_eq!(Stage::from_dirname("history"), None);
+    }
+
+    #[test]
+    fn pipeline_rank_orders_the_linear_stages() {
+        assert!(Stage::Concept.pipeline_rank() < Stage::Ideation.pipeline_rank());
+        assert!(Stage::Ideation.pipeline_rank() < Stage::Editing.pipeline_rank());
+        assert!(Stage::Editing.pipeline_rank() < Stage::FinalEditing.pipeline_rank());
+        assert!(Stage::FinalEditing.pipeline_rank() < Stage::Published.pipeline_rank());
+    }
+
+    #[test]
+    fn pipeline_rank_is_none_for_abandoned() {
+        assert!(Stage::Abandoned.pipeline_rank().is_none());
+    }
+
+    #[test]
+    fn triggers_required_by_when_post_has_reached_threshold() {
+        // required_by = "editing" → editing, final-editing, and
+        // published all trigger.
+        assert!(Stage::Editing.triggers_required_by(Stage::Editing));
+        assert!(Stage::FinalEditing.triggers_required_by(Stage::Editing));
+        assert!(Stage::Published.triggers_required_by(Stage::Editing));
+        // …but earlier stages don't.
+        assert!(!Stage::Concept.triggers_required_by(Stage::Editing));
+        assert!(!Stage::Ideation.triggers_required_by(Stage::Editing));
+    }
+
+    #[test]
+    fn abandoned_posts_bypass_required_by_completely() {
+        // Regardless of threshold, an abandoned post never triggers
+        // required-ness checks — the post is being killed.
+        for &threshold in Stage::ALL {
+            assert!(!Stage::Abandoned.triggers_required_by(threshold));
+        }
+    }
+
+    #[test]
+    fn required_by_abandoned_is_meaningless_config() {
+        // Declaring `required_by = "abandoned"` never triggers for
+        // any post (no post needs to "reach abandoned"). Doesn't
+        // error; just a no-op rule.
+        for &here in Stage::ALL {
+            assert!(!here.triggers_required_by(Stage::Abandoned));
+        }
     }
 }
