@@ -73,6 +73,11 @@
     '';
   };
 
+  programs.pay-respects = {
+    enable = true;
+    enableZshIntegration = true;
+  };
+
   programs.zsh = {
     enable = true;
     shellAliases = {
