@@ -76,6 +76,47 @@ pub fn fetch_raw_file(repo: &str, path: &str) -> Result<Option<String>, GhError>
     Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
 }
 
+/// Run `gh api graphql -f query=<query>` with the given variables.
+///
+/// `string_vars` becomes `-f name=value` (the value is passed as a
+/// GraphQL `String!`); `int_vars` becomes `-F name=value` (numeric
+/// coercion, suitable for `Int!`). The GitHub CLI handles the JSON
+/// envelope and authentication.
+fn api_graphql(
+    query: &str,
+    string_vars: &[(&str, &str)],
+    int_vars: &[(&str, i64)],
+) -> Result<Value, GhError> {
+    let mut cmd = Command::new("gh");
+    cmd.arg("api").arg("graphql");
+    cmd.arg("-f").arg(format!("query={query}"));
+    for (k, v) in string_vars {
+        cmd.arg("-f").arg(format!("{k}={v}"));
+    }
+    for (k, v) in int_vars {
+        cmd.arg("-F").arg(format!("{k}={v}"));
+    }
+
+    let output = cmd.output().context(SpawnSnafu)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: "gh api graphql".to_string(),
+            stderr: stderr.to_string(),
+        }
+        .fail();
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    if body.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+
+    serde_json::from_str(&body).context(JsonParseSnafu {
+        context: "failed to parse JSON from gh api graphql".to_string(),
+    })
+}
+
 /// Run `gh api <endpoint>` and return the HTTP status code.
 /// Used for endpoints like vulnerability-alerts that signal via status code.
 pub fn api_get_status(endpoint: &str) -> Result<i32, GhError> {
@@ -561,17 +602,37 @@ pub fn issue_db_id(repo: &str, number: u64) -> Result<u64, GhError> {
 
 /// Fetch the native parent issue number for `{repo}#{number}`, if any.
 ///
-/// GitHub's REST issue endpoint exposes `.parent` (object or null) for
-/// issues linked via the native sub-issue API. Freeform `Sub-issue of #N`
-/// body text does *not* populate this field — which is exactly the drift
-/// `shaka issue audit` flags.
+/// Goes through GraphQL (`repository.issue.parent.number`) rather than
+/// REST. GitHub's REST `/issues/{N}.parent` populates unreliably on
+/// fresh sub-issue links — sometimes lagging by a day, sometimes
+/// staying null indefinitely — even though the parent's
+/// `/issues/{N}/sub_issues` endpoint and the GraphQL `issue.parent`
+/// edge both show the link immediately. GraphQL is authoritative for
+/// this relationship; see #599 for the reproduction.
+///
+/// Freeform `Sub-issue of #N` body text doesn't populate either edge —
+/// that's the drift `shaka issue audit` flags.
 pub fn issue_parent(repo: &str, number: u64) -> Result<Option<u64>, GhError> {
-    let endpoint = format!("/repos/{repo}/issues/{number}");
-    let value = api_get(&endpoint)?;
-    Ok(value
-        .get("parent")
-        .and_then(|p| p.get("number"))
-        .and_then(|n| n.as_u64()))
+    let (owner, name) = repo.split_once('/').context(SchemaSnafu {
+        message: format!("repo {repo:?} not in owner/name form"),
+    })?;
+    let query = "query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){issue(number:$num){parent{number}}}}";
+    let value = api_graphql(
+        query,
+        &[("owner", owner), ("name", name)],
+        &[("num", number as i64)],
+    )?;
+    Ok(parse_issue_parent_graphql(&value))
+}
+
+/// Pluck the parent number from a `gh api graphql` response body for the
+/// `issue_parent` query. Returns `None` when the issue has no native
+/// parent, when the issue doesn't exist (`issue: null`), or when the
+/// `parent` edge is null. Extracted from `issue_parent` so the parsing
+/// logic can be unit-tested without spawning `gh`.
+fn parse_issue_parent_graphql(body: &Value) -> Option<u64> {
+    body.pointer("/data/repository/issue/parent/number")
+        .and_then(|n| n.as_u64())
 }
 
 /// Returns `Ok(true)` if `{repo}#{number}` resolves, `Ok(false)` on 404,
@@ -1299,5 +1360,32 @@ mod tests {
     #[test]
     fn parse_label_list_empty() {
         assert!(parse_label_list("[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_issue_parent_graphql_with_parent() {
+        let body: Value =
+            serde_json::from_str(r#"{"data":{"repository":{"issue":{"parent":{"number":289}}}}}"#)
+                .unwrap();
+        assert_eq!(parse_issue_parent_graphql(&body), Some(289));
+    }
+
+    #[test]
+    fn parse_issue_parent_graphql_parent_null() {
+        // Issue exists, no native parent — `parent` edge is null.
+        let body: Value =
+            serde_json::from_str(r#"{"data":{"repository":{"issue":{"parent":null}}}}"#).unwrap();
+        assert_eq!(parse_issue_parent_graphql(&body), None);
+    }
+
+    #[test]
+    fn parse_issue_parent_graphql_issue_missing() {
+        // Issue doesn't exist — GitHub returns `issue: null`.
+        // The audit caller has already filtered by existence so this
+        // path is defensive, but verifying it returns None keeps the
+        // behavior cleanly degraded.
+        let body: Value =
+            serde_json::from_str(r#"{"data":{"repository":{"issue":null}}}"#).unwrap();
+        assert_eq!(parse_issue_parent_graphql(&body), None);
     }
 }
