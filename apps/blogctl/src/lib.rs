@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod classifications;
 pub mod cli;
 pub mod commands;
+pub mod datetime;
 pub mod error;
 pub mod kind;
 pub mod openrouter;

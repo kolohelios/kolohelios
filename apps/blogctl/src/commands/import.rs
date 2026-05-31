@@ -19,9 +19,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use time::format_description::well_known::Rfc3339;
-use time::OffsetDateTime;
-
+use crate::datetime::{self, Flag};
 use crate::error::Result;
 use crate::kind::Kind;
 use crate::post::{Post, PostMetadata};
@@ -55,12 +53,7 @@ pub fn run(jj: &dyn Jj, args: ImportArgs) -> Result<()> {
         None => slug::slugify(&args.title)?,
     };
 
-    let published_at = OffsetDateTime::parse(&args.published_at, &Rfc3339).map_err(|source| {
-        Error::InvalidPublishedAt {
-            value: args.published_at.clone(),
-            source,
-        }
-    })?;
+    let published_at = datetime::parse_timestamp(&args.published_at, Flag::PublishedAt)?;
 
     let body = read_body(&args.body_file)?;
 
