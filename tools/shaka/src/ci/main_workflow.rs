@@ -59,10 +59,13 @@ pub enum Publish {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct PublishFlakehub {
     pub name: String,
     pub visibility: String,
     pub rolling: bool,
+    #[serde(default)]
+    pub populate_consumer_cache: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -418,6 +421,25 @@ fn build_job(spec: &MainBuildSpec) -> InlineJob {
                 with,
                 env: BTreeMap::new(),
             }));
+            // After flakehub-push registers the new revision, rebuild
+            // from the FlakeHub URL so the closure pushed to FlakeHub
+            // Cache matches what downstream consumers will ask for.
+            // The local-path `nix build` above produces a different
+            // `.drv` (different source-store-hash for path vs tarball
+            // inputs), so its cached output never satisfies consumer
+            // lookups. See kolohelios/kolohelios#591.
+            if fh.populate_consumer_cache {
+                steps.push(Step::Run(RunStep {
+                    id: None,
+                    name: Some(format!(
+                        "Build {} from FlakeHub URL (populate consumer cache)",
+                        spec.build.display_name
+                    )),
+                    if_: Some(publish_if.to_string()),
+                    run: format!("nix build 'https://flakehub.com/f/{}/*.tar.gz'", fh.name),
+                    env: BTreeMap::new(),
+                }));
+            }
         }
         Publish::Artifact(art) => {
             let mut with: BTreeMap<String, Value> = BTreeMap::new();

@@ -54,6 +54,18 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	name:       string & =~"^[a-z][a-z0-9-]+/[a-z][a-z0-9-]+$"
 	visibility: "public" | "private"
 	rolling:    bool
+
+	// After `flakehub-push` registers this revision, also run
+	// `nix build https://flakehub.com/f/<name>/*.tar.gz`. The closure
+	// produced by that second build has a different `.drv` than the
+	// `nix build <local-path>` we already did (source-store-hash
+	// differs between path and tarball inputs), so it lands a *new*
+	// entry in FlakeHub Cache — the one downstream consumers will
+	// look up when they evaluate this flake. Set to `true` for
+	// flakes consumed by other repos as `nix build`-able derivations;
+	// leave `false` for libs (where there's no built output) or
+	// flakes whose only consumer is this repo itself.
+	populateConsumerCache: *false | bool
 }
 
 #PublishArtifact: {
