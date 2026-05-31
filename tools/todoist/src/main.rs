@@ -1,5 +1,7 @@
-use anyhow::{anyhow, Context, Result};
+use std::error::Error;
+
 use clap::{Args, Parser, Subcommand};
+use snafu::{ResultExt, Snafu};
 
 mod api;
 mod auth;
@@ -7,6 +9,30 @@ mod projects;
 mod tasks;
 
 use auth::OpRunner;
+
+#[derive(Debug, Snafu)]
+enum CliError {
+    #[snafu(display("{source}"))]
+    Auth { source: auth::AuthError },
+
+    #[snafu(display("{source}"))]
+    Projects { source: projects::ProjectsError },
+
+    #[snafu(display("{source}"))]
+    Tasks { source: tasks::TasksError },
+
+    #[snafu(display("could not read {} — run `todoist auth login` first", path.display()))]
+    ReadConfig {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("could not parse stored auth config"))]
+    ParseConfig { source: toml::de::Error },
+
+    #[snafu(display("could not resolve token from 1Password: {source}"))]
+    ResolveToken { source: auth::OpError },
+}
 
 #[derive(Parser)]
 #[command(name = "todoist", version, about = "Command-line client for Todoist")]
@@ -112,11 +138,19 @@ enum TasksSubcommand {
     },
 }
 
-fn main() -> Result<()> {
-    dispatch(Cli::parse().command)
+fn main() {
+    if let Err(e) = dispatch(Cli::parse().command) {
+        eprintln!("{e}");
+        let mut source = e.source();
+        while let Some(s) = source {
+            eprintln!("  caused by: {s}");
+            source = s.source();
+        }
+        std::process::exit(1);
+    }
 }
 
-fn dispatch(command: Command) -> Result<()> {
+fn dispatch(command: Command) -> Result<(), CliError> {
     match command {
         Command::Auth(AuthCmd { command }) => handle_auth(command),
         Command::Projects(ProjectsCmd { command }) => handle_projects(command),
@@ -124,12 +158,12 @@ fn dispatch(command: Command) -> Result<()> {
     }
 }
 
-fn handle_projects(cmd: ProjectsSubcommand) -> Result<()> {
+fn handle_projects(cmd: ProjectsSubcommand) -> Result<(), CliError> {
     match cmd {
         ProjectsSubcommand::List { json } => {
             let token = resolve_token()?;
             let client = api::RealClient::default();
-            let projects = projects::run_list(&client, &token)?;
+            let projects = projects::run_list(&client, &token).context(ProjectsSnafu)?;
             if json {
                 println!("{}", projects::render_ndjson(&projects));
             } else {
@@ -140,7 +174,7 @@ fn handle_projects(cmd: ProjectsSubcommand) -> Result<()> {
     }
 }
 
-fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
+fn handle_tasks(cmd: TasksSubcommand) -> Result<(), CliError> {
     match cmd {
         TasksSubcommand::List {
             project,
@@ -158,7 +192,8 @@ fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
                     filter,
                     limit,
                 },
-            )?;
+            )
+            .context(TasksSnafu)?;
             if json {
                 println!("{}", tasks::render_ndjson(&outcome.tasks));
             } else {
@@ -190,14 +225,15 @@ fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
                     labels,
                     description,
                 },
-            )?;
+            )
+            .context(TasksSnafu)?;
             println!("{}", tasks::render_added(&created));
             Ok(())
         }
         TasksSubcommand::Complete { ids } => {
             let token = resolve_token()?;
             let client = api::RealClient::default();
-            let results = tasks::run_complete(&client, &token, &ids)?;
+            let results = tasks::run_complete(&client, &token, &ids).context(TasksSnafu)?;
             let use_unicode = std::io::IsTerminal::is_terminal(&std::io::stdout())
                 && std::env::var_os("NO_COLOR").is_none();
             let (out, any_failure) = tasks::render_complete_results(&results, use_unicode);
@@ -210,36 +246,32 @@ fn handle_tasks(cmd: TasksSubcommand) -> Result<()> {
     }
 }
 
-fn resolve_token() -> Result<String> {
-    let path = auth::default_config_path()?;
+fn resolve_token() -> Result<String, CliError> {
+    let path = auth::default_config_path().context(AuthSnafu)?;
     let op = auth::RealOp;
-    let raw = std::fs::read_to_string(&path).with_context(|| {
-        format!(
-            "could not read {} — run `todoist auth login` first",
-            path.display()
-        )
-    })?;
-    let config: auth::Config =
-        toml::from_str(&raw).context("could not parse stored auth config")?;
-    op.read(&config.token_op_ref)
-        .map_err(|e| anyhow!("could not resolve token from 1Password: {e}"))
+    let raw = std::fs::read_to_string(&path).context(ReadConfigSnafu { path: path.clone() })?;
+    let config: auth::Config = toml::from_str(&raw).context(ParseConfigSnafu)?;
+    op.read(&config.token_op_ref).context(ResolveTokenSnafu)
 }
 
-fn handle_auth(cmd: AuthSubcommand) -> Result<()> {
-    let path = auth::default_config_path()?;
+fn handle_auth(cmd: AuthSubcommand) -> Result<(), CliError> {
+    let path = auth::default_config_path().context(AuthSnafu)?;
     let op = auth::RealOp;
     match cmd {
         AuthSubcommand::Login { op_ref } => {
-            auth::login(&op, &path, &op_ref)?;
+            auth::login(&op, &path, &op_ref).context(AuthSnafu)?;
             println!("saved token reference to {}", path.display());
             Ok(())
         }
         AuthSubcommand::Status => {
-            println!("{}", render_status(auth::status(&op, &path)?));
+            println!(
+                "{}",
+                render_status(auth::status(&op, &path).context(AuthSnafu)?)
+            );
             Ok(())
         }
         AuthSubcommand::Logout => {
-            auth::logout(&path)?;
+            auth::logout(&path).context(AuthSnafu)?;
             println!("removed token reference (if any)");
             Ok(())
         }

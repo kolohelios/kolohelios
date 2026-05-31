@@ -1,26 +1,59 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     pub token_op_ref: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Snafu)]
+#[snafu(display("{message}"))]
 pub struct OpError {
     pub message: String,
 }
 
-impl std::fmt::Display for OpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum AuthError {
+    #[snafu(display("HOME is not set"))]
+    HomeNotSet { source: std::env::VarError },
 
-impl std::error::Error for OpError {}
+    #[snafu(display("could not resolve {op_ref}: {source}"))]
+    OpResolve { op_ref: String, source: OpError },
+
+    #[snafu(display("serializing config"))]
+    TomlSerialize { source: toml::ser::Error },
+
+    #[snafu(display("parsing config"))]
+    TomlParse { source: toml::de::Error },
+
+    #[snafu(display("creating {}", path.display()))]
+    CreateDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("writing {}", path.display()))]
+    Write {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("reading {}", path.display()))]
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[snafu(display("removing {}", path.display()))]
+    Remove {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
 
 pub trait OpRunner {
     fn read(&self, op_ref: &str) -> Result<String, OpError>;
@@ -55,29 +88,32 @@ impl OpRunner for RealOp {
     }
 }
 
-pub fn default_config_path() -> Result<PathBuf> {
+pub fn default_config_path() -> Result<PathBuf, AuthError> {
     let base = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         PathBuf::from(xdg)
     } else {
-        let home = std::env::var("HOME").context("HOME is not set")?;
+        let home = std::env::var("HOME").context(HomeNotSetSnafu)?;
         PathBuf::from(home).join(".config")
     };
     Ok(base.join("todoist").join("config.toml"))
 }
 
-pub fn login(op: &impl OpRunner, config_path: &Path, op_ref: &str) -> Result<()> {
-    op.read(op_ref)
-        .map_err(|e| anyhow!("could not resolve {op_ref}: {e}"))?;
+pub fn login(op: &impl OpRunner, config_path: &Path, op_ref: &str) -> Result<(), AuthError> {
+    op.read(op_ref).context(OpResolveSnafu {
+        op_ref: op_ref.to_string(),
+    })?;
     let config = Config {
         token_op_ref: op_ref.to_string(),
     };
-    let serialized = toml::to_string(&config).context("serializing config")?;
+    let serialized = toml::to_string(&config).context(TomlSerializeSnafu)?;
     if let Some(parent) = config_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
+        std::fs::create_dir_all(parent).context(CreateDirSnafu {
+            path: parent.to_path_buf(),
+        })?;
     }
-    std::fs::write(config_path, serialized)
-        .with_context(|| format!("writing {}", config_path.display()))?;
+    std::fs::write(config_path, serialized).context(WriteSnafu {
+        path: config_path.to_path_buf(),
+    })?;
     Ok(())
 }
 
@@ -89,13 +125,14 @@ pub enum AuthState {
     },
 }
 
-pub fn status(op: &impl OpRunner, config_path: &Path) -> Result<AuthState> {
+pub fn status(op: &impl OpRunner, config_path: &Path) -> Result<AuthState, AuthError> {
     if !config_path.exists() {
         return Ok(AuthState::NotLoggedIn);
     }
-    let raw = std::fs::read_to_string(config_path)
-        .with_context(|| format!("reading {}", config_path.display()))?;
-    let config: Config = toml::from_str(&raw).context("parsing config")?;
+    let raw = std::fs::read_to_string(config_path).context(ReadSnafu {
+        path: config_path.to_path_buf(),
+    })?;
+    let config: Config = toml::from_str(&raw).context(TomlParseSnafu)?;
     let resolve_err = op.read(&config.token_op_ref).err().map(|e| e.message);
     Ok(AuthState::Configured {
         op_ref: config.token_op_ref,
@@ -103,11 +140,13 @@ pub fn status(op: &impl OpRunner, config_path: &Path) -> Result<AuthState> {
     })
 }
 
-pub fn logout(config_path: &Path) -> Result<()> {
+pub fn logout(config_path: &Path) -> Result<(), AuthError> {
     match std::fs::remove_file(config_path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(anyhow::Error::new(e).context(format!("removing {}", config_path.display()))),
+        Err(e) => Err(e).context(RemoveSnafu {
+            path: config_path.to_path_buf(),
+        }),
     }
 }
 

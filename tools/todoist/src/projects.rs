@@ -1,9 +1,16 @@
-use anyhow::{anyhow, Result};
+use snafu::{ResultExt, Snafu};
 
-use crate::api::{Project, TodoistClient};
+use crate::api::{ApiError, Project, TodoistClient};
 
-pub fn run_list(client: &impl TodoistClient, token: &str) -> Result<Vec<Project>> {
-    client.list_projects(token).map_err(|e| anyhow!(e))
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum ProjectsError {
+    #[snafu(display("{source}"))]
+    Api { source: ApiError },
+}
+
+pub fn run_list(client: &impl TodoistClient, token: &str) -> Result<Vec<Project>, ProjectsError> {
+    client.list_projects(token).context(ApiSnafu)
 }
 
 pub fn render_ndjson(projects: &[Project]) -> String {

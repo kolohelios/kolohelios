@@ -1,7 +1,21 @@
-use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 
-use crate::api::{CreateTaskBody, Project, TaskListQuery, TodoistClient};
+use snafu::{ResultExt, Snafu};
+
+use crate::api::{ApiError, CreateTaskBody, Project, TaskListQuery, TodoistClient};
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum TasksError {
+    #[snafu(display("{source}"))]
+    Api { source: ApiError },
+
+    #[snafu(display("no project named {arg:?} (known: {known})"))]
+    ProjectNotFound { arg: String, known: String },
+
+    #[snafu(display("{count} projects named {arg:?} — disambiguate by id"))]
+    ProjectAmbiguous { arg: String, count: usize },
+}
 
 pub const ID_PREFIX_LEN: usize = 6;
 
@@ -17,8 +31,12 @@ pub struct ListOutcome {
     pub projects_by_id: HashMap<String, String>,
 }
 
-pub fn run_list(client: &impl TodoistClient, token: &str, opts: &ListOpts) -> Result<ListOutcome> {
-    let projects = client.list_projects(token).map_err(|e| anyhow!(e))?;
+pub fn run_list(
+    client: &impl TodoistClient,
+    token: &str,
+    opts: &ListOpts,
+) -> Result<ListOutcome, TasksError> {
+    let projects = client.list_projects(token).context(ApiSnafu)?;
     let project_id = match &opts.project {
         Some(arg) => Some(resolve_project_id(&projects, arg)?),
         None => None,
@@ -27,7 +45,7 @@ pub fn run_list(client: &impl TodoistClient, token: &str, opts: &ListOpts) -> Re
         project_id,
         filter: opts.filter.clone(),
     };
-    let mut tasks = client.list_tasks(token, &query).map_err(|e| anyhow!(e))?;
+    let mut tasks = client.list_tasks(token, &query).context(ApiSnafu)?;
     if let Some(n) = opts.limit {
         tasks.truncate(n);
     }
@@ -38,7 +56,7 @@ pub fn run_list(client: &impl TodoistClient, token: &str, opts: &ListOpts) -> Re
     })
 }
 
-pub fn resolve_project_id(projects: &[Project], arg: &str) -> Result<String> {
+pub fn resolve_project_id(projects: &[Project], arg: &str) -> Result<String, TasksError> {
     if arg.chars().all(|c| c.is_ascii_digit()) {
         return Ok(arg.to_string());
     }
@@ -46,16 +64,18 @@ pub fn resolve_project_id(projects: &[Project], arg: &str) -> Result<String> {
     match matches.as_slice() {
         [] => {
             let names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
-            Err(anyhow!(
-                "no project named {arg:?} (known: {})",
-                names.join(", ")
-            ))
+            ProjectNotFoundSnafu {
+                arg: arg.to_string(),
+                known: names.join(", "),
+            }
+            .fail()
         }
         [hit] => Ok(hit.id.clone()),
-        many => Err(anyhow!(
-            "{} projects named {arg:?} — disambiguate by id",
-            many.len()
-        )),
+        many => ProjectAmbiguousSnafu {
+            arg: arg.to_string(),
+            count: many.len(),
+        }
+        .fail(),
     }
 }
 
@@ -73,10 +93,10 @@ pub fn run_add(
     client: &impl TodoistClient,
     token: &str,
     opts: &AddOpts,
-) -> Result<serde_json::Value> {
+) -> Result<serde_json::Value, TasksError> {
     let project_id = match &opts.project {
         Some(arg) => {
-            let projects = client.list_projects(token).map_err(|e| anyhow!(e))?;
+            let projects = client.list_projects(token).context(ApiSnafu)?;
             Some(resolve_project_id(&projects, arg)?)
         }
         None => None,
@@ -89,7 +109,7 @@ pub fn run_add(
         labels: opts.labels.clone(),
         description: opts.description.clone(),
     };
-    client.create_task(token, &body).map_err(|e| anyhow!(e))
+    client.create_task(token, &body).context(ApiSnafu)
 }
 
 pub fn render_added(task: &serde_json::Value) -> String {
@@ -187,10 +207,10 @@ pub fn run_complete(
     client: &impl TodoistClient,
     token: &str,
     args: &[String],
-) -> Result<Vec<CompleteResult>> {
+) -> Result<Vec<CompleteResult>, TasksError> {
     let tasks = client
         .list_tasks(token, &TaskListQuery::default())
-        .map_err(|e| anyhow!(e))?;
+        .context(ApiSnafu)?;
     let mut results = Vec::with_capacity(args.len());
     for arg in args {
         match resolve_target(&tasks, arg) {
