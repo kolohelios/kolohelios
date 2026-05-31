@@ -671,14 +671,17 @@ mod tests {
     fn audit_flags_invalid_classifications_per_dimension() {
         let (tmp, workdir) = fresh_workdir();
         let mut post = fixture_post("multi-bad", Stage::Concept);
-        // Two bad single-valued dims + one bad theme element.
+        // Two bad single-valued dims + one bad motifs element.
         post.metadata.classifications.format = Some("not-a-format".into());
         post.metadata.classifications.tone = Some("brisk".into());
-        post.metadata.classifications.theme.push("ambiguity".into()); // good
         post.metadata
             .classifications
-            .theme
-            .push("made-up-theme".into()); // bad
+            .motifs
+            .push("ambiguity".into()); // good
+        post.metadata
+            .classifications
+            .motifs
+            .push("made-up-motif".into()); // bad
         fs::write(
             tmp.path().join("concepts/multi-bad.md"),
             post.render().unwrap(),

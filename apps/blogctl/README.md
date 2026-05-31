@@ -58,7 +58,7 @@ blogctl classify <slug> --workdir <path> \
   [--call-to-action X] [--visual-type X] \
   [--complexity X] [--vulnerability X] \
   [--outcome-prediction X] \
-  [--theme A,B,...] [--clear-<dim>]
+  [--motifs A,B,...] [--clear-<dim>]
 blogctl metrics update <slug> --workdir <path> \
   --target <linkedin|blog> \
   --impressions N --reactions N --comments N --reposts N \
@@ -116,7 +116,7 @@ classifications:
   complexity: moderate
   vulnerability: low
   outcome_prediction: medium
-  theme:
+  motifs:
     - ambiguity
     - delivery
 targets:
@@ -199,7 +199,7 @@ values = ["none", "low", "medium", "high"]
 [classifications.outcome_prediction]
 values = ["low", "medium", "high"]
 
-[classifications.theme]
+[classifications.motifs]
 multi = true
 values = ["ambiguity", "delivery", "interfaces", "leadership", "ai",
           "engineering-culture", "product", "organizational-psychology",
@@ -255,7 +255,7 @@ blogctl classify the-only-way-out-is-through \
   --tone sharp \
   --audience engineering,leadership \
   --topic leadership \
-  --theme ambiguity,delivery \
+  --motifs ambiguity,delivery \
   --workdir ~/blog-os
 
 # 5. Refresh metrics weekly. `metrics show` prints the current

@@ -3,8 +3,8 @@
 //!
 //! Each `--<dim> value` overwrites the corresponding dimension;
 //! `--clear-<dim>` removes it. Unspecified dimensions are left
-//! untouched. `--theme a,b` replaces the entire theme list (the only
-//! multi-valued dimension in v1).
+//! untouched. `--motifs a,b` replaces the entire motifs list — same
+//! shape as the other multi-valued dimensions.
 //!
 //! Validates the resulting `Classifications` against the workdir's
 //! taxonomy *before* the file write — an invalid value fails fast
@@ -35,7 +35,7 @@ pub struct ClassifyArgs {
     pub complexity: Option<String>,
     pub vulnerability: Option<String>,
     pub outcome_prediction: Option<String>,
-    pub theme: Vec<String>,
+    pub motifs: Vec<String>,
     pub clear_format: bool,
     pub clear_hook: bool,
     pub clear_tone: bool,
@@ -47,7 +47,7 @@ pub struct ClassifyArgs {
     pub clear_complexity: bool,
     pub clear_vulnerability: bool,
     pub clear_outcome_prediction: bool,
-    pub clear_theme: bool,
+    pub clear_motifs: bool,
     pub no_sync: bool,
 }
 
@@ -175,10 +175,10 @@ fn apply(c: &mut Classifications, args: &ClassifyArgs) -> Vec<String> {
         &mut changed,
     );
     apply_multi(
-        &mut c.theme,
-        &args.theme,
-        args.clear_theme,
-        "theme",
+        &mut c.motifs,
+        &args.motifs,
+        args.clear_motifs,
+        "motifs",
         &mut changed,
     );
 
@@ -279,29 +279,29 @@ mod tests {
     }
 
     #[test]
-    fn apply_theme_replaces_list() {
+    fn apply_motifs_replaces_list() {
         let mut c = Classifications {
-            theme: vec!["ambiguity".into()],
+            motifs: vec!["ambiguity".into()],
             ..Default::default()
         };
         let mut a = empty_args();
-        a.theme = vec!["delivery".into(), "interfaces".into()];
+        a.motifs = vec!["delivery".into(), "interfaces".into()];
         let changed = apply(&mut c, &a);
-        assert_eq!(c.theme, vec!["delivery", "interfaces"]);
-        assert_eq!(changed, vec!["theme"]);
+        assert_eq!(c.motifs, vec!["delivery", "interfaces"]);
+        assert_eq!(changed, vec!["motifs"]);
     }
 
     #[test]
-    fn apply_clear_theme_empties_the_list() {
+    fn apply_clear_motifs_empties_the_list() {
         let mut c = Classifications {
-            theme: vec!["ambiguity".into()],
+            motifs: vec!["ambiguity".into()],
             ..Default::default()
         };
         let mut a = empty_args();
-        a.clear_theme = true;
+        a.clear_motifs = true;
         let changed = apply(&mut c, &a);
-        assert!(c.theme.is_empty());
-        assert_eq!(changed, vec!["theme"]);
+        assert!(c.motifs.is_empty());
+        assert_eq!(changed, vec!["motifs"]);
     }
 
     #[test]
@@ -322,10 +322,10 @@ mod tests {
         let mut a = empty_args();
         a.format = Some("thesis".into());
         a.hook = Some("contradiction".into());
-        a.theme = vec!["ambiguity".into()];
+        a.motifs = vec!["ambiguity".into()];
         let changed = apply(&mut c, &a);
         // Order matters for the commit message; should be the order
         // dimensions are applied.
-        assert_eq!(changed, vec!["format", "hook", "theme"]);
+        assert_eq!(changed, vec!["format", "hook", "motifs"]);
     }
 }

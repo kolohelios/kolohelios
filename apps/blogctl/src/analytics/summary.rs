@@ -158,9 +158,10 @@ fn value_summary(value: String, samples: &[Sample]) -> ValueSummary {
 
 /// Yield every `(dimension_name, value)` pair set on a
 /// `Classifications`. Single-valued fields yield 0 or 1 entries;
-/// the multi-valued `theme` yields 0 or N. Field names match the
-/// `Classifications` struct's field names (which match the
-/// `[classifications.<name>]` table in `.blog-os.toml`).
+/// multi-valued fields (audience, topic, narrative_structure,
+/// motifs) yield 0 or N. Field names match the `Classifications`
+/// struct's field names (which match the `[classifications.<name>]`
+/// table in `.blog-os.toml`).
 fn classification_entries(c: &Classifications) -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     if let Some(v) = &c.format {
@@ -196,8 +197,8 @@ fn classification_entries(c: &Classifications) -> Vec<(&'static str, String)> {
     for v in &c.narrative_structure {
         out.push(("narrative_structure", v.clone()));
     }
-    for v in &c.theme {
-        out.push(("theme", v.clone()));
+    for v in &c.motifs {
+        out.push(("motifs", v.clone()));
     }
     out
 }
@@ -219,7 +220,7 @@ mod tests {
     fn fixture_post(
         slug: &str,
         format: &str,
-        themes: &[&str],
+        motifs: &[&str],
         target: Target,
         impressions: u64,
         reactions: u64,
@@ -251,7 +252,7 @@ mod tests {
                 }],
                 classifications: Classifications {
                     format: Some(format.into()),
-                    theme: themes.iter().map(|s| (*s).to_string()).collect(),
+                    motifs: motifs.iter().map(|s| (*s).to_string()).collect(),
                     ..Default::default()
                 },
                 ai: None,
@@ -391,8 +392,8 @@ mod tests {
     }
 
     #[test]
-    fn multi_valued_theme_contributes_to_every_listed_theme() {
-        // One post with theme=[a, b] contributes to both a and b.
+    fn multi_valued_motifs_contribute_to_every_listed_value() {
+        // One post with motifs=[a, b] contributes to both a and b.
         let p = fixture_post(
             "x",
             "thesis",
@@ -401,10 +402,10 @@ mod tests {
             1000,
             50,
         );
-        let s = compute(&[p], None, Some("theme"), now());
-        let theme = &s.dimensions[0];
-        assert_eq!(theme.values.len(), 2);
-        for v in &theme.values {
+        let s = compute(&[p], None, Some("motifs"), now());
+        let motifs = &s.dimensions[0];
+        assert_eq!(motifs.values.len(), 2);
+        for v in &motifs.values {
             assert_eq!(v.n, 1, "value {} should have n=1", v.value);
         }
     }

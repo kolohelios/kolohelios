@@ -475,12 +475,12 @@ fn classify_drives_full_sync_with_changed_dimensions_in_message() {
             workdir: path.clone(),
             format: Some("thesis".into()),
             hook: Some("contradiction".into()),
-            theme: vec!["ambiguity".into(), "delivery".into()],
+            motifs: vec!["ambiguity".into(), "delivery".into()],
             ..Default::default()
         },
     )
     .unwrap();
-    assert_full_sync_flow(&jj.calls(), "post(hello): classify (format,hook,theme)");
+    assert_full_sync_flow(&jj.calls(), "post(hello): classify (format,hook,motifs)");
 
     // And the post on disk now carries the new classifications.
     let raw = fs::read_to_string(path.join("concepts/hello.md")).unwrap();
