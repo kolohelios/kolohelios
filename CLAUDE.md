@@ -389,6 +389,11 @@ A few tasks pay off when run on a cadence rather than per-PR:
   allowlist.
 - **Don't add CI jobs to `.github/workflows/main.yaml`** for new validation
   steps — extend `shaka preflight` so CI and local stay in lockstep.
+- **Don't reach for `anyhow` or `thiserror` in new rust code.** The repo
+  standardized on `snafu` (typed per-module error `enum`s with named-field
+  variants, `.context(XSnafu)` attach, `#[snafu(display("..."))]` for
+  user-facing messages) via #640 / #654. See `tools/shaka/src/gh.rs` or
+  `tools/todoist/src/api.rs` for the canonical shape.
 - **Don't add Claude Code attribution** to commits, code, or docs.
 - **Don't run mutating `git` commands.** The repo is `jj`-colocated;
   `git stash`, `git stash pop`, `git checkout`, `git reset`,
