@@ -137,6 +137,7 @@ fn cargo_toml(name: &str) -> String {
          edition = \"2021\"\n\
          license = \"MIT OR Apache-2.0\"\n\
          publish = false\n\
+         rust-version = \"1.95\"\n\
          \n\
          [[bin]]\n\
          name = \"{name}\"\n\
@@ -300,6 +301,14 @@ mod tests {
         let out = cargo_toml("demo");
         assert!(out.contains(r#"license = "MIT OR Apache-2.0""#));
         assert!(out.contains(r#"name = "demo""#));
+    }
+
+    #[test]
+    fn cargo_toml_pins_msrv() {
+        // Newly scaffolded crates must pass the rust-version-pinned audit
+        // rule on first run.
+        let out = cargo_toml("demo");
+        assert!(out.contains(r#"rust-version = "1.95""#));
     }
 
     #[test]

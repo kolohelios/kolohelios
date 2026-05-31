@@ -1,0 +1,17 @@
+package project
+
+#Project & {
+	name: "missing-rust-version"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "missing-rust-version"
+	}
+	coverage: {
+		line: {
+			fail: 30
+		}
+		branch: {
+			fail: 20
+		}
+	}
+}
