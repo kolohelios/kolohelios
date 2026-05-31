@@ -94,6 +94,14 @@ pub enum Finding {
         value: String,
         allowed: Vec<String>,
     },
+    /// The post's `tags` list overruns the workdir's declared cap
+    /// (`[tags] max = N`). Workdirs without a cap declared never
+    /// trip this.
+    TagsExceedMax {
+        path: PathBuf,
+        count: usize,
+        max: u32,
+    },
 }
 
 impl fmt::Display for Finding {
@@ -182,6 +190,11 @@ impl fmt::Display for Finding {
                 "invalid classification in {}: {dimension}={value:?} is not in the taxonomy (allowed: {})",
                 path.display(),
                 allowed.join(", "),
+            ),
+            Self::TagsExceedMax { path, count, max } => write!(
+                f,
+                "too many tags in {}: {count} tags exceeds max {max}",
+                path.display(),
             ),
         }
     }
@@ -274,6 +287,18 @@ pub fn audit(workdir: &Workdir) -> Result<Vec<Finding>> {
                             value: v.value,
                             allowed: v.allowed,
                         });
+                    }
+                    // Tag cap. Workdirs that haven't declared
+                    // `[tags] max = N` skip silently — the field
+                    // stays `None` and there's nothing to enforce.
+                    if let Some(max) = cfg.tags.max {
+                        if meta.tags.len() > max as usize {
+                            findings.push(Finding::TagsExceedMax {
+                                path: path.clone(),
+                                count: meta.tags.len(),
+                                max,
+                            });
+                        }
                     }
                 }
                 slug_index.entry(meta.slug).or_default().push(path);
@@ -667,6 +692,69 @@ mod tests {
             invalid.len(),
             3,
             "expected one finding per bad value: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn audit_flags_tags_exceeding_max() {
+        // Declare `[tags] max = 2` and write a post with 3 tags —
+        // doctor surfaces one TagsExceedMax finding for that post.
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            "version = 1\n[themes.standard]\n[tags]\nmax = 2\n",
+        )
+        .unwrap();
+
+        let mut post = fixture_post("over-tagged", Stage::Concept);
+        post.metadata.tags = vec!["a".into(), "b".into(), "c".into()];
+        fs::write(
+            tmp.path().join("concepts/over-tagged.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        let tags_findings: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| matches!(f, Finding::TagsExceedMax { .. }))
+            .collect();
+        assert_eq!(
+            tags_findings.len(),
+            1,
+            "expected one TagsExceedMax finding: {findings:?}",
+        );
+        if let Finding::TagsExceedMax { count, max, .. } = tags_findings[0] {
+            assert_eq!(*count, 3);
+            assert_eq!(*max, 2);
+        }
+    }
+
+    #[test]
+    fn audit_silent_on_tags_when_no_max_declared() {
+        // No `[tags]` block in config → doctor is permissive even on
+        // posts with arbitrarily many tags.
+        let (tmp, workdir) = fresh_workdir();
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            "version = 1\n[themes.standard]\n",
+        )
+        .unwrap();
+
+        let mut post = fixture_post("loose-tagged", Stage::Concept);
+        post.metadata.tags = (0..50).map(|i| format!("tag-{i}")).collect();
+        fs::write(
+            tmp.path().join("concepts/loose-tagged.md"),
+            post.render().unwrap(),
+        )
+        .unwrap();
+
+        let findings = audit(&workdir).unwrap();
+        assert!(
+            !findings
+                .iter()
+                .any(|f| matches!(f, Finding::TagsExceedMax { .. })),
+            "expected no TagsExceedMax findings without `[tags] max`: {findings:?}",
         );
     }
 

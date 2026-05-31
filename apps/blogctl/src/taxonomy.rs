@@ -164,13 +164,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         "topic".into(),
         Dimension {
             multi: true,
-            values: strs(&[
-                "engineering",
-                "leadership",
-                "product",
-                "career",
-                "general",
-            ]),
+            values: strs(&["engineering", "leadership", "product", "career", "general"]),
         },
     );
     m.insert(

@@ -239,8 +239,7 @@ fn merge_classifications(target: &mut Classifications, source: &Classifications)
         target.vulnerability = source.vulnerability.clone();
         changed = true;
     }
-    if source.outcome_prediction.is_some()
-        && target.outcome_prediction != source.outcome_prediction
+    if source.outcome_prediction.is_some() && target.outcome_prediction != source.outcome_prediction
     {
         target.outcome_prediction = source.outcome_prediction.clone();
         changed = true;
