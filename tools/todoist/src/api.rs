@@ -1,29 +1,18 @@
 use serde::{Deserialize, Serialize};
+use snafu::Snafu;
 
 pub const API_BASE: &str = "https://api.todoist.com/api/v1";
 
-#[derive(Debug)]
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum ApiError {
+    #[snafu(display("token invalid; run `todoist auth login` to refresh"))]
     Unauthorized,
-    Network(String),
+    #[snafu(display("network error: {message}"))]
+    Network { message: String },
+    #[snafu(display("Todoist API returned {status}: {body}"))]
     Other { status: u16, body: String },
 }
-
-impl std::fmt::Display for ApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unauthorized => {
-                write!(f, "token invalid; run `todoist auth login` to refresh")
-            }
-            Self::Network(msg) => write!(f, "network error: {msg}"),
-            Self::Other { status, body } => {
-                write!(f, "Todoist API returned {status}: {body}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ApiError {}
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub struct Project {
@@ -125,8 +114,9 @@ impl TodoistClient for RealClient {
         let req = ureq::post(&format!("{}/tasks", self.base))
             .set("Authorization", &format!("Bearer {token}"))
             .set("Content-Type", "application/json");
-        let payload =
-            serde_json::to_value(body).map_err(|e| ApiError::Network(format!("encode: {e}")))?;
+        let payload = serde_json::to_value(body).map_err(|e| ApiError::Network {
+            message: format!("encode: {e}"),
+        })?;
         send_json(req.send_json(payload))
     }
 
@@ -147,7 +137,9 @@ fn send_no_content(result: Result<ureq::Response, ureq::Error>) -> Result<(), Ap
                 .unwrap_or_else(|_| "<unreadable>".into());
             Err(ApiError::Other { status, body })
         }
-        Err(ureq::Error::Transport(t)) => Err(ApiError::Network(t.to_string())),
+        Err(ureq::Error::Transport(t)) => Err(ApiError::Network {
+            message: t.to_string(),
+        }),
     }
 }
 
@@ -155,9 +147,9 @@ fn send_json<T: for<'de> Deserialize<'de>>(
     result: Result<ureq::Response, ureq::Error>,
 ) -> Result<T, ApiError> {
     match result {
-        Ok(response) => response
-            .into_json::<T>()
-            .map_err(|e| ApiError::Network(format!("could not parse response: {e}"))),
+        Ok(response) => response.into_json::<T>().map_err(|e| ApiError::Network {
+            message: format!("could not parse response: {e}"),
+        }),
         Err(ureq::Error::Status(401, _)) => Err(ApiError::Unauthorized),
         Err(ureq::Error::Status(status, response)) => {
             let body = response
@@ -165,7 +157,9 @@ fn send_json<T: for<'de> Deserialize<'de>>(
                 .unwrap_or_else(|_| "<unreadable>".into());
             Err(ApiError::Other { status, body })
         }
-        Err(ureq::Error::Transport(t)) => Err(ApiError::Network(t.to_string())),
+        Err(ureq::Error::Transport(t)) => Err(ApiError::Network {
+            message: t.to_string(),
+        }),
     }
 }
 
@@ -181,7 +175,10 @@ mod tests {
 
     #[test]
     fn network_message_includes_detail() {
-        let msg = ApiError::Network("dns failed".into()).to_string();
+        let msg = ApiError::Network {
+            message: "dns failed".into(),
+        }
+        .to_string();
         assert!(msg.contains("dns failed"));
     }
 
