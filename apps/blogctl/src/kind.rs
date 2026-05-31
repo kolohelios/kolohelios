@@ -41,7 +41,9 @@ impl FromStr for Kind {
         match s {
             "post" => Ok(Kind::Post),
             "article" => Ok(Kind::Article),
-            other => Err(Error::InvalidKind(other.to_string())),
+            other => Err(Error::InvalidKind {
+                value: other.to_string(),
+            }),
         }
     }
 }
@@ -60,7 +62,7 @@ mod tests {
     #[test]
     fn parse_rejects_unknown_kind() {
         let err = "essay".parse::<Kind>().unwrap_err();
-        assert!(matches!(err, Error::InvalidKind(_)));
+        assert!(matches!(err, Error::InvalidKind { .. }));
     }
 
     #[test]

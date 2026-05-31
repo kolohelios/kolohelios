@@ -68,7 +68,7 @@ pub fn run(jj: &dyn Jj, args: BackfillArgs) -> Result<()> {
 fn run_import(jj: &dyn Jj, args: &BackfillArgs, path: PathBuf) -> Result<()> {
     let raw = fs::read_to_string(&path).map_err(|e| Error::io(&path, e))?;
     let entries: Vec<BackfillEntry> =
-        serde_json::from_str(&raw).map_err(Error::BackfillImportParse)?;
+        serde_json::from_str(&raw).map_err(|source| Error::BackfillImportParse { source })?;
 
     let repo = Repository::open(Workdir::new(&args.workdir))?;
     let taxonomy = repo.read_taxonomy()?;
@@ -99,7 +99,9 @@ fn run_import(jj: &dyn Jj, args: &BackfillArgs, path: PathBuf) -> Result<()> {
         return if warnings.is_empty() {
             Ok(())
         } else {
-            Err(Error::BackfillPartialFailure(warnings.len()))
+            Err(Error::BackfillPartialFailure {
+                warnings: warnings.len(),
+            })
         };
     }
 
@@ -119,7 +121,9 @@ fn run_import(jj: &dyn Jj, args: &BackfillArgs, path: PathBuf) -> Result<()> {
     if warnings.is_empty() {
         Ok(())
     } else {
-        Err(Error::BackfillPartialFailure(warnings.len()))
+        Err(Error::BackfillPartialFailure {
+            warnings: warnings.len(),
+        })
     }
 }
 

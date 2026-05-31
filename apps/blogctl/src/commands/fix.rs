@@ -354,7 +354,9 @@ pub fn run(jj: &dyn Jj, workdir: PathBuf, dry_run: bool, no_sync: bool) -> Resul
         for finding in &findings {
             println!("{finding}");
         }
-        return Err(Error::WorkdirUnhealthy(findings.len()));
+        return Err(Error::WorkdirUnhealthy {
+            findings: findings.len(),
+        });
     }
 
     let plan = plan(findings);
@@ -379,7 +381,9 @@ pub fn run(jj: &dyn Jj, workdir: PathBuf, dry_run: bool, no_sync: bool) -> Resul
         return if remaining == 0 {
             Ok(())
         } else {
-            Err(Error::WorkdirUnhealthy(remaining))
+            Err(Error::WorkdirUnhealthy {
+                findings: remaining,
+            })
         };
     }
 
@@ -401,7 +405,9 @@ pub fn run(jj: &dyn Jj, workdir: PathBuf, dry_run: bool, no_sync: bool) -> Resul
     if remaining == 0 {
         Ok(())
     } else {
-        Err(Error::WorkdirUnhealthy(remaining))
+        Err(Error::WorkdirUnhealthy {
+            findings: remaining,
+        })
     }
 }
 
@@ -772,7 +778,7 @@ mod tests {
         fs::write(tmp.path().join("concepts/.DS_Store"), "x").unwrap();
         let jj = FakeJj::new();
         let err = run(&jj, tmp.path().to_path_buf(), false, true).unwrap_err();
-        assert!(matches!(err, Error::WorkdirUnhealthy(_)));
+        assert!(matches!(err, Error::WorkdirUnhealthy { .. }));
     }
 
     #[test]
@@ -790,7 +796,7 @@ mod tests {
 
         let jj = FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
         let err = run(&jj, tmp.path().to_path_buf(), false, true).unwrap_err();
-        assert!(matches!(err, Error::WorkdirUnhealthy(1)));
+        assert!(matches!(err, Error::WorkdirUnhealthy { findings: 1 }));
 
         // File must be untouched.
         let raw_after = fs::read_to_string(&path).unwrap();

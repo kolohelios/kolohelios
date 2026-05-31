@@ -69,11 +69,13 @@ pub fn chat(prompt: &str, model: &str) -> Result<String> {
         .set("Authorization", &format!("Bearer {api_key}"))
         .set("Content-Type", "application/json")
         .send_json(body)
-        .map_err(|e| Error::OpenrouterRequest(e.to_string()))?;
+        .map_err(|e| Error::OpenrouterRequest {
+            message: e.to_string(),
+        })?;
 
-    let parsed: ChatResponse = response
-        .into_json()
-        .map_err(|e| Error::OpenrouterRequest(format!("could not parse response: {e}")))?;
+    let parsed: ChatResponse = response.into_json().map_err(|e| Error::OpenrouterRequest {
+        message: format!("could not parse response: {e}"),
+    })?;
 
     parsed
         .choices

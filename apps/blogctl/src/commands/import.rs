@@ -46,7 +46,7 @@ pub struct ImportArgs {
 
 pub fn run(jj: &dyn Jj, args: ImportArgs) -> Result<()> {
     if args.title.trim().is_empty() {
-        return Err(Error::EmptyTitle(args.title));
+        return Err(Error::EmptyTitle { value: args.title });
     }
     let resolved_slug = match args.slug {
         Some(s) => slug::validate(&s)?.to_string(),

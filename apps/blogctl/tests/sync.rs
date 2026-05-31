@@ -437,8 +437,8 @@ fn doctor_surfaces_stale_unpushed_commits_finding() {
     }));
     let err = commands::doctor::run(&jj, path).unwrap_err();
     assert!(
-        matches!(err, blogctl::Error::WorkdirUnhealthy(n) if n == 1),
-        "expected WorkdirUnhealthy(1), got: {err:?}"
+        matches!(err, blogctl::Error::WorkdirUnhealthy { findings: n } if n == 1),
+        "expected WorkdirUnhealthy {{ findings: 1 }}, got: {err:?}"
     );
 }
 

@@ -136,7 +136,8 @@ impl Post {
 
     /// Render the post back to a frontmatter-prefixed Markdown string.
     pub fn render(&self) -> Result<String> {
-        let yaml = serde_yaml_ng::to_string(&self.metadata).map_err(Error::FrontmatterSerialize)?;
+        let yaml = serde_yaml_ng::to_string(&self.metadata)
+            .map_err(|source| Error::FrontmatterSerialize { source })?;
         let mut out = String::with_capacity(yaml.len() + self.body.len() + 16);
         out.push_str(DELIM);
         out.push('\n');
@@ -188,8 +189,10 @@ fn validate_targets(path: &Path, targets: &[TargetEntry]) -> Result<()> {
 }
 
 fn split_frontmatter<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a str)> {
-    let after_opening = strip_opening_delim(contents)
-        .ok_or_else(|| Error::FrontmatterMissingOpen(path.to_path_buf()))?;
+    let after_opening =
+        strip_opening_delim(contents).ok_or_else(|| Error::FrontmatterMissingOpen {
+            path: path.to_path_buf(),
+        })?;
 
     // Locate the closing `---` line. We look for `\n---` followed by either
     // end-of-input or another `\n` so a body line that happens to start with
@@ -219,7 +222,9 @@ fn split_frontmatter<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a
         search_from = abs + 1;
     }
 
-    Err(Error::FrontmatterMissingClose(path.to_path_buf()))
+    Err(Error::FrontmatterMissingClose {
+        path: path.to_path_buf(),
+    })
 }
 
 fn strip_opening_delim(contents: &str) -> Option<&str> {
@@ -345,13 +350,19 @@ Body.
     #[test]
     fn parse_rejects_missing_opening_delim() {
         let raw = "title: Example\n---\n\nbody\n";
-        assert!(matches!(parse(raw), Err(Error::FrontmatterMissingOpen(_))));
+        assert!(matches!(
+            parse(raw),
+            Err(Error::FrontmatterMissingOpen { .. })
+        ));
     }
 
     #[test]
     fn parse_rejects_missing_closing_delim() {
         let raw = "---\ntitle: Example\nslug: example\n";
-        assert!(matches!(parse(raw), Err(Error::FrontmatterMissingClose(_))));
+        assert!(matches!(
+            parse(raw),
+            Err(Error::FrontmatterMissingClose { .. })
+        ));
     }
 
     #[test]

@@ -70,7 +70,8 @@ pub fn summary(args: SummaryArgs) -> Result<()> {
         writeln!(
             out,
             "{}",
-            serde_json::to_string_pretty(&summary).map_err(Error::SummaryJson)?
+            serde_json::to_string_pretty(&summary)
+                .map_err(|source| Error::SummaryJson { source })?
         )
         .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     } else {
@@ -172,7 +173,8 @@ pub fn compare(args: CompareArgs) -> Result<()> {
         writeln!(
             out,
             "{}",
-            serde_json::to_string_pretty(&comparison).map_err(Error::SummaryJson)?
+            serde_json::to_string_pretty(&comparison)
+                .map_err(|source| Error::SummaryJson { source })?
         )
         .map_err(|e| Error::io(PathBuf::from("<stdout>"), e))?;
     } else {

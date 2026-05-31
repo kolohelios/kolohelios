@@ -10,7 +10,9 @@ pub fn run(jj: &dyn Jj, workdir: PathBuf, no_sync: bool) -> Result<()> {
     // happens to fail first (conflicted bookmark, missing remote, …).
     let wd = Workdir::new(&workdir);
     if wd.config_path().exists() {
-        return Err(Error::WorkdirAlreadyInitialized(wd.root().to_path_buf()));
+        return Err(Error::WorkdirAlreadyInitialized {
+            path: wd.root().to_path_buf(),
+        });
     }
 
     // `init` creates `.blog-os.toml`, so we have no config to read
