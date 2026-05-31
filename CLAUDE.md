@@ -357,6 +357,18 @@ restate two rules that `/start` and `/ship` would otherwise enforce:
   and forget to re-run; the resulting CI failure cycle is far more
   expensive than the local validate.
 
+## Periodic maintenance
+
+A few tasks pay off when run on a cadence rather than per-PR:
+
+- **`/audit-workflow`** — every few days or weekly. Scans recent
+  Claude session JSONL files across all `~/.claude/projects/*/`
+  directories for churn loops (push→CI-fail→fix→push, repeated user
+  corrections, multi-step sequences ripe for one `shaka` subcommand)
+  and surfaces them as a triage table for new issues. Findings without
+  a failure→fix→retry triple are dropped, so the output stays
+  signal-heavy. Defined in `.claude/commands/audit-workflow.md`.
+
 ## Things to avoid
 
 - **Don't edit code in the primary tree.** Issue work belongs in a
