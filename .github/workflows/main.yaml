@@ -120,6 +120,9 @@ jobs:
         name: kolohelios/blogctl
         rolling: true
         visibility: public
+    - name: Build blogctl from FlakeHub URL (populate consumer cache)
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      run: nix build 'https://flakehub.com/f/kolohelios/blogctl/*.tar.gz'
     - uses: actions/create-github-app-token@v3
       id: bot-token
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

@@ -26,6 +26,11 @@ package project
 				name:       "kolohelios/blogctl"
 				visibility: "public"
 				rolling:    true
+				// Consumers (e.g. kolohelios/blogs-and-posts) build
+				// blogctl from this FlakeHub URL; without the second
+				// build step, our local-path build's closure misses
+				// their cache lookups. See #591.
+				populateConsumerCache: true
 			}
 			// Notify the blogs-and-posts repo of a fresh publish so its
 			// bump-blogctl workflow runs immediately rather than waiting
