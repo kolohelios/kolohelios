@@ -4,8 +4,9 @@ package project
 	name: "aof"
 	kind: "rust-cli"
 	cli: {
-		binaryName: "aof"
-		package:    true
+		binaryName:       "aof"
+		package:          true
+		shellCompletions: true
 	}
 	coverage: {
 		line: {
