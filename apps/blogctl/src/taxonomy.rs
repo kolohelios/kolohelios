@@ -98,8 +98,17 @@ pub struct Violation {
 /// The dimension names `Classifications` knows about. Kept in code
 /// because the struct's field set is fixed; only the *values* inside
 /// each dimension are config-driven.
-pub const SINGLE_VALUED: &[&str] = &["format", "hook", "tone", "audience"];
-pub const MULTI_VALUED: &[&str] = &["theme"];
+pub const SINGLE_VALUED: &[&str] = &[
+    "format",
+    "hook",
+    "tone",
+    "call_to_action",
+    "visual_type",
+    "complexity",
+    "vulnerability",
+    "outcome_prediction",
+];
+pub const MULTI_VALUED: &[&str] = &["audience", "topic", "narrative_structure", "theme"];
 
 fn starter_v1() -> BTreeMap<String, Dimension> {
     let mut m = BTreeMap::new();
@@ -141,7 +150,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
     m.insert(
         "audience".into(),
         Dimension {
-            multi: false,
+            multi: true,
             values: strs(&[
                 "engineering",
                 "product",
@@ -149,6 +158,67 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
                 "founders",
                 "general",
             ]),
+        },
+    );
+    m.insert(
+        "topic".into(),
+        Dimension {
+            multi: true,
+            values: strs(&[
+                "engineering",
+                "leadership",
+                "product",
+                "career",
+                "general",
+            ]),
+        },
+    );
+    m.insert(
+        "narrative_structure".into(),
+        Dimension {
+            multi: true,
+            values: strs(&[
+                "direct-statement",
+                "personal-anecdote",
+                "metaphor",
+                "analogy",
+                "contrast",
+            ]),
+        },
+    );
+    m.insert(
+        "call_to_action".into(),
+        Dimension {
+            multi: false,
+            values: strs(&["none", "reflection", "discussion"]),
+        },
+    );
+    m.insert(
+        "visual_type".into(),
+        Dimension {
+            multi: false,
+            values: strs(&["text-only", "diagram", "illustration", "screenshot"]),
+        },
+    );
+    m.insert(
+        "complexity".into(),
+        Dimension {
+            multi: false,
+            values: strs(&["simple", "moderate", "dense"]),
+        },
+    );
+    m.insert(
+        "vulnerability".into(),
+        Dimension {
+            multi: false,
+            values: strs(&["none", "low", "medium", "high"]),
+        },
+    );
+    m.insert(
+        "outcome_prediction".into(),
+        Dimension {
+            multi: false,
+            values: strs(&["low", "medium", "high"]),
         },
     );
     m.insert(
@@ -164,6 +234,13 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
                 "engineering-culture",
                 "product",
                 "organizational-psychology",
+                // Cross-disciplinary values that show up in the
+                // blogs-and-posts taxonomy too — kept short, full
+                // vocabulary lives in `.blog-os.toml`.
+                "adaptation",
+                "tradeoffs",
+                "learning",
+                "community",
             ]),
         },
     );

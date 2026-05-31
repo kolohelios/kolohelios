@@ -52,7 +52,12 @@ Classifying posts and recording per-venue performance:
 
 ```text
 blogctl classify <slug> --workdir <path> \
-  [--format X] [--hook X] [--tone X] [--audience X] \
+  [--format X] [--hook X] [--tone X] \
+  [--audience A,B,...] [--topic A,B,...] \
+  [--narrative-structure A,B,...] \
+  [--call-to-action X] [--visual-type X] \
+  [--complexity X] [--vulnerability X] \
+  [--outcome-prediction X] \
   [--theme A,B,...] [--clear-<dim>]
 blogctl metrics update <slug> --workdir <path> \
   --target <linkedin|blog> \
@@ -100,7 +105,17 @@ classifications:
   format: thesis
   hook: contradiction
   tone: sharp
-  audience: engineering
+  audience:
+    - engineering
+  topic:
+    - leadership
+  narrative_structure:
+    - analogy
+  call_to_action: reflection
+  visual_type: text-only
+  complexity: moderate
+  vulnerability: low
+  outcome_prediction: medium
   theme:
     - ambiguity
     - delivery
@@ -157,12 +172,38 @@ values = ["proverb", "contradiction", "direct-claim",
 values = ["gentle", "sharp", "vulnerable", "reflective", "provocative"]
 
 [classifications.audience]
+multi = true
 values = ["engineering", "product", "leadership", "founders", "general"]
+
+[classifications.topic]
+multi = true
+values = ["engineering", "leadership", "product", "career", "general"]
+
+[classifications.narrative_structure]
+multi = true
+values = ["direct-statement", "personal-anecdote", "metaphor",
+          "analogy", "contrast"]
+
+[classifications.call_to_action]
+values = ["none", "reflection", "discussion"]
+
+[classifications.visual_type]
+values = ["text-only", "diagram", "illustration", "screenshot"]
+
+[classifications.complexity]
+values = ["simple", "moderate", "dense"]
+
+[classifications.vulnerability]
+values = ["none", "low", "medium", "high"]
+
+[classifications.outcome_prediction]
+values = ["low", "medium", "high"]
 
 [classifications.theme]
 multi = true
 values = ["ambiguity", "delivery", "interfaces", "leadership", "ai",
-          "engineering-culture", "product", "organizational-psychology"]
+          "engineering-culture", "product", "organizational-psychology",
+          "adaptation", "tradeoffs", "learning", "community"]
 ```
 
 `init` seeds these tables with the v1 defaults shown above. Adding a
@@ -201,7 +242,8 @@ blogctl classify the-only-way-out-is-through \
   --format thesis \
   --hook contradiction \
   --tone sharp \
-  --audience engineering \
+  --audience engineering,leadership \
+  --topic leadership \
   --theme ambiguity,delivery \
   --workdir ~/blog-os
 

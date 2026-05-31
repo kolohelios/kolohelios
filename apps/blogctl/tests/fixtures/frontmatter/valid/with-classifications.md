@@ -11,7 +11,8 @@ classifications:
   format: thesis
   hook: contradiction
   tone: sharp
-  audience: engineering
+  audience:
+    - engineering
   theme:
     - ambiguity
     - delivery

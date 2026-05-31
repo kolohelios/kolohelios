@@ -27,12 +27,26 @@ pub struct ClassifyArgs {
     pub format: Option<String>,
     pub hook: Option<String>,
     pub tone: Option<String>,
-    pub audience: Option<String>,
+    pub audience: Vec<String>,
+    pub topic: Vec<String>,
+    pub narrative_structure: Vec<String>,
+    pub call_to_action: Option<String>,
+    pub visual_type: Option<String>,
+    pub complexity: Option<String>,
+    pub vulnerability: Option<String>,
+    pub outcome_prediction: Option<String>,
     pub theme: Vec<String>,
     pub clear_format: bool,
     pub clear_hook: bool,
     pub clear_tone: bool,
     pub clear_audience: bool,
+    pub clear_topic: bool,
+    pub clear_narrative_structure: bool,
+    pub clear_call_to_action: bool,
+    pub clear_visual_type: bool,
+    pub clear_complexity: bool,
+    pub clear_vulnerability: bool,
+    pub clear_outcome_prediction: bool,
     pub clear_theme: bool,
     pub no_sync: bool,
 }
@@ -104,27 +118,69 @@ fn apply(c: &mut Classifications, args: &ClassifyArgs) -> Vec<String> {
         &mut changed,
     );
     apply_single(
+        &mut c.call_to_action,
+        &args.call_to_action,
+        args.clear_call_to_action,
+        "call_to_action",
+        &mut changed,
+    );
+    apply_single(
+        &mut c.visual_type,
+        &args.visual_type,
+        args.clear_visual_type,
+        "visual_type",
+        &mut changed,
+    );
+    apply_single(
+        &mut c.complexity,
+        &args.complexity,
+        args.clear_complexity,
+        "complexity",
+        &mut changed,
+    );
+    apply_single(
+        &mut c.vulnerability,
+        &args.vulnerability,
+        args.clear_vulnerability,
+        "vulnerability",
+        &mut changed,
+    );
+    apply_single(
+        &mut c.outcome_prediction,
+        &args.outcome_prediction,
+        args.clear_outcome_prediction,
+        "outcome_prediction",
+        &mut changed,
+    );
+
+    apply_multi(
         &mut c.audience,
         &args.audience,
         args.clear_audience,
         "audience",
         &mut changed,
     );
-
-    // Theme is multi-valued. --theme a,b REPLACES the list; --clear-theme
-    // empties it. They're mutually exclusive in spirit; if both are set
-    // we honor --clear-theme last (matches the spirit of an explicit
-    // clear).
-    if !args.theme.is_empty() && c.theme != args.theme {
-        c.theme = args.theme.clone();
-        changed.push("theme".into());
-    }
-    if args.clear_theme && !c.theme.is_empty() {
-        c.theme.clear();
-        if !changed.contains(&"theme".to_string()) {
-            changed.push("theme".into());
-        }
-    }
+    apply_multi(
+        &mut c.topic,
+        &args.topic,
+        args.clear_topic,
+        "topic",
+        &mut changed,
+    );
+    apply_multi(
+        &mut c.narrative_structure,
+        &args.narrative_structure,
+        args.clear_narrative_structure,
+        "narrative_structure",
+        &mut changed,
+    );
+    apply_multi(
+        &mut c.theme,
+        &args.theme,
+        args.clear_theme,
+        "theme",
+        &mut changed,
+    );
 
     changed
 }
@@ -149,6 +205,29 @@ fn apply_single(
             *field = Some(v.clone());
             changed.push(name.into());
         }
+    }
+}
+
+/// Mirror of `apply_single` for multi-valued dimensions. `--<dim>
+/// a,b` REPLACES the existing list; `--clear-<dim>` empties it.
+/// Clear wins over set (matches the spirit of an explicit clear).
+fn apply_multi(
+    field: &mut Vec<String>,
+    new_value: &[String],
+    clear: bool,
+    name: &str,
+    changed: &mut Vec<String>,
+) {
+    if clear {
+        if !field.is_empty() {
+            field.clear();
+            changed.push(name.into());
+        }
+        return;
+    }
+    if !new_value.is_empty() && field != new_value {
+        *field = new_value.to_vec();
+        changed.push(name.into());
     }
 }
 

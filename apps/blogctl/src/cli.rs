@@ -201,8 +201,12 @@ pub enum Command {
         no_sync: bool,
     },
     /// Set classification dimensions on a post (format, hook, tone,
-    /// audience, theme). Missing flags leave the existing value alone;
-    /// `--clear-<dim>` removes it.
+    /// audience, topic, narrative-structure, call-to-action,
+    /// visual-type, complexity, vulnerability, outcome-prediction,
+    /// theme). Missing flags leave the existing value alone;
+    /// `--clear-<dim>` removes it. Multi-valued dimensions
+    /// (audience, topic, narrative-structure, theme) take
+    /// comma-separated lists that replace the existing list.
     Classify {
         slug: String,
         /// Workdir path. Defaults to the current working directory.
@@ -214,10 +218,27 @@ pub enum Command {
         hook: Option<String>,
         #[arg(long)]
         tone: Option<String>,
+        /// Comma-separated list of audiences. Replaces the existing list.
+        #[arg(long, value_delimiter = ',')]
+        audience: Vec<String>,
+        /// Comma-separated list of topics. Replaces the existing list.
+        #[arg(long, value_delimiter = ',')]
+        topic: Vec<String>,
+        /// Comma-separated list of narrative-structure values.
+        /// Replaces the existing list.
+        #[arg(long, value_delimiter = ',')]
+        narrative_structure: Vec<String>,
         #[arg(long)]
-        audience: Option<String>,
-        /// Comma-separated list of themes. Replaces the existing
-        /// theme list entirely.
+        call_to_action: Option<String>,
+        #[arg(long)]
+        visual_type: Option<String>,
+        #[arg(long)]
+        complexity: Option<String>,
+        #[arg(long)]
+        vulnerability: Option<String>,
+        #[arg(long)]
+        outcome_prediction: Option<String>,
+        /// Comma-separated list of themes. Replaces the existing list.
         #[arg(long, value_delimiter = ',')]
         theme: Vec<String>,
         #[arg(long)]
@@ -228,6 +249,20 @@ pub enum Command {
         clear_tone: bool,
         #[arg(long)]
         clear_audience: bool,
+        #[arg(long)]
+        clear_topic: bool,
+        #[arg(long)]
+        clear_narrative_structure: bool,
+        #[arg(long)]
+        clear_call_to_action: bool,
+        #[arg(long)]
+        clear_visual_type: bool,
+        #[arg(long)]
+        clear_complexity: bool,
+        #[arg(long)]
+        clear_vulnerability: bool,
+        #[arg(long)]
+        clear_outcome_prediction: bool,
         #[arg(long)]
         clear_theme: bool,
         /// Skip the post-write `jj` commit + push for this invocation.
@@ -574,11 +609,25 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             hook,
             tone,
             audience,
+            topic,
+            narrative_structure,
+            call_to_action,
+            visual_type,
+            complexity,
+            vulnerability,
+            outcome_prediction,
             theme,
             clear_format,
             clear_hook,
             clear_tone,
             clear_audience,
+            clear_topic,
+            clear_narrative_structure,
+            clear_call_to_action,
+            clear_visual_type,
+            clear_complexity,
+            clear_vulnerability,
+            clear_outcome_prediction,
             clear_theme,
             no_sync,
         } => commands::classify::run(
@@ -590,11 +639,25 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 hook,
                 tone,
                 audience,
+                topic,
+                narrative_structure,
+                call_to_action,
+                visual_type,
+                complexity,
+                vulnerability,
+                outcome_prediction,
                 theme,
                 clear_format,
                 clear_hook,
                 clear_tone,
                 clear_audience,
+                clear_topic,
+                clear_narrative_structure,
+                clear_call_to_action,
+                clear_visual_type,
+                clear_complexity,
+                clear_vulnerability,
+                clear_outcome_prediction,
                 clear_theme,
                 no_sync,
             },
@@ -860,7 +923,21 @@ mod tests {
                 "--tone",
                 "sharp",
                 "--audience",
-                "engineering",
+                "engineering,leadership",
+                "--topic",
+                "leadership",
+                "--narrative-structure",
+                "analogy",
+                "--call-to-action",
+                "reflection",
+                "--visual-type",
+                "text-only",
+                "--complexity",
+                "moderate",
+                "--vulnerability",
+                "low",
+                "--outcome-prediction",
+                "medium",
                 "--theme",
                 "ambiguity,delivery",
             ],
@@ -874,6 +951,13 @@ mod tests {
                 "--clear-hook",
                 "--clear-tone",
                 "--clear-audience",
+                "--clear-topic",
+                "--clear-narrative-structure",
+                "--clear-call-to-action",
+                "--clear-visual-type",
+                "--clear-complexity",
+                "--clear-vulnerability",
+                "--clear-outcome-prediction",
                 "--clear-theme",
             ],
             vec![
