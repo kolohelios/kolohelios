@@ -11,9 +11,6 @@ package project
 		line: {
 			fail: 30
 		}
-		branch: {
-			fail: 20
-		}
 	}
 	// No audit.overrides entry — should fail
 	// `rust-cli-package-false-requires-override`.

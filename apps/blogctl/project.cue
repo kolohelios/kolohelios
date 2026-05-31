@@ -13,16 +13,11 @@ package project
 		checkInputs: ["jujutsu"]
 	}
 	coverage: {
-		// Floors picked from the current measured coverage minus
-		// ~7% headroom: as of #442, line is ~92% and branch is ~72%.
-		// The branch gap is wider because some error paths and
-		// FakeJj fallbacks aren't exercised end-to-end. Bump these
-		// gradually as targeted tests fill the gaps.
+		// Floor picked from the current measured line coverage minus
+		// ~7% headroom: as of #442, line is ~92%. Bump as targeted
+		// tests fill remaining gaps.
 		line: {
 			fail: 85
-		}
-		branch: {
-			fail: 65
 		}
 	}
 	ci: {

@@ -8,7 +8,6 @@ package project
 	}
 	coverage: {
 		line: {fail:   1}
-		branch: {fail: 1}
 	}
 	ci: {
 		build: {

@@ -12,9 +12,6 @@ package project
 		line: {
 			fail: 30
 		}
-		branch: {
-			fail: 50
-		}
 	}
 	deploy: {
 		target:       "cloudflare-worker"

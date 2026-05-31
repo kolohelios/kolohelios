@@ -122,18 +122,6 @@ fn zero_line_coverage_threshold_fails_audit() {
 }
 
 #[test]
-fn zero_branch_coverage_threshold_passes_audit() {
-    let staged = Staged::new(&["zero-branch-coverage"]);
-    let out = staged.run_audit();
-    let stdout = stdout_of(&out);
-    assert!(
-        out.status.success(),
-        "expected success, got exit {:?}\nstdout: {stdout}",
-        out.status.code()
-    );
-}
-
-#[test]
 fn wrong_license_fails_audit() {
     let staged = Staged::new(&["wrong-license"]);
     let out = staged.run_audit();

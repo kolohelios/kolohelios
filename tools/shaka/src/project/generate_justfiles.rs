@@ -44,9 +44,7 @@ coverage:
     #!/usr/bin/env bash
     # Line coverage only — `cargo llvm-cov --branch` requires nightly
     # (`-Z coverage-options=branch`), incompatible with the pinned
-    # stable toolchain. Schema/audit residue (the unused
-    # `coverage.branch.fail` field, the carry-over justification in
-    # `RustCoverageThresholdNonzero`) lives until #671 lands.
+    # stable toolchain.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
@@ -137,8 +135,7 @@ machete:
 
 coverage:
     #!/usr/bin/env bash
-    # Line coverage only — see the rust-cli template for why; tracked
-    # cleanup in #671.
+    # Line coverage only — see the rust-cli template for why.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
@@ -799,8 +796,7 @@ mod tests {
         // The actual cargo call must not pass `--branch`: that flag
         // requires nightly (`-Z coverage-options=branch`). The recipe
         // header may still mention `--branch` in an explanatory
-        // comment, so we assert on the precise command line. See #671
-        // for the schema/audit-rule cleanup.
+        // comment, so we assert on the precise command line.
         assert!(RUST_TEMPLATE.contains("$(cargo llvm-cov --json --summary-only)"));
         assert!(RUST_TEMPLATE.contains("cue export ../../tools/shaka/schema/project-schema.cue"));
         assert!(RUST_TEMPLATE.contains(".coverage.line.fail"));

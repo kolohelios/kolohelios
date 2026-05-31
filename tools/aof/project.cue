@@ -12,9 +12,6 @@ package project
 		line: {
 			fail: 1
 		}
-		branch: {
-			fail: 0
-		}
 	}
 	ci: {
 		build: {
