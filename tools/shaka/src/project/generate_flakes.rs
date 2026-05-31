@@ -239,12 +239,19 @@ const OUTPUT_HEADER: &str = r#"    {
 
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.nightly.latest.default.override {
+        pkgs.rust-bin.stable."1.95.0".default.override {
           extensions = [
             "rust-src"
             "rust-analyzer"
             "llvm-tools-preview"
           ];
+        };
+
+      rustPlatform =
+        pkgs:
+        pkgs.makeRustPlatform {
+          cargo = rustToolchain pkgs;
+          rustc = rustToolchain pkgs;
         };
 "#;
 
@@ -254,7 +261,7 @@ fn render_packages(cli: &CliMeta) -> String {
     out.push_str("      packages = forEachSupportedSystem (\n");
     out.push_str("        { pkgs, ... }:\n");
     out.push_str("        {\n");
-    out.push_str("          default = pkgs.rustPlatform.buildRustPackage {\n");
+    out.push_str("          default = (rustPlatform pkgs).buildRustPackage {\n");
     out.push_str(&format!("            pname = \"{bin}\";\n"));
     out.push_str("            version = \"0.1.0\";\n");
     out.push_str("            src = ./.;\n");

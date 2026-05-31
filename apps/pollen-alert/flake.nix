@@ -40,7 +40,7 @@
       # local `worker-build --release` invocation both find the stdlib.
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.nightly.latest.default.override {
+        pkgs.rust-bin.stable."1.95.0".default.override {
           extensions = [
             "rust-src"
             "rust-analyzer"

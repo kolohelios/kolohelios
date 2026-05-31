@@ -32,17 +32,19 @@ machete:
 
 coverage:
     #!/usr/bin/env bash
+    # Line coverage only — `cargo llvm-cov --branch` requires nightly
+    # (`-Z coverage-options=branch`), incompatible with the pinned
+    # stable toolchain. Schema/audit residue (the unused
+    # `coverage.branch.fail` field, the carry-over justification in
+    # `RustCoverageThresholdNonzero`) lives until #671 lands.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
-    fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
-    measured=$(cargo llvm-cov --json --summary-only --branch)
+    measured=$(cargo llvm-cov --json --summary-only)
     line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
-    branch=$(jq <<<"$measured" '.data[0].totals.branches.percent')
-    printf 'coverage: line=%.1f%% branch=%.1f%% (gates: line>=%s%% branch>=%s%%)\n' \
-        "$line" "$branch" "$fail_line" "$fail_branch"
-    awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
-        'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
+    printf 'coverage: line=%.1f%% (gate: line>=%s%%)\n' "$line" "$fail_line"
+    awk -v l="$line" -v fl="$fail_line" \
+        'BEGIN { exit (l < fl) ? 1 : 0 }'
 
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')

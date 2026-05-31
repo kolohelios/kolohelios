@@ -39,19 +39,26 @@
 
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.nightly.latest.default.override {
+        pkgs.rust-bin.stable."1.95.0".default.override {
           extensions = [
             "rust-src"
             "rust-analyzer"
             "llvm-tools-preview"
           ];
         };
+
+      rustPlatform =
+        pkgs:
+        pkgs.makeRustPlatform {
+          cargo = rustToolchain pkgs;
+          rustc = rustToolchain pkgs;
+        };
     in
     {
       packages = forEachSupportedSystem (
         { pkgs, ... }:
         {
-          default = pkgs.rustPlatform.buildRustPackage {
+          default = (rustPlatform pkgs).buildRustPackage {
             pname = "aof";
             version = "0.1.0";
             src = ./.;

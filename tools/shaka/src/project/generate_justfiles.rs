@@ -42,17 +42,19 @@ machete:
 
 coverage:
     #!/usr/bin/env bash
+    # Line coverage only — `cargo llvm-cov --branch` requires nightly
+    # (`-Z coverage-options=branch`), incompatible with the pinned
+    # stable toolchain. Schema/audit residue (the unused
+    # `coverage.branch.fail` field, the carry-over justification in
+    # `RustCoverageThresholdNonzero`) lives until #671 lands.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
-    fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
-    measured=$(cargo llvm-cov --json --summary-only --branch)
+    measured=$(cargo llvm-cov --json --summary-only)
     line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
-    branch=$(jq <<<"$measured" '.data[0].totals.branches.percent')
-    printf 'coverage: line=%.1f%% branch=%.1f%% (gates: line>=%s%% branch>=%s%%)\n' \
-        "$line" "$branch" "$fail_line" "$fail_branch"
-    awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
-        'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
+    printf 'coverage: line=%.1f%% (gate: line>=%s%%)\n' "$line" "$fail_line"
+    awk -v l="$line" -v fl="$fail_line" \
+        'BEGIN { exit (l < fl) ? 1 : 0 }'
 
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
@@ -135,6 +137,8 @@ machete:
 
 coverage:
     #!/usr/bin/env bash
+    # Line coverage only — see the rust-cli template for why; tracked
+    # cleanup in #671.
     set -euo pipefail
     thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
@@ -142,14 +146,11 @@ coverage:
         exit 0
     fi
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
-    fail_branch=$(jq <<<"$thresholds" '.coverage.branch.fail')
-    measured=$(cargo llvm-cov --json --summary-only --branch)
+    measured=$(cargo llvm-cov --json --summary-only)
     line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
-    branch=$(jq <<<"$measured" '.data[0].totals.branches.percent')
-    printf 'coverage: line=%.1f%% branch=%.1f%% (gates: line>=%s%% branch>=%s%%)\n' \
-        "$line" "$branch" "$fail_line" "$fail_branch"
-    awk -v l="$line" -v b="$branch" -v fl="$fail_line" -v fb="$fail_branch" \
-        'BEGIN { exit (l < fl || b < fb) ? 1 : 0 }'
+    printf 'coverage: line=%.1f%% (gate: line>=%s%%)\n' "$line" "$fail_line"
+    awk -v l="$line" -v fl="$fail_line" \
+        'BEGIN { exit (l < fl) ? 1 : 0 }'
 
 nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
@@ -795,10 +796,14 @@ mod tests {
     #[test]
     fn rust_template_includes_coverage_recipe() {
         assert!(RUST_TEMPLATE.contains("coverage:"));
-        assert!(RUST_TEMPLATE.contains("cargo llvm-cov"));
+        // The actual cargo call must not pass `--branch`: that flag
+        // requires nightly (`-Z coverage-options=branch`). The recipe
+        // header may still mention `--branch` in an explanatory
+        // comment, so we assert on the precise command line. See #671
+        // for the schema/audit-rule cleanup.
+        assert!(RUST_TEMPLATE.contains("$(cargo llvm-cov --json --summary-only)"));
         assert!(RUST_TEMPLATE.contains("cue export ../../tools/shaka/schema/project-schema.cue"));
         assert!(RUST_TEMPLATE.contains(".coverage.line.fail"));
-        assert!(RUST_TEMPLATE.contains(".coverage.branch.fail"));
     }
 
     #[test]
