@@ -66,6 +66,15 @@ const CHECKS: &[Check] = &[
         run: shaka_project_generate_justfiles_check,
     },
     Check {
+        // Drift between a rust-cli project's `cli:` block and its
+        // committed `flake.nix`. Triggers on changes to the generator,
+        // any project.cue, or any flake.nix — same shape as the
+        // generate-justfiles drift check.
+        name: "shaka project generate-flakes --check",
+        paths: &["tools/shaka/**", "*/*/project.cue", "*/*/flake.nix"],
+        run: shaka_project_generate_flakes_check,
+    },
+    Check {
         // Any change to a project.cue may add/remove/edit a deploy block,
         // and any change to the generator or the output dir may drift the
         // committed TF away from what the generator would produce now.
@@ -366,6 +375,10 @@ fn shaka_token_cloudflare_schema_check() -> CheckResult {
 
 fn shaka_project_generate_justfiles_check() -> CheckResult {
     spawn_self(&["project", "generate-justfiles", "--check"])
+}
+
+fn shaka_project_generate_flakes_check() -> CheckResult {
+    spawn_self(&["project", "generate-flakes", "--check"])
 }
 
 fn shaka_deploy_generate_tf_check() -> CheckResult {
