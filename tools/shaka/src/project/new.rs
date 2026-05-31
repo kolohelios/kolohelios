@@ -4,6 +4,11 @@ use std::path::{Path, PathBuf};
 use crate::project::{audit, generate_flakes, generate_justfiles, schema_check};
 use crate::term::{BOLD, GREEN, RED, RESET};
 
+/// Slots `project new` can scaffold under. Deliberately narrower than
+/// `project::SLOTS` (used by discovery): the rust-cli scaffold only
+/// makes sense in slots that hold first-party projects, not in
+/// `infra/`, `nix/`, or `services/`. Until those slots get their own
+/// `project new --kind` templates, hand-scaffold them per CLAUDE.md.
 const SLOTS: &[&str] = &["apps", "packages", "projects", "tools"];
 
 pub fn run(name: String, slot: String) {
