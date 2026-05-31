@@ -4,7 +4,8 @@ package project
 	name: "claude-hooks"
 	kind: "rust-cli"
 	cli: {
-		binaryName: "claude-hooks"
+		binaryName:       "claude-hooks"
+		shellCompletions: true
 		// Consumed by `infra/home/modules/common.nix` so the binary
 		// is on PATH for every claude session, not just inside the
 		// kolohelios checkout. Build deps stay minimal — no

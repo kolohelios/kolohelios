@@ -56,6 +56,13 @@
             version = "0.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+            postInstall = ''
+              installShellCompletion --cmd claude-hooks \
+                --bash <($out/bin/claude-hooks completions bash) \
+                --fish <($out/bin/claude-hooks completions fish) \
+                --zsh  <($out/bin/claude-hooks completions zsh)
+            '';
           };
         }
       );

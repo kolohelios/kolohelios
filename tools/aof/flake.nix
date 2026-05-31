@@ -56,6 +56,13 @@
             version = "0.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+            postInstall = ''
+              installShellCompletion --cmd aof \
+                --bash <($out/bin/aof completions bash) \
+                --fish <($out/bin/aof completions fish) \
+                --zsh  <($out/bin/aof completions zsh)
+            '';
           };
         }
       );

@@ -4,7 +4,8 @@ package project
 	name: "todoist"
 	kind: "rust-cli"
 	cli: {
-		binaryName: "todoist"
+		binaryName:       "todoist"
+		shellCompletions: true
 		// No `nix build ./tools/todoist` consumer today; only the
 		// devShell is needed. Skipping the package keeps the
 		// generated flake minimal.
