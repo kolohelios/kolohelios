@@ -3,6 +3,53 @@ package project
 #Project & {
 	name: "home"
 	kind: "infra"
+	infra: {
+		description: "kolohelios — cross-platform home environment"
+		extraInputs: {
+			"home-manager": {
+				url: "github:nix-community/home-manager/release-25.11"
+				follows: {
+					"nixpkgs": "nixpkgs"
+				}
+			}
+			"nix-darwin": {
+				url: "github:LnL7/nix-darwin/nix-darwin-25.11"
+				follows: {
+					"nixpkgs": "nixpkgs"
+				}
+			}
+			"claude-hooks": {
+				url: "https://flakehub.com/f/kolohelios/claude-hooks/*.tar.gz"
+				follows: {
+					"kolohelios-nix": "kolohelios-nix"
+					"nixpkgs":        "nixpkgs"
+				}
+			}
+		}
+		extra: """
+      darwinConfigurations.Jons-MacBook-Pro = nix-darwin.lib.darwinSystem {
+        system = "aarch64-darwin";
+        specialArgs = { inherit claude-hooks; };
+        modules = [
+          home-manager.darwinModules.home-manager
+          ./modules/darwin.nix
+        ];
+      };
+
+      # NixOS module — imported by `infra/devbox` to apply this user's
+      # home-manager profile to the `jon` account on the devbox.
+      # `_module.args.claude-hooks` is the NixOS equivalent of the
+      # `specialArgs` plumbing above so `infra/devbox` doesn't have
+      # to know about it.
+      nixosModules.home = {
+        imports = [
+          home-manager.nixosModules.home-manager
+          ./modules/linux.nix
+        ];
+        _module.args = { inherit claude-hooks; };
+      };
+"""
+	}
 	ci: {
 		build: {
 			filterKey:   "home"
