@@ -19,9 +19,10 @@
     pkgs.zellij
     # `claude-code` is intentionally NOT here. `nixpkgs/release-25.11`
     # lags upstream by days to weeks for fast-moving tools like this.
-    # Install via `brew install --cask claude-code` on macOS; Linux
-    # install path tracked in #653. Don't reflexively add
-    # `pkgs.claude-code` back — see #652. `claude-hooks`, by contrast,
+    # On macOS it's declared via nix-darwin's `homebrew.casks` in
+    # `modules/darwin.nix` (#657) and installed by brew. Linux install
+    # path is tracked in #653. Don't reflexively add `pkgs.claude-code`
+    # back — see #652. `claude-hooks`, by contrast,
     # IS nix-managed: we publish it ourselves to FlakeHub and it
     # doesn't ship multiple versions per week. The duplicate-issue-create
     # gate (#515) calls `claude-hooks pre-issue-create` from

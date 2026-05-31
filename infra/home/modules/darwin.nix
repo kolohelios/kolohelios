@@ -3,6 +3,11 @@
 {
   system.stateVersion = 5;
 
+  # Required by nix-darwin's `homebrew` module (below) and any other
+  # user-scoped option in the modern multi-user model — activation runs
+  # as root but these options apply to this user.
+  system.primaryUser = "jedwards";
+
   nixpkgs.hostPlatform = "aarch64-darwin";
   nixpkgs.config.allowUnfree = true;
 
@@ -34,4 +39,24 @@
   # future drift the same way. Review and delete `.backup` files after
   # activation. Tracked in #633.
   home-manager.backupFileExtension = "backup";
+
+  # Declarative brew-cask install via nix-darwin's Brewfile emission.
+  # Reachable even with `nix.enable = false` because `homebrew.*` lives
+  # outside the `nix.*` namespace Determinate gates. Casks that get
+  # carved out of `pkgs.*` for the "fast-moving upstream, nixpkgs lags"
+  # reason (per #652) come here so they're still declared in version
+  # control. Conservative `onActivation` defaults: ensure listed casks
+  # are installed; don't touch anything else. Bump to
+  # `cleanup = "uninstall"` later if full declarative parity is wanted.
+  homebrew = {
+    enable = true;
+    onActivation = {
+      autoUpdate = false;
+      upgrade = false;
+      cleanup = "none";
+    };
+    casks = [
+      "claude-code"
+    ];
+  };
 }
