@@ -1,0 +1,20 @@
+package project
+
+#Project & {
+	name: "rust-cli-package-false-no-override"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "rust-cli-package-false-no-override"
+		package:    false
+	}
+	coverage: {
+		line: {
+			fail: 30
+		}
+		branch: {
+			fail: 20
+		}
+	}
+	// No audit.overrides entry — should fail
+	// `rust-cli-package-false-requires-override`.
+}

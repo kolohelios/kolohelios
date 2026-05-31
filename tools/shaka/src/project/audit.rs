@@ -79,6 +79,17 @@ pub struct ProjectAuditConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CliConfig {
+    pub package: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CiConfig {
+    #[serde(default)]
+    pub build: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ProjectMeta {
     #[allow(dead_code)]
     pub name: String,
@@ -87,6 +98,10 @@ pub struct ProjectMeta {
     pub coverage: Option<Coverage>,
     #[serde(default)]
     pub audit: Option<ProjectAuditConfig>,
+    #[serde(default)]
+    pub cli: Option<CliConfig>,
+    #[serde(default)]
+    pub ci: Option<CiConfig>,
 }
 
 pub trait Rule {
@@ -103,6 +118,8 @@ struct RustLicenseDual;
 struct KoloheliosNixViaFlakehub;
 struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
+struct RustCliPackageTrueRequiresCiBuild;
+struct RustCliPackageFalseRequiresOverride;
 
 const REQUIRED_RUST_LICENSE: &str = r#"license = "MIT OR Apache-2.0""#;
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
@@ -391,6 +408,59 @@ fn extract_input_url(flake_contents: &str, input_name: &str) -> Option<String> {
     None
 }
 
+// A rust-cli with `cli.package: true` (the schema default) produces a
+// flake `packages.default`. Without a `ci.build` block, CI silently
+// neither builds nor publishes that package — a `nix build` consumer
+// later misses cache and re-evaluates from source. Catch the missing
+// block at audit time instead.
+fn rust_cli_package_enabled(meta: &ProjectMeta) -> bool {
+    // `cli.package` defaults to true in the cue schema (`*true | false`).
+    // When `cli` is absent (non-rust-cli kinds) the caller's `applies`
+    // gate already rejected the project, so the default is only reached
+    // for a rust-cli whose cli block round-tripped without a package
+    // field — treat that as the schema default.
+    meta.cli.as_ref().map(|c| c.package).unwrap_or(true)
+}
+
+impl Rule for RustCliPackageTrueRequiresCiBuild {
+    fn name(&self) -> &'static str {
+        "rust-cli-package-true-requires-ci-build"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind == ProjectKind::RustCli && rust_cli_package_enabled(meta)
+    }
+    fn check(&self, _project_dir: &Path, meta: &ProjectMeta) -> RuleResult {
+        let has_build = meta.ci.as_ref().and_then(|c| c.build.as_ref()).is_some();
+        if has_build {
+            RuleResult::Pass
+        } else {
+            RuleResult::Fail(
+                "rust-cli with cli.package: true must declare ci.build (the flake produces a package; CI should build and publish it)".into(),
+            )
+        }
+    }
+}
+
+// Mirror rule: a rust-cli that explicitly opts out of `cli.package`
+// fails by default, and the project must add an `audit.overrides`
+// entry (severity: "off") naming this rule with a justification. The
+// schema enforces `justification: string & !=""`, so the override
+// itself carries the "why no package / no build" record. Same opt-out
+// shape as `kolohelios-nix-via-flakehub`.
+impl Rule for RustCliPackageFalseRequiresOverride {
+    fn name(&self) -> &'static str {
+        "rust-cli-package-false-requires-override"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind == ProjectKind::RustCli && !rust_cli_package_enabled(meta)
+    }
+    fn check(&self, _project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        RuleResult::Fail(
+            "rust-cli with cli.package: false must declare an audit.overrides entry for this rule (severity: \"off\") with a justification explaining why no flake package / ci.build is wired".into(),
+        )
+    }
+}
+
 fn rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(ReadmePresent),
@@ -401,6 +471,8 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(KoloheliosNixViaFlakehub),
         Box::new(KoloheliosHomeViaFlakehub),
         Box::new(ValidateRecipeMeaningful),
+        Box::new(RustCliPackageTrueRequiresCiBuild),
+        Box::new(RustCliPackageFalseRequiresOverride),
     ]
 }
 
@@ -705,6 +777,8 @@ mod tests {
                 branch: CoverageThreshold { fail: 20 },
             }),
             audit: None,
+            cli: None,
+            ci: None,
         }
     }
 
@@ -714,6 +788,8 @@ mod tests {
             kind: ProjectKind::Infra,
             coverage: None,
             audit: None,
+            cli: None,
+            ci: None,
         }
     }
 
@@ -723,6 +799,22 @@ mod tests {
             kind: ProjectKind::RustWorker,
             coverage: None,
             audit: None,
+            cli: None,
+            ci: None,
+        }
+    }
+
+    fn rust_cli_meta(package: bool, has_build: bool) -> ProjectMeta {
+        ProjectMeta {
+            cli: Some(CliConfig { package }),
+            ci: if has_build {
+                Some(CiConfig {
+                    build: Some(serde_json::json!({})),
+                })
+            } else {
+                None
+            },
+            ..rust_meta()
         }
     }
 
@@ -1326,6 +1418,67 @@ mod tests {
             RustLicenseDual.check(tmp.path(), &rust_meta()),
             RuleResult::Fail(_)
         ));
+    }
+
+    #[test]
+    fn rust_cli_package_true_requires_ci_build_applies_only_to_rust_cli_with_package() {
+        assert!(RustCliPackageTrueRequiresCiBuild.applies(&rust_cli_meta(true, false)));
+        // default-true when cli is absent on a rust-cli kind
+        assert!(RustCliPackageTrueRequiresCiBuild.applies(&rust_meta()));
+        assert!(!RustCliPackageTrueRequiresCiBuild.applies(&rust_cli_meta(false, false)));
+        assert!(!RustCliPackageTrueRequiresCiBuild.applies(&rust_worker_meta()));
+        assert!(!RustCliPackageTrueRequiresCiBuild.applies(&infra_meta()));
+    }
+
+    #[test]
+    fn rust_cli_package_true_requires_ci_build_passes_when_build_set() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(
+            RustCliPackageTrueRequiresCiBuild.check(tmp.path(), &rust_cli_meta(true, true)),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_cli_package_true_requires_ci_build_fails_when_build_missing() {
+        let tmp = TempDir::new().unwrap();
+        match RustCliPackageTrueRequiresCiBuild.check(tmp.path(), &rust_cli_meta(true, false)) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("ci.build"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_cli_package_true_requires_ci_build_fails_when_ci_block_absent() {
+        let tmp = TempDir::new().unwrap();
+        assert!(matches!(
+            RustCliPackageTrueRequiresCiBuild.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_cli_package_false_requires_override_applies_only_when_package_false() {
+        assert!(RustCliPackageFalseRequiresOverride.applies(&rust_cli_meta(false, false)));
+        assert!(!RustCliPackageFalseRequiresOverride.applies(&rust_cli_meta(true, false)));
+        // default-true means absent cli does not trip this rule
+        assert!(!RustCliPackageFalseRequiresOverride.applies(&rust_meta()));
+        assert!(!RustCliPackageFalseRequiresOverride.applies(&rust_worker_meta()));
+        assert!(!RustCliPackageFalseRequiresOverride.applies(&infra_meta()));
+    }
+
+    #[test]
+    fn rust_cli_package_false_requires_override_always_fails_when_applies() {
+        let tmp = TempDir::new().unwrap();
+        match RustCliPackageFalseRequiresOverride.check(tmp.path(), &rust_cli_meta(false, false)) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("audit.overrides"), "got: {msg}");
+                assert!(msg.contains("justification"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
     }
 
     fn severities_all_fail() -> HashMap<String, Severity> {

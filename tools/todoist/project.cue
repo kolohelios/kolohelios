@@ -18,4 +18,13 @@ package project
 			fail: 0
 		}
 	}
+	audit: {
+		overrides: [
+			{
+				rule:          "rust-cli-package-false-requires-override"
+				severity:      "off"
+				justification: "no `nix build ./tools/todoist` consumer today; only the devShell is needed, so neither `cli.package` nor `ci.build` are wired"
+			},
+		]
+	}
 }
