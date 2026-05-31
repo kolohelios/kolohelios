@@ -3,6 +3,10 @@ package project
 #Project & {
 	name: "cloudflare-tokens"
 	kind: "infra"
+	infra: {
+		description: "kolohelios — Cloudflare API tokens (Terraform + 1Password)"
+		devShellPackages: ["opentofu", "_1password-cli"]
+	}
 	objectStorage: namespaces: [
 		{
 			kind:    "tfstate"

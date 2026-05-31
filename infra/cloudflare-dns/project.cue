@@ -3,6 +3,10 @@ package project
 #Project & {
 	name: "cloudflare-dns"
 	kind: "infra"
+	infra: {
+		description: "kolohelios — Cloudflare DNS zones (Terraform)"
+		devShellPackages: ["opentofu", "_1password-cli"]
+	}
 	objectStorage: namespaces: [
 		{
 			kind:    "tfstate"
