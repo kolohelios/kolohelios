@@ -13,7 +13,7 @@ classifications:
   tone: sharp
   audience:
     - engineering
-  theme:
+  motifs:
     - ambiguity
     - delivery
 ---

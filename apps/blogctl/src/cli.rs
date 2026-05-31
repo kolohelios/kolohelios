@@ -203,9 +203,9 @@ pub enum Command {
     /// Set classification dimensions on a post (format, hook, tone,
     /// audience, topic, narrative-structure, call-to-action,
     /// visual-type, complexity, vulnerability, outcome-prediction,
-    /// theme). Missing flags leave the existing value alone;
+    /// motifs). Missing flags leave the existing value alone;
     /// `--clear-<dim>` removes it. Multi-valued dimensions
-    /// (audience, topic, narrative-structure, theme) take
+    /// (audience, topic, narrative-structure, motifs) take
     /// comma-separated lists that replace the existing list.
     Classify {
         slug: String,
@@ -238,9 +238,9 @@ pub enum Command {
         vulnerability: Option<String>,
         #[arg(long)]
         outcome_prediction: Option<String>,
-        /// Comma-separated list of themes. Replaces the existing list.
+        /// Comma-separated list of motifs. Replaces the existing list.
         #[arg(long, value_delimiter = ',')]
-        theme: Vec<String>,
+        motifs: Vec<String>,
         #[arg(long)]
         clear_format: bool,
         #[arg(long)]
@@ -264,7 +264,7 @@ pub enum Command {
         #[arg(long)]
         clear_outcome_prediction: bool,
         #[arg(long)]
-        clear_theme: bool,
+        clear_motifs: bool,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -616,7 +616,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             complexity,
             vulnerability,
             outcome_prediction,
-            theme,
+            motifs,
             clear_format,
             clear_hook,
             clear_tone,
@@ -628,7 +628,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             clear_complexity,
             clear_vulnerability,
             clear_outcome_prediction,
-            clear_theme,
+            clear_motifs,
             no_sync,
         } => commands::classify::run(
             jj,
@@ -646,7 +646,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 complexity,
                 vulnerability,
                 outcome_prediction,
-                theme,
+                motifs,
                 clear_format,
                 clear_hook,
                 clear_tone,
@@ -658,7 +658,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 clear_complexity,
                 clear_vulnerability,
                 clear_outcome_prediction,
-                clear_theme,
+                clear_motifs,
                 no_sync,
             },
         ),
@@ -938,7 +938,7 @@ mod tests {
                 "low",
                 "--outcome-prediction",
                 "medium",
-                "--theme",
+                "--motifs",
                 "ambiguity,delivery",
             ],
             vec![
@@ -958,7 +958,7 @@ mod tests {
                 "--clear-complexity",
                 "--clear-vulnerability",
                 "--clear-outcome-prediction",
-                "--clear-theme",
+                "--clear-motifs",
             ],
             vec![
                 "blogctl",

@@ -70,7 +70,7 @@ struct Sample {
 /// `(value_a, value_b)` cross-product of its values on `dim_a` and
 /// `dim_b`, filtered to targets that match `target_filter` (or all
 /// targets, if `None`) and have metrics. Multi-valued dimensions
-/// (e.g. `theme: [a, b]`) explode into multiple cells.
+/// (e.g. `motifs: [a, b]`) explode into multiple cells.
 pub fn compute(
     posts: &[Post],
     dim_a: &str,
@@ -213,7 +213,7 @@ fn dimension_values(c: &Classifications, dim: &str) -> Vec<String> {
         "audience" => c.audience.clone(),
         "topic" => c.topic.clone(),
         "narrative_structure" => c.narrative_structure.clone(),
-        "theme" => c.theme.clone(),
+        "motifs" => c.motifs.clone(),
         _ => vec![], // unknown dimension — no samples contribute
     }
 }
@@ -236,7 +236,7 @@ mod tests {
         slug: &str,
         format: Option<&str>,
         hook: Option<&str>,
-        themes: &[&str],
+        motifs: &[&str],
         impressions: u64,
         reactions: u64,
     ) -> Post {
@@ -268,7 +268,7 @@ mod tests {
                 classifications: Classifications {
                     format: format.map(|s| s.to_string()),
                     hook: hook.map(|s| s.to_string()),
-                    theme: themes.iter().map(|s| (*s).to_string()).collect(),
+                    motifs: motifs.iter().map(|s| (*s).to_string()).collect(),
                     ..Default::default()
                 },
                 ai: None,
@@ -315,8 +315,8 @@ mod tests {
     }
 
     #[test]
-    fn multi_valued_theme_explodes_into_multiple_cells() {
-        // One post with theme=[a, b] and format=thesis → contributes
+    fn multi_valued_motifs_explode_into_multiple_cells() {
+        // One post with motifs=[a, b] and format=thesis → contributes
         // to (thesis, a) AND (thesis, b).
         let p = fixture_post(
             "x",
@@ -326,7 +326,7 @@ mod tests {
             1000,
             50,
         );
-        let c = compute(&[p], "format", "theme", None, 3, now());
+        let c = compute(&[p], "format", "motifs", None, 3, now());
         assert_eq!(c.cells.len(), 2);
         for cell in &c.cells {
             assert_eq!(cell.value_a, "thesis");

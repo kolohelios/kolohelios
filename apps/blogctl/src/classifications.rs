@@ -3,7 +3,7 @@
 //! captures one dimension of the post's intent (format, hook, tone,
 //! audience, topic, narrative-structure, call-to-action, visual-type,
 //! complexity, vulnerability, outcome-prediction) plus a multi-valued
-//! `theme` list.
+//! `motifs` list.
 //!
 //! Values stay `Option<String>` / `Vec<String>` rather than enums so
 //! the taxonomy can evolve in `.blog-os.toml` without touching code.
@@ -83,9 +83,11 @@ pub struct Classifications {
     pub outcome_prediction: Option<String>,
 
     /// Recurring conceptual threads — e.g. `adaptation`, `tradeoffs`,
-    /// `community`. Multi-valued.
+    /// `community`. Multi-valued. Previously named `theme`; renamed to
+    /// disambiguate from the singular narrative `theme` field on
+    /// `PostMetadata` (which picks a `[themes.*]` registry entry).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub theme: Vec<String>,
+    pub motifs: Vec<String>,
 }
 
 impl Classifications {
@@ -104,7 +106,7 @@ impl Classifications {
             && self.complexity.is_none()
             && self.vulnerability.is_none()
             && self.outcome_prediction.is_none()
-            && self.theme.is_empty()
+            && self.motifs.is_empty()
     }
 
     /// Enumerate every value not allowed by `taxonomy`. Dimensions
@@ -175,7 +177,7 @@ impl Classifications {
             ("audience", &self.audience),
             ("topic", &self.topic),
             ("narrative_structure", &self.narrative_structure),
-            ("theme", &self.theme),
+            ("motifs", &self.motifs),
         ]
     }
 }
@@ -218,7 +220,7 @@ mod tests {
             complexity: Some("moderate".into()),
             vulnerability: Some("low".into()),
             outcome_prediction: Some("medium".into()),
-            theme: vec!["ambiguity".into(), "delivery".into()],
+            motifs: vec!["ambiguity".into(), "delivery".into()],
         }
     }
 
@@ -247,7 +249,7 @@ mod tests {
         assert!(yaml.contains("format: thesis"), "got: {yaml}");
         assert!(!yaml.contains("hook"), "hook must be skipped: {yaml}");
         assert!(!yaml.contains("tone"), "tone must be skipped: {yaml}");
-        assert!(!yaml.contains("theme"), "theme must be skipped: {yaml}");
+        assert!(!yaml.contains("motifs"), "motifs must be skipped: {yaml}");
         assert!(!yaml.contains("topic"), "topic must be skipped: {yaml}");
         assert!(
             !yaml.contains("visual_type"),
@@ -262,7 +264,7 @@ mod tests {
         let c: Classifications = serde_yaml_ng::from_str(raw).unwrap();
         assert_eq!(c.format.as_deref(), Some("thesis"));
         assert!(c.hook.is_none());
-        assert!(c.theme.is_empty());
+        assert!(c.motifs.is_empty());
         assert!(c.topic.is_empty());
         assert!(c.call_to_action.is_none());
     }
@@ -277,22 +279,22 @@ mod tests {
     }
 
     #[test]
-    fn theme_round_trips_multi_value() {
+    fn motifs_round_trips_multi_value() {
         let c = Classifications {
-            theme: vec!["ambiguity".into(), "delivery".into(), "interfaces".into()],
+            motifs: vec!["ambiguity".into(), "delivery".into(), "interfaces".into()],
             ..Default::default()
         };
         let yaml = serde_yaml_ng::to_string(&c).unwrap();
         let back: Classifications = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(back, c);
-        assert_eq!(back.theme.len(), 3);
+        assert_eq!(back.motifs.len(), 3);
     }
 
     #[test]
-    fn theme_single_element_round_trips() {
-        // The common case: one theme, written as a single-element list.
+    fn motifs_single_element_round_trips() {
+        // The common case: one motif, written as a single-element list.
         let c = Classifications {
-            theme: vec!["ambiguity".into()],
+            motifs: vec!["ambiguity".into()],
             ..Default::default()
         };
         let yaml = serde_yaml_ng::to_string(&c).unwrap();
@@ -351,15 +353,15 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_unknown_theme_element() {
+    fn validate_rejects_unknown_motif_element() {
         // Only the bad element shows up — the good one is silent.
         let c = Classifications {
-            theme: vec!["ambiguity".into(), "made-up".into()],
+            motifs: vec!["ambiguity".into(), "made-up".into()],
             ..Default::default()
         };
         let v = c.violations(&Taxonomy::current_v1());
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].dimension, "theme");
+        assert_eq!(v[0].dimension, "motifs");
         assert_eq!(v[0].value, "made-up");
     }
 
@@ -368,7 +370,7 @@ mod tests {
         let c = Classifications {
             format: Some("madeup-format".into()),
             tone: Some("madeup-tone".into()),
-            theme: vec!["madeup-theme".into()],
+            motifs: vec!["madeup-motif".into()],
             ..Default::default()
         };
         let v = c.violations(&Taxonomy::current_v1());
@@ -376,7 +378,7 @@ mod tests {
         let dims: Vec<&str> = v.iter().map(|x| x.dimension.as_str()).collect();
         assert!(dims.contains(&"format"));
         assert!(dims.contains(&"tone"));
-        assert!(dims.contains(&"theme"));
+        assert!(dims.contains(&"motifs"));
     }
 
     #[test]

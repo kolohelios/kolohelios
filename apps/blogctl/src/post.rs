@@ -41,8 +41,8 @@ pub struct PostMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<TargetEntry>,
     /// Structured tag dimensions (format, hook, tone, audience,
-    /// strategic role, theme). Sits alongside the free-form `tags`
-    /// list. Defaults to empty; skipped from serialization when no
+    /// motifs, ...). Sits alongside the free-form `tags` list.
+    /// Defaults to empty; skipped from serialization when no
     /// dimension has a value so posts predating the field stay
     /// quiet in their frontmatter.
     #[serde(default, skip_serializing_if = "Classifications::is_empty")]
@@ -583,7 +583,7 @@ tags: []
 classifications:
   format: thesis
   hook: contradiction
-  theme:
+  motifs:
     - ambiguity
     - delivery
 ---
@@ -599,7 +599,7 @@ body
             post.metadata.classifications.hook.as_deref(),
             Some("contradiction")
         );
-        assert_eq!(post.metadata.classifications.theme.len(), 2);
+        assert_eq!(post.metadata.classifications.motifs.len(), 2);
         // Dimensions not set in YAML stay at their defaults.
         assert!(post.metadata.classifications.tone.is_none());
         assert!(post.metadata.classifications.audience.is_empty());
@@ -668,7 +668,7 @@ body
             hook: Some("contradiction".into()),
             tone: Some("sharp".into()),
             audience: vec!["engineering".into()],
-            theme: vec!["ambiguity".into(), "delivery".into()],
+            motifs: vec!["ambiguity".into(), "delivery".into()],
             ..Default::default()
         };
         let original = Post::new(metadata, "Body.\n");

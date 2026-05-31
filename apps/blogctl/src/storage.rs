@@ -1113,7 +1113,7 @@ mod tests {
         let (_tmp, repo) = fresh_repo();
         let cfg = repo.read_config().unwrap();
         assert!(cfg.classifications.contains_key("format"));
-        assert!(cfg.classifications.contains_key("theme"));
+        assert!(cfg.classifications.contains_key("motifs"));
         // The seeded v1 set matches Taxonomy::current_v1().
         assert_eq!(cfg.classifications, Taxonomy::current_v1().to_btreemap());
     }

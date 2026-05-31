@@ -197,8 +197,9 @@ fn apply_entry(
 }
 
 /// Merge `source` into `target`. Single-valued dims are overwritten
-/// when set in `source`; `theme` is replaced when non-empty.
-/// Returns `true` when anything actually changed.
+/// when set in `source`; multi-valued ones (including `motifs`) are
+/// replaced when non-empty. Returns `true` when anything actually
+/// changed.
 fn merge_classifications(target: &mut Classifications, source: &Classifications) -> bool {
     let mut changed = false;
     if source.format.is_some() && target.format != source.format {
@@ -248,8 +249,8 @@ fn merge_classifications(target: &mut Classifications, source: &Classifications)
         target.outcome_prediction = source.outcome_prediction.clone();
         changed = true;
     }
-    if !source.theme.is_empty() && target.theme != source.theme {
-        target.theme = source.theme.clone();
+    if !source.motifs.is_empty() && target.motifs != source.motifs {
+        target.motifs = source.motifs.clone();
         changed = true;
     }
     changed
@@ -349,8 +350,8 @@ fn process_one<R: BufRead, W: Write>(
 
     // Determine what's missing. A post is "complete" when every
     // single-valued classification is set and every published
-    // target has metrics. theme is intentionally not required
-    // (multi-valued; empty is meaningful).
+    // target has metrics. Multi-valued dims (motifs, topic, etc.)
+    // are intentionally not required (empty is meaningful).
     let cls_missing = single_dim_missing(&post.metadata.classifications);
     let needs_metrics: Vec<Target> = post
         .metadata
@@ -460,7 +461,7 @@ fn process_one<R: BufRead, W: Write>(
 fn single_dim_missing(c: &Classifications) -> Vec<&'static str> {
     // Interactive backfill only prompts for the dims it can ask a
     // single value for. `audience`, `topic`, `narrative_structure`,
-    // `theme` are multi-valued — set those via `blogctl classify
+    // `motifs` are multi-valued — set those via `blogctl classify
     // --<dim> a,b`. The newer single-valued dims (call_to_action,
     // visual_type, complexity, vulnerability, outcome_prediction)
     // can stay out of the prompt menu until the interactive UX
@@ -698,17 +699,17 @@ mod tests {
     }
 
     #[test]
-    fn merge_classifications_replaces_theme_list() {
+    fn merge_classifications_replaces_motifs_list() {
         let mut t = Classifications {
-            theme: vec!["ambiguity".into()],
+            motifs: vec!["ambiguity".into()],
             ..Default::default()
         };
         let s = Classifications {
-            theme: vec!["delivery".into(), "interfaces".into()],
+            motifs: vec!["delivery".into(), "interfaces".into()],
             ..Default::default()
         };
         assert!(merge_classifications(&mut t, &s));
-        assert_eq!(t.theme, vec!["delivery", "interfaces"]);
+        assert_eq!(t.motifs, vec!["delivery", "interfaces"]);
     }
 
     #[test]
@@ -753,7 +754,7 @@ mod tests {
                 "classifications": {
                     "format": "thesis",
                     "hook": "contradiction",
-                    "theme": ["ambiguity"]
+                    "motifs": ["ambiguity"]
                 },
                 "metrics": {
                     "linkedin": {
@@ -772,7 +773,7 @@ mod tests {
         assert_eq!(e.slug, "the-only-way-out-is-through");
         let cls = e.classifications.as_ref().unwrap();
         assert_eq!(cls.format.as_deref(), Some("thesis"));
-        assert_eq!(cls.theme, vec!["ambiguity"]);
+        assert_eq!(cls.motifs, vec!["ambiguity"]);
         let m = e.metrics.as_ref().unwrap();
         assert_eq!(m.get("linkedin").unwrap().impressions, 1234);
     }

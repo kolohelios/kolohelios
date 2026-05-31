@@ -3,9 +3,9 @@
 //! this module loads it into a `Taxonomy` and runs the validation
 //! pass against `Classifications` instances.
 //!
-//! The taxonomy is data, not code — adding a new format or theme
+//! The taxonomy is data, not code — adding a new format or motif
 //! is a config edit, not a Rust change. The struct's *dimension
-//! names* (`format`, `hook`, `tone`, `audience`, `theme`) come from
+//! names* (`format`, `hook`, `tone`, `audience`, `motifs`) come from
 //! `Classifications`'s field names and are fixed; the *values*
 //! inside each dimension are user-configurable.
 
@@ -108,7 +108,7 @@ pub const SINGLE_VALUED: &[&str] = &[
     "vulnerability",
     "outcome_prediction",
 ];
-pub const MULTI_VALUED: &[&str] = &["audience", "topic", "narrative_structure", "theme"];
+pub const MULTI_VALUED: &[&str] = &["audience", "topic", "narrative_structure", "motifs"];
 
 fn starter_v1() -> BTreeMap<String, Dimension> {
     let mut m = BTreeMap::new();
@@ -216,7 +216,7 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
         },
     );
     m.insert(
-        "theme".into(),
+        "motifs".into(),
         Dimension {
             multi: true,
             values: strs(&[
@@ -261,10 +261,10 @@ mod tests {
     }
 
     #[test]
-    fn current_v1_theme_is_multi_valued() {
+    fn current_v1_motifs_is_multi_valued() {
         let t = Taxonomy::current_v1();
-        let theme = t.dimension("theme").unwrap();
-        assert!(theme.multi);
+        let motifs = t.dimension("motifs").unwrap();
+        assert!(motifs.multi);
     }
 
     #[test]

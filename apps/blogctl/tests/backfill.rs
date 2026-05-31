@@ -63,7 +63,7 @@ fn import_fills_classifications_and_metrics_for_bare_post() {
                 "classifications": {
                     "format": "thesis",
                     "hook": "contradiction",
-                    "theme": ["ambiguity"]
+                    "motifs": ["ambiguity"]
                 },
                 "metrics": {
                     "linkedin": {
