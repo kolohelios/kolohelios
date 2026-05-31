@@ -61,6 +61,13 @@ pub enum Finding {
         theme: String,
         known: Vec<String>,
     },
+    /// `defaults.theme` names a theme that has no `[themes.<theme>]`
+    /// entry. Pre-themes workdirs (config has only `version = 1`)
+    /// trip this on every write — the read path back-fills the field
+    /// but the write path rejects every theme value.
+    DefaultThemeMissing {
+        theme: String,
+    },
     TimestampInversion {
         path: PathBuf,
         created_at: OffsetDateTime,
@@ -137,6 +144,10 @@ impl fmt::Display for Finding {
                 path.display(),
                 known.join(", ")
             ),
+            Self::DefaultThemeMissing { theme } => write!(
+                f,
+                "default theme {theme:?} has no [themes.{theme}] entry in .blog-os.toml: write commands will reject every theme value until it's seeded",
+            ),
             Self::TimestampInversion {
                 path,
                 created_at,
@@ -200,6 +211,14 @@ pub fn audit(workdir: &Workdir) -> Result<Vec<Finding>> {
 
     for stage in repo.missing_stage_dirs() {
         findings.push(Finding::StageDirMissing { stage });
+    }
+
+    if let Some(cfg) = &cfg {
+        if !cfg.themes.contains_key(&cfg.defaults.theme) {
+            findings.push(Finding::DefaultThemeMissing {
+                theme: cfg.defaults.theme.clone(),
+            });
+        }
     }
 
     // Per-post checks. `slug_index` collects parsed slugs so we can
@@ -534,6 +553,64 @@ mod tests {
         assert!(findings
             .iter()
             .any(|f| matches!(f, Finding::ConfigUnparsable { .. })));
+    }
+
+    #[test]
+    fn audit_flags_default_theme_missing_when_themes_table_absent() {
+        // Pre-themes workdir: only `version = 1`. Config parses fine
+        // (back-filled defaults), but `defaults.theme` ("standard")
+        // has no `[themes.standard]` entry, so every write would be
+        // rejected.
+        let tmp = TempDir::new().unwrap();
+        for &stage in Stage::ALL {
+            fs::create_dir_all(tmp.path().join(stage.dirname())).unwrap();
+        }
+        fs::write(tmp.path().join(".blog-os.toml"), "version = 1\n").unwrap();
+        let findings = audit(&Workdir::new(tmp.path())).unwrap();
+        assert!(
+            findings.iter().any(|f| matches!(
+                f,
+                Finding::DefaultThemeMissing { theme } if theme == DEFAULT_THEME
+            )),
+            "got: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn audit_flags_default_theme_missing_uses_actual_default_name() {
+        // Non-standard `defaults.theme` with no matching `[themes.*]`
+        // entry — the finding must name "parable", not "standard".
+        let tmp = TempDir::new().unwrap();
+        for &stage in Stage::ALL {
+            fs::create_dir_all(tmp.path().join(stage.dirname())).unwrap();
+        }
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            "version = 1\n[defaults]\ntheme = \"parable\"\n",
+        )
+        .unwrap();
+        let findings = audit(&Workdir::new(tmp.path())).unwrap();
+        assert!(
+            findings.iter().any(|f| matches!(
+                f,
+                Finding::DefaultThemeMissing { theme } if theme == "parable"
+            )),
+            "got: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn audit_silent_on_default_theme_when_table_present() {
+        // Freshly initialized workdir seeds `[themes.standard]` —
+        // the finding must not fire.
+        let (_tmp, workdir) = fresh_workdir();
+        let findings = audit(&workdir).unwrap();
+        assert!(
+            !findings
+                .iter()
+                .any(|f| matches!(f, Finding::DefaultThemeMissing { .. })),
+            "got: {findings:?}"
+        );
     }
 
     #[test]

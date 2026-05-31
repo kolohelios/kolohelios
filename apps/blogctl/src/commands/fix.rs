@@ -38,6 +38,14 @@ pub enum Repair {
         path: PathBuf,
         slug: String,
     },
+    /// Append `[themes.<theme>]` (empty TOML table) to `.blog-os.toml`.
+    /// Idempotent: if the table is already present at apply time
+    /// (e.g. a concurrent edit landed between plan and apply, or this
+    /// is a re-run after the doctor finding has already been cleared)
+    /// the file is left untouched and the outcome is still `Fixed`.
+    SeedDefaultTheme {
+        theme: String,
+    },
     Skip {
         finding: Finding,
         reason: SkipReason,
@@ -86,6 +94,7 @@ impl fmt::Display for SkipReason {
 /// content rewrites, content rewrites precede renames.
 pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
     let mut creates = Vec::new();
+    let mut seeds = Vec::new();
     let mut rewrites = Vec::new();
     let mut bumps = Vec::new();
     let mut renames = Vec::new();
@@ -94,6 +103,9 @@ pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
     for finding in findings {
         match finding {
             Finding::StageDirMissing { stage } => creates.push(Repair::CreateStageDir(stage)),
+            Finding::DefaultThemeMissing { theme } => {
+                seeds.push(Repair::SeedDefaultTheme { theme })
+            }
             Finding::StageMismatch {
                 path, dir_stage, ..
             } => rewrites.push(Repair::RewriteStage {
@@ -146,9 +158,12 @@ pub fn plan(findings: Vec<Finding>) -> Vec<Repair> {
     }
 
     let mut out = Vec::with_capacity(
-        creates.len() + rewrites.len() + bumps.len() + renames.len() + skips.len(),
+        creates.len() + seeds.len() + rewrites.len() + bumps.len() + renames.len() + skips.len(),
     );
     out.extend(creates);
+    // Seed config edits before content rewrites: a follow-up command
+    // that writes to a post needs the theme entry present.
+    out.extend(seeds);
     out.extend(rewrites);
     out.extend(bumps);
     out.extend(renames);
@@ -264,8 +279,42 @@ fn apply_one(workdir: &Workdir, repair: Repair, now: OffsetDateTime, dry_run: bo
                 Err(err) => Outcome::Failed(diag, Error::io(&new_path, err)),
             }
         }
+        Repair::SeedDefaultTheme { theme } => {
+            let config_path = workdir.root().join(".blog-os.toml");
+            let diag = format!("seed [themes.{theme}] in {}", config_path.display(),);
+            if dry_run {
+                return Outcome::Fixed(diag);
+            }
+            match seed_default_theme(&config_path, &theme) {
+                Ok(()) => Outcome::Fixed(diag),
+                Err(e) => Outcome::Failed(diag, e),
+            }
+        }
         Repair::Skip { finding, reason } => Outcome::Skipped(finding.to_string(), reason),
     }
+}
+
+fn seed_default_theme(config_path: &PathBuf, theme: &str) -> Result<()> {
+    let raw = fs::read_to_string(config_path).map_err(|e| Error::io(config_path, e))?;
+    let header = format!("[themes.{theme}]");
+    // Idempotent: if the table header is already present anywhere in
+    // the file, do nothing. `toml::de` would be more rigorous but the
+    // append-only edit shape doesn't justify a round-trip through a
+    // structured parser.
+    if raw.lines().any(|line| line.trim() == header) {
+        return Ok(());
+    }
+    let mut updated = raw;
+    if !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    if !updated.ends_with("\n\n") {
+        updated.push('\n');
+    }
+    updated.push_str(&header);
+    updated.push('\n');
+    fs::write(config_path, updated).map_err(|e| Error::io(config_path, e))?;
+    Ok(())
 }
 
 fn rewrite_metadata<F>(path: &PathBuf, mutate: F) -> Result<()>
@@ -464,6 +513,105 @@ mod tests {
 
         let raw = fs::read_to_string(tmp.path().join("concepts/inverted.md")).unwrap();
         assert!(raw.contains("updated_at: 2026-05-09T12:00:00Z"));
+    }
+
+    #[test]
+    fn apply_seeds_default_theme_into_pre_themes_config() {
+        // Set up a pre-themes workdir: `version = 1` only, all stage
+        // dirs present so the only finding is DefaultThemeMissing.
+        let tmp = TempDir::new().unwrap();
+        for &stage in Stage::ALL {
+            fs::create_dir_all(tmp.path().join(stage.dirname())).unwrap();
+        }
+        fs::write(tmp.path().join(".blog-os.toml"), "version = 1\n").unwrap();
+        let workdir = Workdir::new(tmp.path());
+
+        let findings = doctor::audit(&workdir).unwrap();
+        let outcomes = apply(&workdir, plan(findings), now(), false);
+        assert!(
+            outcomes.iter().all(|o| matches!(o, Outcome::Fixed(_))),
+            "got: {outcomes:?}"
+        );
+
+        let raw = fs::read_to_string(tmp.path().join(".blog-os.toml")).unwrap();
+        assert!(raw.contains("[themes.standard]"), "got: {raw}");
+
+        // Re-audit confirms the finding is gone.
+        let after = doctor::audit(&workdir).unwrap();
+        assert!(
+            !after
+                .iter()
+                .any(|f| matches!(f, Finding::DefaultThemeMissing { .. })),
+            "got: {after:?}"
+        );
+    }
+
+    #[test]
+    fn apply_seeds_default_theme_using_actual_default_name() {
+        // `defaults.theme = "parable"` with no `[themes.parable]` entry
+        // — seed must name "parable", not "standard".
+        let tmp = TempDir::new().unwrap();
+        for &stage in Stage::ALL {
+            fs::create_dir_all(tmp.path().join(stage.dirname())).unwrap();
+        }
+        fs::write(
+            tmp.path().join(".blog-os.toml"),
+            "version = 1\n[defaults]\ntheme = \"parable\"\n",
+        )
+        .unwrap();
+        let workdir = Workdir::new(tmp.path());
+
+        let findings = doctor::audit(&workdir).unwrap();
+        let outcomes = apply(&workdir, plan(findings), now(), false);
+        assert!(outcomes.iter().all(|o| matches!(o, Outcome::Fixed(_))));
+
+        let raw = fs::read_to_string(tmp.path().join(".blog-os.toml")).unwrap();
+        assert!(raw.contains("[themes.parable]"), "got: {raw}");
+        assert!(!raw.contains("[themes.standard]"), "got: {raw}");
+    }
+
+    #[test]
+    fn apply_seed_default_theme_is_idempotent_on_rerun() {
+        // First run seeds [themes.standard]. Second run should produce
+        // an empty plan (doctor sees nothing wrong) and leave the file
+        // byte-identical to the post-first-run state.
+        let tmp = TempDir::new().unwrap();
+        for &stage in Stage::ALL {
+            fs::create_dir_all(tmp.path().join(stage.dirname())).unwrap();
+        }
+        fs::write(tmp.path().join(".blog-os.toml"), "version = 1\n").unwrap();
+        let workdir = Workdir::new(tmp.path());
+
+        let findings = doctor::audit(&workdir).unwrap();
+        apply(&workdir, plan(findings), now(), false);
+        let after_first = fs::read_to_string(tmp.path().join(".blog-os.toml")).unwrap();
+
+        let findings_again = doctor::audit(&workdir).unwrap();
+        assert!(
+            !findings_again
+                .iter()
+                .any(|f| matches!(f, Finding::DefaultThemeMissing { .. })),
+            "second-pass doctor should not re-flag: {findings_again:?}"
+        );
+        let outcomes = apply(&workdir, plan(findings_again), now(), false);
+        // Plan was empty, so apply produced no outcomes — nothing to
+        // do, and no rewrite of the config.
+        assert!(outcomes.is_empty(), "got: {outcomes:?}");
+        let after_second = fs::read_to_string(tmp.path().join(".blog-os.toml")).unwrap();
+        assert_eq!(after_first, after_second);
+    }
+
+    #[test]
+    fn apply_seed_default_theme_no_op_when_table_already_present() {
+        // The seed helper is itself idempotent: calling it when the
+        // table already exists must leave the file untouched.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".blog-os.toml");
+        let original = "version = 1\n\n[themes.standard]\n";
+        fs::write(&path, original).unwrap();
+        seed_default_theme(&path, "standard").unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(original, after);
     }
 
     #[test]
