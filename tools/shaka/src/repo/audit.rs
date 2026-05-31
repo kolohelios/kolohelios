@@ -151,13 +151,16 @@ pub fn run(repo_arg: Option<String>, fix: bool) {
     }
 
     if let Some(rs) = &policy.rulesets {
-        let expected_checks = policy
-            .branch_protection
-            .as_ref()
-            .map(|bp| bp.required_checks.as_slice());
-        let checks = check_rulesets(&repo, rs, expected_checks);
+        let bp_ref = policy.branch_protection.as_ref();
+        let expected_checks = bp_ref.map(|bp| bp.required_checks.as_slice());
+        let expected_strict = bp_ref.map(|bp| bp.strict_status_checks);
+        let checks = check_rulesets(&repo, rs, expected_checks, expected_strict);
         print_group("Rulesets", &checks);
         has_failure |= checks.iter().any(|c| c.status == Status::Fail);
+
+        if fix {
+            fix_rulesets(&repo, &checks, expected_strict);
+        }
     }
 
     if let Some(sec) = &policy.security {
@@ -454,6 +457,7 @@ fn check_rulesets(
     repo: &str,
     policy: &RulesetsPolicy,
     expected_checks: Option<&[String]>,
+    expected_strict: Option<bool>,
 ) -> Vec<Check> {
     let rulesets = match gh::api_get(&format!("/repos/{repo}/rulesets")) {
         Ok(Value::Array(arr)) => arr,
@@ -485,6 +489,7 @@ fn check_rulesets(
     let mut has_non_ff = false;
     let mut has_status_checks = false;
     let mut observed_check_contexts: Vec<String> = Vec::new();
+    let mut observed_strict: Option<bool> = None;
 
     for rs in &active {
         let id = rs["id"].as_u64().unwrap_or(0);
@@ -496,15 +501,16 @@ fn check_rulesets(
                         Some("non_fast_forward") => has_non_ff = true,
                         Some("required_status_checks") => {
                             has_status_checks = true;
-                            if let Some(contexts) =
-                                rule["parameters"]["required_status_checks"].as_array()
-                            {
+                            let params = &rule["parameters"];
+                            if let Some(contexts) = params["required_status_checks"].as_array() {
                                 for entry in contexts {
                                     if let Some(ctx) = entry["context"].as_str() {
                                         observed_check_contexts.push(ctx.to_string());
                                     }
                                 }
                             }
+                            observed_strict =
+                                params["strict_required_status_checks_policy"].as_bool();
                         }
                         _ => {}
                     }
@@ -561,9 +567,89 @@ fn check_rulesets(
                 ));
             }
         }
+
+        if let (Some(observed), Some(want)) = (observed_strict, expected_strict) {
+            checks.push(bool_check(
+                "Ruleset strict status checks",
+                observed == want,
+                if want {
+                    "on (forces rebase before merge)"
+                } else {
+                    "off (stale-but-mergeable allowed)"
+                },
+                if want {
+                    "off (should be on)"
+                } else {
+                    "on (should be off — forces rebase before merge)"
+                },
+            ));
+        }
     }
 
     checks
+}
+
+fn fix_rulesets(repo: &str, checks: &[Check], expected_strict: Option<bool>) {
+    let strict_needs_fix = checks
+        .iter()
+        .any(|c| c.name == "Ruleset strict status checks" && c.status == Status::Fail);
+
+    if !strict_needs_fix {
+        return;
+    }
+
+    let Some(want_strict) = expected_strict else {
+        return;
+    };
+
+    let rulesets = match gh::api_get(&format!("/repos/{repo}/rulesets")) {
+        Ok(Value::Array(arr)) => arr,
+        _ => return,
+    };
+
+    for rs in &rulesets {
+        let Some(id) = rs["id"].as_u64() else {
+            continue;
+        };
+        if rs["enforcement"].as_str() != Some("active") {
+            continue;
+        }
+        let Ok(detail) = gh::api_get(&format!("/repos/{repo}/rulesets/{id}")) else {
+            continue;
+        };
+        let Some(rules) = detail["rules"].as_array() else {
+            continue;
+        };
+        let has_status_check = rules
+            .iter()
+            .any(|r| r["type"].as_str() == Some("required_status_checks"));
+        if !has_status_check {
+            continue;
+        }
+
+        let mut updated_rules: Vec<Value> = rules.clone();
+        for rule in &mut updated_rules {
+            if rule["type"].as_str() == Some("required_status_checks") {
+                rule["parameters"]["strict_required_status_checks_policy"] =
+                    Value::Bool(want_strict);
+            }
+        }
+
+        let body = json!({
+            "name": detail["name"],
+            "target": detail["target"],
+            "enforcement": detail["enforcement"],
+            "conditions": detail["conditions"],
+            "rules": updated_rules,
+            "bypass_actors": detail["bypass_actors"],
+        });
+
+        println!("  {YELLOW}Fixing ruleset strict status checks...{RESET}");
+        match gh::api_put(&format!("/repos/{repo}/rulesets/{id}"), &body) {
+            Ok(_) => println!("  {GREEN}Fixed{RESET}"),
+            Err(e) => eprintln!("  {RED}Fix failed: {e}{RESET}"),
+        }
+    }
 }
 
 // ── Security ───────────────────────────────────────────────────
