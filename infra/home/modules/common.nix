@@ -17,8 +17,13 @@
     pkgs.bat
     pkgs.eza
     pkgs.zellij
-    pkgs.claude-code
-    # Portable Claude Code harness hooks. The duplicate-issue-create
+    # `claude-code` is intentionally NOT here. `nixpkgs/release-25.11`
+    # lags upstream by days to weeks for fast-moving tools like this.
+    # Install via `brew install --cask claude-code` on macOS; Linux
+    # install path tracked in #653. Don't reflexively add
+    # `pkgs.claude-code` back — see #652. `claude-hooks`, by contrast,
+    # IS nix-managed: we publish it ourselves to FlakeHub and it
+    # doesn't ship multiple versions per week. The duplicate-issue-create
     # gate (#515) calls `claude-hooks pre-issue-create` from
     # `~/.claude/settings.json` (wired in #534); having it on PATH
     # globally lets the hook fire in any working directory, not just
