@@ -74,4 +74,30 @@
     max-free = ${toString (50 * 1024 * 1024 * 1024)}
     auto-optimise-store = true
   '';
+
+  # Proactive companion to the reactive `min-free`/`max-free` settings
+  # above. `min-free` only fires when disk pressure hits, so dead
+  # dev-shell generations from the daily `kolohelios-nix` bump can sit
+  # rooted-then-unrooted indefinitely if free space stays above the
+  # threshold. This `launchd` job runs `nix-store --gc` weekly
+  # (Sundays 03:00) with a 7-day retention bound. launchd lives outside
+  # nix-darwin's `nix.*` namespace so the Determinate gate (#631)
+  # doesn't reach it. macOS doesn't make up missed runs on wake — if
+  # the Mac's asleep at 03:00 the week's GC just skips, and
+  # `min-free` remains the safety net. Tracked in #664.
+  launchd.daemons.nix-gc = {
+    command = "/nix/var/nix/profiles/default/bin/nix-store --gc --delete-older-than 7d";
+    serviceConfig = {
+      StartCalendarInterval = [
+        {
+          Weekday = 0;
+          Hour = 3;
+          Minute = 0;
+        }
+      ];
+      StandardOutPath = "/var/log/nix-gc.log";
+      StandardErrorPath = "/var/log/nix-gc.log";
+      RunAtLoad = false;
+    };
+  };
 }

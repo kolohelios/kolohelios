@@ -55,6 +55,14 @@ If GC behavior needs another knob, edit `darwin.nix` and re-run the
 `darwin-rebuild switch` from below. Don't hand-edit `nix.custom.conf` —
 the next switch overwrites it.
 
+GC has two layers on this host: the reactive `min-free`/`max-free`
+above (catches catastrophic disk-full mid-build), and a proactive
+weekly `launchd.daemons.nix-gc` (also in `modules/darwin.nix`, per
+#664) that runs `nix-store --gc --delete-older-than 7d` Sundays at
+03:00, logging to `/var/log/nix-gc.log`. macOS `launchd` doesn't make
+up missed runs on wake, so a sleeping Mac skips that week's GC —
+`min-free` remains the safety net in that case.
+
 ## Local zsh extensions
 
 The generated `~/.zshrc` is a symlink into the Nix store. Tool-specific
