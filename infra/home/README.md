@@ -1,14 +1,16 @@
 # infra/home
 
 Cross-platform home environment — single source of truth for the user's
-shell, editor, multiplexer, version-control, and CLI toolchain across
-`aarch64-darwin` (full nix-darwin) and `x86_64-linux` (NixOS module
-intended for `infra/devbox`).
+shell, editor, version-control, and CLI toolchain across
+`aarch64-darwin` (nix-darwin, daemon ceded to Determinate per #631) and
+`x86_64-linux` (NixOS module intended for `infra/devbox`).
 
 ## Outputs
 
-- `darwinConfigurations.Jons-MacBook-Pro` — full nix-darwin system for
-  the laptop.
+- `darwinConfigurations.Jons-MacBook-Pro` — nix-darwin system for the
+  laptop. `nix.enable = false` so nix-darwin coexists with Determinate
+  Nix; all `nix.*` settings on this host live in `/etc/nix/nix.custom.conf`
+  and `determinate-nixd` instead.
 - `nixosModules.home` — NixOS module wiring home-manager for the
   devbox user. Exposed but **not yet consumed** by `infra/devbox`:
   cross-flake `path:` inputs fail in pure-eval mode, and the standard
@@ -17,28 +19,36 @@ intended for `infra/devbox`).
 
 ## Switching the macOS system
 
+System activation requires `sudo`:
+
 ```
-nix run nix-darwin -- switch --flake ./infra/home#Jons-MacBook-Pro
+sudo nix run nix-darwin -- switch --flake ./infra/home#Jons-MacBook-Pro
 ```
 
 After the first switch, subsequent rebuilds use:
 
 ```
-darwin-rebuild switch --flake ./infra/home#Jons-MacBook-Pro
+sudo darwin-rebuild switch --flake ./infra/home#Jons-MacBook-Pro
 ```
+
+On first switch, any pre-existing `dotfile` that home-manager would
+otherwise clobber is renamed to `<path>.backup`
+(`home-manager.backupFileExtension = "backup"` in `modules/darwin.nix`).
+Review and delete the `.backup` files once you've confirmed the
+nix-managed version has everything you care about.
 
 ## Local zsh extensions
 
 The generated `~/.zshrc` is a symlink into the Nix store. Tool-specific
-PATH additions that aren't worth nix-managing (Windsurf, nvm, lmstudio,
-etc.) live in `~/.zshrc.local`, which the generated zshrc sources at
-the end if it exists.
+PATH additions that aren't worth nix-managing (for example, `lmstudio`)
+live in `~/.zshrc.local`, which the generated zshrc sources at the end
+if it exists. `~/.zshrc.local` is hand-maintained, not nix-managed.
 
 ## Adding a tool
 
 1. If it's a binary, add to `home.packages` in `modules/common.nix`.
 2. If home-manager has a generator for it (for example,
    `programs.helix`), wire it via the `programs.*` option set.
-3. If the upstream configuration is too elaborate to express in nix
-   (for example, the zellij keybind tree), drop the source file under
-   `dotfiles/<tool>/` and reference it via `xdg.configFile`.
+3. If the upstream configuration is too elaborate to express in nix,
+   drop the source file under `dotfiles/<tool>/` and reference it via
+   `xdg.configFile` or `home.file`.

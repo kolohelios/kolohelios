@@ -25,4 +25,13 @@
   home-manager.useUserPackages = true;
   home-manager.extraSpecialArgs = { inherit claude-hooks; };
   home-manager.users.jedwards = import ./common.nix;
+
+  # First-switch activation will encounter pre-existing dotfiles
+  # (`~/.zshrc`, `~/.config/jj/config.toml`, etc.) that home-manager
+  # refuses to clobber. With `backupFileExtension`, the existing file
+  # is renamed to `<path>.backup` and home-manager's symlink takes its
+  # place — safer than `force = true` on individual files and survives
+  # future drift the same way. Review and delete `.backup` files after
+  # activation. Tracked in #633.
+  home-manager.backupFileExtension = "backup";
 }
