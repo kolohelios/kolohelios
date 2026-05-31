@@ -591,7 +591,7 @@ body
         assert_eq!(post.metadata.classifications.theme.len(), 2);
         // Dimensions not set in YAML stay at their defaults.
         assert!(post.metadata.classifications.tone.is_none());
-        assert!(post.metadata.classifications.audience.is_none());
+        assert!(post.metadata.classifications.audience.is_empty());
     }
 
     #[test]
@@ -656,8 +656,9 @@ body
             format: Some("thesis".into()),
             hook: Some("contradiction".into()),
             tone: Some("sharp".into()),
-            audience: Some("engineering".into()),
+            audience: vec!["engineering".into()],
             theme: vec!["ambiguity".into(), "delivery".into()],
+            ..Default::default()
         };
         let original = Post::new(metadata, "Body.\n");
         let rendered = original.render().unwrap();

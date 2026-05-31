@@ -172,8 +172,29 @@ fn classification_entries(c: &Classifications) -> Vec<(&'static str, String)> {
     if let Some(v) = &c.tone {
         out.push(("tone", v.clone()));
     }
-    if let Some(v) = &c.audience {
+    if let Some(v) = &c.call_to_action {
+        out.push(("call_to_action", v.clone()));
+    }
+    if let Some(v) = &c.visual_type {
+        out.push(("visual_type", v.clone()));
+    }
+    if let Some(v) = &c.complexity {
+        out.push(("complexity", v.clone()));
+    }
+    if let Some(v) = &c.vulnerability {
+        out.push(("vulnerability", v.clone()));
+    }
+    if let Some(v) = &c.outcome_prediction {
+        out.push(("outcome_prediction", v.clone()));
+    }
+    for v in &c.audience {
         out.push(("audience", v.clone()));
+    }
+    for v in &c.topic {
+        out.push(("topic", v.clone()));
+    }
+    for v in &c.narrative_structure {
+        out.push(("narrative_structure", v.clone()));
     }
     for v in &c.theme {
         out.push(("theme", v.clone()));

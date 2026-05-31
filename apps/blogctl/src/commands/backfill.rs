@@ -209,8 +209,40 @@ fn merge_classifications(target: &mut Classifications, source: &Classifications)
         target.tone = source.tone.clone();
         changed = true;
     }
-    if source.audience.is_some() && target.audience != source.audience {
+    if !source.audience.is_empty() && target.audience != source.audience {
         target.audience = source.audience.clone();
+        changed = true;
+    }
+    if !source.topic.is_empty() && target.topic != source.topic {
+        target.topic = source.topic.clone();
+        changed = true;
+    }
+    if !source.narrative_structure.is_empty()
+        && target.narrative_structure != source.narrative_structure
+    {
+        target.narrative_structure = source.narrative_structure.clone();
+        changed = true;
+    }
+    if source.call_to_action.is_some() && target.call_to_action != source.call_to_action {
+        target.call_to_action = source.call_to_action.clone();
+        changed = true;
+    }
+    if source.visual_type.is_some() && target.visual_type != source.visual_type {
+        target.visual_type = source.visual_type.clone();
+        changed = true;
+    }
+    if source.complexity.is_some() && target.complexity != source.complexity {
+        target.complexity = source.complexity.clone();
+        changed = true;
+    }
+    if source.vulnerability.is_some() && target.vulnerability != source.vulnerability {
+        target.vulnerability = source.vulnerability.clone();
+        changed = true;
+    }
+    if source.outcome_prediction.is_some()
+        && target.outcome_prediction != source.outcome_prediction
+    {
+        target.outcome_prediction = source.outcome_prediction.clone();
         changed = true;
     }
     if !source.theme.is_empty() && target.theme != source.theme {
@@ -423,6 +455,13 @@ fn process_one<R: BufRead, W: Write>(
 }
 
 fn single_dim_missing(c: &Classifications) -> Vec<&'static str> {
+    // Interactive backfill only prompts for the dims it can ask a
+    // single value for. `audience`, `topic`, `narrative_structure`,
+    // `theme` are multi-valued — set those via `blogctl classify
+    // --<dim> a,b`. The newer single-valued dims (call_to_action,
+    // visual_type, complexity, vulnerability, outcome_prediction)
+    // can stay out of the prompt menu until the interactive UX
+    // earns the screen real estate.
     let mut out = Vec::new();
     if c.format.is_none() {
         out.push("format");
@@ -433,9 +472,6 @@ fn single_dim_missing(c: &Classifications) -> Vec<&'static str> {
     if c.tone.is_none() {
         out.push("tone");
     }
-    if c.audience.is_none() {
-        out.push("audience");
-    }
     out
 }
 
@@ -444,7 +480,6 @@ fn set_classification(c: &mut Classifications, dim: &str, value: &str) {
         "format" => c.format = Some(value.to_string()),
         "hook" => c.hook = Some(value.to_string()),
         "tone" => c.tone = Some(value.to_string()),
-        "audience" => c.audience = Some(value.to_string()),
         _ => {} // unknown dim — never reached for the dims we prompt for
     }
 }

@@ -1,7 +1,9 @@
 //! Structured tag dimensions for analytics. Sits alongside the
 //! free-form `tags: Vec<String>` on `PostMetadata`: each named field
 //! captures one dimension of the post's intent (format, hook, tone,
-//! audience) plus a multi-valued `theme` list.
+//! audience, topic, narrative-structure, call-to-action, visual-type,
+//! complexity, vulnerability, outcome-prediction) plus a multi-valued
+//! `theme` list.
 //!
 //! Values stay `Option<String>` / `Vec<String>` rather than enums so
 //! the taxonomy can evolve in `.blog-os.toml` without touching code.
@@ -9,7 +11,7 @@
 //! the `classify` command + workdir-config taxonomy issue) — this
 //! module is the storage shape only.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::taxonomy::{Taxonomy, Violation};
 
@@ -18,29 +20,70 @@ use crate::taxonomy::{Taxonomy, Violation};
 /// via `#[serde(default)]` on `PostMetadata::classifications`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Classifications {
-    /// `parable`, `thesis`, `essay`, `observation`, `personal-reflection`,
+    /// What kind of writing this is — e.g. `parable`, `essay`,
     /// `framework`. Single-valued.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
 
-    /// `proverb`, `contradiction`, `direct-claim`, `story-title`,
-    /// `question`, `analogy`. Single-valued.
+    /// The opening move — what gets a reader in. Single-valued.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hook: Option<String>,
 
-    /// `gentle`, `sharp`, `vulnerable`, `reflective`, `provocative`.
+    /// Emotional register — e.g. `reflective`, `playful`, `cautionary`.
     /// Single-valued.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<String>,
 
-    /// `engineering`, `product`, `leadership`, `founders`, `general`.
-    /// Single-valued.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub audience: Option<String>,
+    /// Who the post is most likely to engage. Multi-valued (a post can
+    /// land for more than one audience). Accepts a single string on
+    /// the input side too, transparently promoted to a one-element
+    /// list — keeps older posts from breaking when this field was
+    /// `Option<String>`.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "string_or_vec"
+    )]
+    pub audience: Vec<String>,
 
-    /// `ambiguity`, `delivery`, `interfaces`, `leadership`, `ai`,
-    /// `engineering-culture`, `product`, `organizational-psychology`.
-    /// Multi-valued — a post can sit in several themes.
+    /// What the post is about — e.g. `ai`, `leadership`, `engineering`.
+    /// Multi-valued.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topic: Vec<String>,
+
+    /// How the idea is delivered — e.g. `direct-statement`,
+    /// `animal-parable`, `venn-diagram`. Multi-valued so a piece can
+    /// combine devices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub narrative_structure: Vec<String>,
+
+    /// What the reader is invited to do — e.g. `reflection`,
+    /// `discussion`, `attend-event`. Single-valued; `none` is a real
+    /// option.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_to_action: Option<String>,
+
+    /// Dominant visual artifact — e.g. `text-only`, `diagram`,
+    /// `carousel`. Single-valued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visual_type: Option<String>,
+
+    /// Cognitive load — `simple`, `moderate`, `dense`. Single-valued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<String>,
+
+    /// How much of the author is in the piece — `none`, `low`,
+    /// `medium`, `high`. Single-valued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vulnerability: Option<String>,
+
+    /// Pre-publish engagement guess — `low`, `medium`, `high`. Set
+    /// before publishing to compare against actual performance later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_prediction: Option<String>,
+
+    /// Recurring conceptual threads — e.g. `adaptation`, `tradeoffs`,
+    /// `community`. Multi-valued.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub theme: Vec<String>,
 }
@@ -53,7 +96,14 @@ impl Classifications {
         self.format.is_none()
             && self.hook.is_none()
             && self.tone.is_none()
-            && self.audience.is_none()
+            && self.audience.is_empty()
+            && self.topic.is_empty()
+            && self.narrative_structure.is_empty()
+            && self.call_to_action.is_none()
+            && self.visual_type.is_none()
+            && self.complexity.is_none()
+            && self.vulnerability.is_none()
+            && self.outcome_prediction.is_none()
             && self.theme.is_empty()
     }
 
@@ -107,17 +157,47 @@ impl Classifications {
         }
     }
 
-    fn single_valued_entries(&self) -> [(&'static str, Option<&str>); 4] {
+    fn single_valued_entries(&self) -> [(&'static str, Option<&str>); 8] {
         [
             ("format", self.format.as_deref()),
             ("hook", self.hook.as_deref()),
             ("tone", self.tone.as_deref()),
-            ("audience", self.audience.as_deref()),
+            ("call_to_action", self.call_to_action.as_deref()),
+            ("visual_type", self.visual_type.as_deref()),
+            ("complexity", self.complexity.as_deref()),
+            ("vulnerability", self.vulnerability.as_deref()),
+            ("outcome_prediction", self.outcome_prediction.as_deref()),
         ]
     }
 
-    fn multi_valued_entries(&self) -> [(&'static str, &[String]); 1] {
-        [("theme", &self.theme)]
+    fn multi_valued_entries(&self) -> [(&'static str, &[String]); 4] {
+        [
+            ("audience", &self.audience),
+            ("topic", &self.topic),
+            ("narrative_structure", &self.narrative_structure),
+            ("theme", &self.theme),
+        ]
+    }
+}
+
+/// Deserialize a field that may be a single string OR a list of
+/// strings into `Vec<String>`. Lets `audience: engineering` and
+/// `audience: [engineering]` both parse — kept for forward
+/// compatibility with posts written before `audience` was promoted
+/// to multi-valued.
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        One(String),
+        Many(Vec<String>),
+    }
+    match Repr::deserialize(deserializer)? {
+        Repr::One(s) => Ok(vec![s]),
+        Repr::Many(v) => Ok(v),
     }
 }
 
@@ -130,7 +210,14 @@ mod tests {
             format: Some("thesis".into()),
             hook: Some("contradiction".into()),
             tone: Some("sharp".into()),
-            audience: Some("engineering".into()),
+            audience: vec!["engineering".into()],
+            topic: vec!["leadership".into()],
+            narrative_structure: vec!["analogy".into()],
+            call_to_action: Some("reflection".into()),
+            visual_type: Some("text-only".into()),
+            complexity: Some("moderate".into()),
+            vulnerability: Some("low".into()),
+            outcome_prediction: Some("medium".into()),
             theme: vec!["ambiguity".into(), "delivery".into()],
         }
     }
@@ -161,6 +248,11 @@ mod tests {
         assert!(!yaml.contains("hook"), "hook must be skipped: {yaml}");
         assert!(!yaml.contains("tone"), "tone must be skipped: {yaml}");
         assert!(!yaml.contains("theme"), "theme must be skipped: {yaml}");
+        assert!(!yaml.contains("topic"), "topic must be skipped: {yaml}");
+        assert!(
+            !yaml.contains("visual_type"),
+            "visual_type must be skipped: {yaml}",
+        );
     }
 
     #[test]
@@ -171,6 +263,8 @@ mod tests {
         assert_eq!(c.format.as_deref(), Some("thesis"));
         assert!(c.hook.is_none());
         assert!(c.theme.is_empty());
+        assert!(c.topic.is_empty());
+        assert!(c.call_to_action.is_none());
     }
 
     #[test]
@@ -199,6 +293,34 @@ mod tests {
         // The common case: one theme, written as a single-element list.
         let c = Classifications {
             theme: vec!["ambiguity".into()],
+            ..Default::default()
+        };
+        let yaml = serde_yaml_ng::to_string(&c).unwrap();
+        let back: Classifications = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(back, c);
+    }
+
+    #[test]
+    fn audience_accepts_single_string_for_back_compat() {
+        // Pre-promotion frontmatter: `audience: engineering` (string).
+        // Must parse cleanly into a one-element Vec so old posts don't
+        // break when `audience` flipped from Option<String> to Vec<String>.
+        let raw = "audience: engineering\n";
+        let c: Classifications = serde_yaml_ng::from_str(raw).unwrap();
+        assert_eq!(c.audience, vec!["engineering"]);
+    }
+
+    #[test]
+    fn audience_accepts_list_form() {
+        let raw = "audience:\n  - engineering\n  - leadership\n";
+        let c: Classifications = serde_yaml_ng::from_str(raw).unwrap();
+        assert_eq!(c.audience, vec!["engineering", "leadership"]);
+    }
+
+    #[test]
+    fn audience_round_trips_as_list() {
+        let c = Classifications {
+            audience: vec!["engineering".into(), "founders".into()],
             ..Default::default()
         };
         let yaml = serde_yaml_ng::to_string(&c).unwrap();
@@ -255,6 +377,19 @@ mod tests {
         assert!(dims.contains(&"format"));
         assert!(dims.contains(&"tone"));
         assert!(dims.contains(&"theme"));
+    }
+
+    #[test]
+    fn validate_rejects_unknown_topic_and_audience_elements() {
+        let c = Classifications {
+            topic: vec!["leadership".into(), "made-up-topic".into()],
+            audience: vec!["engineering".into(), "made-up-audience".into()],
+            ..Default::default()
+        };
+        let v = c.violations(&Taxonomy::current_v1());
+        let dims: Vec<&str> = v.iter().map(|x| x.dimension.as_str()).collect();
+        assert!(dims.contains(&"topic"));
+        assert!(dims.contains(&"audience"));
     }
 
     #[test]

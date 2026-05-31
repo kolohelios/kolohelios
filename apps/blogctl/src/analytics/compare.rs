@@ -205,7 +205,14 @@ fn dimension_values(c: &Classifications, dim: &str) -> Vec<String> {
         "format" => c.format.iter().cloned().collect(),
         "hook" => c.hook.iter().cloned().collect(),
         "tone" => c.tone.iter().cloned().collect(),
-        "audience" => c.audience.iter().cloned().collect(),
+        "call_to_action" => c.call_to_action.iter().cloned().collect(),
+        "visual_type" => c.visual_type.iter().cloned().collect(),
+        "complexity" => c.complexity.iter().cloned().collect(),
+        "vulnerability" => c.vulnerability.iter().cloned().collect(),
+        "outcome_prediction" => c.outcome_prediction.iter().cloned().collect(),
+        "audience" => c.audience.clone(),
+        "topic" => c.topic.clone(),
+        "narrative_structure" => c.narrative_structure.clone(),
         "theme" => c.theme.clone(),
         _ => vec![], // unknown dimension — no samples contribute
     }
