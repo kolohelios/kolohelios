@@ -2,7 +2,10 @@ package project
 
 #Project & {
 	name: "missing-tests"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "missing-tests"
+	}
 	coverage: {
 		line: {
 			fail: 30

@@ -169,7 +169,12 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	}
 	serving?: [#Serving, ...#Serving]
 } & ({
-	kind: "rust"
+	// Rust binary crate that ships a CLI. `cli:` carries the
+	// flake-shape knobs consumed by `shaka project generate-flakes`
+	// (binary name, runtime PATH deps, completions, devShell
+	// extras). Every existing rust crate in the repo is a CLI; if a
+	// non-CLI rust crate ever shows up, branch a new kind.
+	kind: "rust-cli"
 	coverage: {
 		line: {
 			fail: number & >=0 & <=100
@@ -180,6 +185,43 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	}
 	ci?: {
 		build?: #CiBuild
+	}
+	cli: {
+		// pname for `packages.default` and the file installed to
+		// `bin/`. Kept explicit (not derived from `name`) because
+		// nothing in the schema enforces they match — a future
+		// project might want to ship a binary whose name differs
+		// from its project name.
+		binaryName: string & =~"^[a-z][a-z0-9-]*$"
+
+		// Top-level flake `description`. Defaults to the project
+		// name; override when a longer phrase reads better.
+		description?: string & !=""
+
+		// Emit `packages.default` (and matching `apps.default`).
+		// Set false for CLIs that are built only via `cargo` and
+		// never via `nix build` (e.g. `tools/todoist` today).
+		package: *true | false
+
+		// Nixpkgs attrs baked onto the binary's PATH via
+		// `wrapProgram --prefix PATH`. Non-empty implies
+		// `makeWrapper` in nativeBuildInputs and a postFixup block.
+		runtimePathDeps?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
+
+		// Nixpkgs attrs added to `nativeCheckInputs` so the build
+		// sandbox's check phase (and `nix flake check`) can run
+		// tests that shell out.
+		checkInputs?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
+
+		// Emit the `installShellCompletion` postInstall plumbing
+		// for `<binaryName> completions <shell>`. Off by default
+		// (most fresh CLIs don't have the subcommand wired yet);
+		// opt in once `clap_complete` is in place.
+		shellCompletions: *false | true
+
+		// Extra nixpkgs attrs dropped into the devShell, on top of
+		// the rust toolchain and `workflowPackages`.
+		extraDevShellPackages?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
 	}
 } | {
 	// Rust crate that compiles to wasm32-unknown-unknown and ships

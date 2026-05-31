@@ -2,7 +2,10 @@ package project
 
 #Project & {
 	name: "shaka"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "shaka"
+	}
 	coverage: {
 		line: {
 			fail: 30

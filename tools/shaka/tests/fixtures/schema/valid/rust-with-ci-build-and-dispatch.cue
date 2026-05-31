@@ -2,7 +2,10 @@ package project
 
 #Project & {
 	name: "blogctl"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "blogctl"
+	}
 	coverage: {
 		line: {fail:   1}
 		branch: {fail: 1}
