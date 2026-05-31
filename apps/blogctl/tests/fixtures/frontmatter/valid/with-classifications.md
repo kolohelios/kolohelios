@@ -12,7 +12,6 @@ classifications:
   hook: contradiction
   tone: sharp
   audience: engineering
-  strategic_role: career-brand
   theme:
     - ambiguity
     - delivery
