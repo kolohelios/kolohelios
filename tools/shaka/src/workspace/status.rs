@@ -1,5 +1,8 @@
+use std::path::Path;
+
 use serde::Serialize;
 
+use super::issue_link;
 use super::staleness::{self, Staleness};
 use super::{die, workspace_path, BOLD, DIM, GREEN, RED, RESET, YELLOW};
 use crate::{gh, jj};
@@ -15,6 +18,17 @@ struct WorkspaceStatus {
     dirty: bool,
     dirty_counts: DirtyCounts,
     staleness: Staleness,
+    /// Open PRs that close the workspace's persisted issue. Catches
+    /// the "PR opened, then `jj new` moved `@` off the bookmark" case
+    /// where the on-`@` reads (`bookmarks_on_workspace`, `ahead_count`)
+    /// report nothing.
+    open_prs: Vec<OpenPrSummary>,
+}
+
+#[derive(Serialize)]
+struct OpenPrSummary {
+    number: u64,
+    url: String,
 }
 
 #[derive(Serialize)]
@@ -71,6 +85,14 @@ pub fn run(json: bool) {
             Staleness::Active
         };
 
+        let open_prs = if ws.name == "default" {
+            Vec::new()
+        } else if let Some(r) = &repo {
+            open_prs_for(&repo_root, r, &ws.name)
+        } else {
+            Vec::new()
+        };
+
         statuses.push(WorkspaceStatus {
             name: ws.name.clone(),
             path: path.display().to_string(),
@@ -86,6 +108,7 @@ pub fn run(json: bool) {
                 total: counts.total(),
             },
             staleness,
+            open_prs,
         });
     }
 
@@ -154,6 +177,17 @@ fn render_human(statuses: &[WorkspaceStatus]) {
             println!("  {BOLD}merged:{RESET}     {DIM}{pr_url}{RESET}");
         }
 
+        // Open PRs for the workspace's issue, regardless of where the
+        // bookmark sits relative to `@`. Surfacing these prevents a
+        // workspace from looking empty when its work has been pushed
+        // and `@` has moved off the bookmark.
+        for pr in &ws.open_prs {
+            println!(
+                "  {BOLD}open PR:{RESET}    {GREEN}#{}{RESET}  {DIM}{}{RESET}",
+                pr.number, pr.url
+            );
+        }
+
         println!();
     }
 
@@ -175,5 +209,31 @@ fn render_human(statuses: &[WorkspaceStatus]) {
             "{YELLOW}{stale} workspace{plural} stale ({merged} merged, {orphan} orphan); \
              run shaka workspace cleanup{RESET}"
         );
+    }
+}
+
+/// Look up open PRs whose body references `Closes #<issue>` for the
+/// workspace's persisted issue. Returns an empty Vec when there's no
+/// issue link or the `gh` call fails (warns to stderr in the failure
+/// case, matching `staleness::resolve_merged_pr`).
+fn open_prs_for(repo_root: &Path, repo: &str, name: &str) -> Vec<OpenPrSummary> {
+    let Ok(Some(link)) = issue_link::read(repo_root, name) else {
+        return Vec::new();
+    };
+    match gh::open_prs_for_issue(repo, link.issue) {
+        Ok(prs) => prs
+            .into_iter()
+            .map(|p| OpenPrSummary {
+                number: p.number,
+                url: p.url,
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!(
+                "{DIM}warn:{RESET} could not query open PRs for issue #{}: {e}",
+                link.issue
+            );
+            Vec::new()
+        }
     }
 }
