@@ -1,0 +1,4 @@
+keybind = shift+enter=text:\x1b\r
+
+# Silent bell — blink the tab instead of playing a sound
+window-urgency = true

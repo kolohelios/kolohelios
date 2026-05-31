@@ -91,6 +91,7 @@
   # Zellij's keybind tree is too elaborate to express idiomatically in
   # nix. Ship the kdl file as-is and let home-manager symlink it.
   xdg.configFile."zellij/config.kdl".source = ../dotfiles/zellij/config.kdl;
+  xdg.configFile."ghostty/config".source = ../dotfiles/ghostty/config;
 
   # Claude Code skills that aren't tied to a specific project. Lifted
   # from `kolohelios/.claude/commands/` so they apply to claude
