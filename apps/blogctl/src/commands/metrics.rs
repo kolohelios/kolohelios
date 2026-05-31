@@ -14,6 +14,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::commands::backfill::{merge_metrics, prompt_metrics, MergeMetricsOutcome, MetricsPick};
+use crate::datetime::{self, Flag};
 use crate::error::{Error, Result};
 use crate::stage::Stage;
 use crate::storage::{Repository, Workdir};
@@ -286,10 +287,7 @@ fn print_preview<W: Write>(output: &mut W, post: &crate::post::Post, slug: &str,
 fn parse_sampled_at(raw: Option<&str>) -> Result<OffsetDateTime> {
     match raw {
         None => Ok(OffsetDateTime::now_utc()),
-        Some(s) => OffsetDateTime::parse(s, &Rfc3339).map_err(|source| Error::InvalidSampledAt {
-            value: s.to_string(),
-            source,
-        }),
+        Some(s) => datetime::parse_timestamp(s, Flag::SampledAt),
     }
 }
 
