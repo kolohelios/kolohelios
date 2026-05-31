@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -9,6 +10,7 @@ use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
 const STATUS_CONTEXT: &str = "auto-rebase";
 const OPT_OUT_LABEL: &str = "do-not-rebase";
 const STATUS_DESCRIPTION_LIMIT: usize = 140;
+const GATE_CHECK_NAME: &str = "Gate";
 
 pub fn run(dry_run: bool) {
     let repo = match gh::detect_repo_or_env() {
@@ -127,9 +129,10 @@ fn rebase_one(
         return Ok(Outcome::WouldRebase);
     }
 
-    let main_files = changed_files(&merge_base, &main_sha)?;
-    let pr_files = changed_files(&merge_base, &pr.head_sha)?;
-    let has_overlap = main_files.iter().any(|f| pr_files.contains(f));
+    let main_projects = changed_projects(&merge_base, &main_sha)?;
+    let pr_projects = changed_projects(&merge_base, &pr.head_sha)?;
+    let has_overlap = main_projects.iter().any(|p| pr_projects.contains(p));
+    let gate_passed = !has_overlap && gate_check_passed(repo, &pr.head_sha);
 
     let worktree = PathBuf::from(format!("/tmp/auto-rebase-{}", pr.number));
     cleanup_worktree(&worktree);
@@ -143,7 +146,7 @@ fn rebase_one(
         &pr.head_sha,
     ])?;
 
-    let result = run_rebase(repo, pr, &worktree, target_url, has_overlap);
+    let result = run_rebase(repo, pr, &worktree, target_url, gate_passed);
     cleanup_worktree(&worktree);
     result
 }
@@ -153,7 +156,7 @@ fn run_rebase(
     pr: &OpenPr,
     worktree: &Path,
     target_url: Option<&str>,
-    has_overlap: bool,
+    skip_push: bool,
 ) -> Result<Outcome, String> {
     let rebase = Command::new("git")
         .current_dir(worktree)
@@ -172,7 +175,7 @@ fn run_rebase(
         return Ok(Outcome::Conflict { files });
     }
 
-    if !has_overlap {
+    if skip_push {
         let main_short = git_capture(&["rev-parse", "--short", "origin/main"])?
             .trim()
             .to_string();
@@ -222,9 +225,30 @@ fn run_rebase(
     Ok(Outcome::Rebased { new_sha })
 }
 
-fn changed_files(base: &str, head: &str) -> Result<Vec<String>, String> {
+fn gate_check_passed(repo: &str, sha: &str) -> bool {
+    let endpoint = format!("/repos/{repo}/commits/{sha}/check-runs?check_name={GATE_CHECK_NAME}");
+    let Ok(response) = gh::api_get(&endpoint) else {
+        return false;
+    };
+    response["check_runs"]
+        .as_array()
+        .and_then(|runs| runs.first())
+        .and_then(|run| run["conclusion"].as_str())
+        .is_some_and(|c| c == "success")
+}
+
+fn changed_projects(base: &str, head: &str) -> Result<HashSet<String>, String> {
     let output = git_capture(&["diff", "--name-only", base, head])?;
-    Ok(output.lines().map(|l| l.to_string()).collect())
+    Ok(output.lines().map(project_prefix).collect())
+}
+
+fn project_prefix(path: &str) -> String {
+    let parts: Vec<&str> = path.splitn(3, '/').collect();
+    if parts.len() >= 2 {
+        format!("{}/{}", parts[0], parts[1])
+    } else {
+        path.to_string()
+    }
 }
 
 fn post_status(
@@ -477,5 +501,36 @@ mod tests {
     #[test]
     fn short_sha_truncates() {
         assert_eq!(short_sha("abcdef0123456789"), "abcdef0");
+    }
+
+    #[test]
+    fn project_prefix_two_components() {
+        assert_eq!(project_prefix("tools/shaka/src/main.rs"), "tools/shaka");
+    }
+
+    #[test]
+    fn project_prefix_deep_path() {
+        assert_eq!(
+            project_prefix("apps/blogctl/src/commands/doctor.rs"),
+            "apps/blogctl"
+        );
+    }
+
+    #[test]
+    fn project_prefix_exact_two() {
+        assert_eq!(project_prefix("infra/home"), "infra/home");
+    }
+
+    #[test]
+    fn project_prefix_root_file() {
+        assert_eq!(project_prefix("CLAUDE.md"), "CLAUDE.md");
+    }
+
+    #[test]
+    fn project_prefix_dotgithub() {
+        assert_eq!(
+            project_prefix(".github/workflows/main.yaml"),
+            ".github/workflows"
+        );
     }
 }
