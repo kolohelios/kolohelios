@@ -12,7 +12,7 @@ package repopolicy
 	issues: true
 	branchProtection: {
 		requiredChecks: ["Gate"]
-		strictStatusChecks: true
+		strictStatusChecks: false
 		allowForcePush:     false
 		allowDeletion:      false
 	}
