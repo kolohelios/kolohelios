@@ -59,4 +59,19 @@
       "claude-code"
     ];
   };
+
+  # Determinate writes `/etc/nix/nix.conf` itself (header says "do not
+  # modify"), but the user-editable overlay it `!include`s,
+  # `/etc/nix/nix.custom.conf`, is fair game. `nix.*` options are
+  # unreachable via the gate (#631), but `environment.etc` is a
+  # different module entirely and works fine — gives us a declarative
+  # home for what would otherwise have been `nix.settings.*`. The
+  # daemon auto-GCs mid-build when free space drops below `min-free`
+  # and reclaims up to `max-free`, which is the load-bearing fix for
+  # the 30–60 GB/hour accumulation symptom from #573. Tracked in #632.
+  environment.etc."nix/nix.custom.conf".text = ''
+    min-free = ${toString (10 * 1024 * 1024 * 1024)}
+    max-free = ${toString (50 * 1024 * 1024 * 1024)}
+    auto-optimise-store = true
+  '';
 }

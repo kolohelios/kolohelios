@@ -37,6 +37,24 @@ otherwise clobber is renamed to `<path>.backup`
 Review and delete the `.backup` files once you've confirmed the
 nix-managed version has everything you care about.
 
+## Nix configuration on macOS
+
+Determinate Nix manages the daemon and writes `/etc/nix/nix.conf`
+itself (the file header literally says "do not modify"). The
+user-editable overlay is `/etc/nix/nix.custom.conf`, which `nix.conf`
+pulls in via `!include`.
+
+Because nix-darwin's `nix.*` options are unreachable here (gated by
+Determinate per #631), settings that would normally live there are
+written via `environment.etc."nix/nix.custom.conf"` in
+`modules/darwin.nix`. Today that's just GC tuning (`min-free` /
+`max-free` / `auto-optimise-store` from #632); same pattern applies for
+any future daemon setting.
+
+If GC behavior needs another knob, edit `darwin.nix` and re-run the
+`darwin-rebuild switch` from below. Don't hand-edit `nix.custom.conf` —
+the next switch overwrites it.
+
 ## Local zsh extensions
 
 The generated `~/.zshrc` is a symlink into the Nix store. Tool-specific
