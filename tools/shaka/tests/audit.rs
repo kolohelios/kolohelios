@@ -143,6 +143,15 @@ fn wrong_license_fails_audit() {
 }
 
 #[test]
+fn missing_rust_version_fails_audit() {
+    let staged = Staged::new(&["missing-rust-version"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(stdout.contains("rust-version-pinned"), "stdout: {stdout}");
+}
+
+#[test]
 fn rust_only_rules_skip_for_infra() {
     let staged = Staged::new(&["clean-infra"]);
     let out = staged.run_audit();

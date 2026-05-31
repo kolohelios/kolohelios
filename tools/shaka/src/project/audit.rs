@@ -115,13 +115,15 @@ struct GitignorePresent;
 struct RustHasTests;
 struct RustCoverageThresholdNonzero;
 struct RustLicenseDual;
+struct RustVersionPinned;
 struct KoloheliosNixViaFlakehub;
 struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
 struct RustCliPackageTrueRequiresCiBuild;
 struct RustCliPackageFalseRequiresOverride;
 
-const REQUIRED_RUST_LICENSE: &str = r#"license = "MIT OR Apache-2.0""#;
+const REQUIRED_RUST_LICENSE: &str = "MIT OR Apache-2.0";
+const REQUIRED_RUST_VERSION: &str = "1.95";
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
     "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
 const REQUIRED_KOLOHELIOS_HOME_URL: &str = "https://flakehub.com/f/kolohelios/home/*.tar.gz";
@@ -223,12 +225,39 @@ impl Rule for RustLicenseDual {
             Ok(c) => c,
             Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
         };
-        if contents.contains(REQUIRED_RUST_LICENSE) {
-            RuleResult::Pass
-        } else {
-            RuleResult::Fail(format!(
-                "Cargo.toml must declare `{REQUIRED_RUST_LICENSE}` (matches the repo's dual license)"
-            ))
+        match cargo_package_field(&contents, "license") {
+            Some(v) if v == REQUIRED_RUST_LICENSE => RuleResult::Pass,
+            Some(v) => RuleResult::Fail(format!(
+                "Cargo.toml `[package].license` must be `\"{REQUIRED_RUST_LICENSE}\"` (found `\"{v}\"`)"
+            )),
+            None => RuleResult::Fail(format!(
+                "Cargo.toml must declare `[package].license = \"{REQUIRED_RUST_LICENSE}\"`"
+            )),
+        }
+    }
+}
+
+impl Rule for RustVersionPinned {
+    fn name(&self) -> &'static str {
+        "rust-version-pinned"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind.is_rust_flavored()
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let cargo = project_dir.join("Cargo.toml");
+        let contents = match std::fs::read_to_string(&cargo) {
+            Ok(c) => c,
+            Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
+        };
+        match cargo_package_field(&contents, "rust-version") {
+            Some(v) if v == REQUIRED_RUST_VERSION => RuleResult::Pass,
+            Some(v) => RuleResult::Fail(format!(
+                "Cargo.toml `[package].rust-version` must be `\"{REQUIRED_RUST_VERSION}\"` (found `\"{v}\"`)"
+            )),
+            None => RuleResult::Fail(format!(
+                "Cargo.toml must declare `[package].rust-version = \"{REQUIRED_RUST_VERSION}\"`"
+            )),
         }
     }
 }
@@ -372,6 +401,48 @@ fn is_placeholder_body_line(stripped: &str) -> bool {
     matches!(body, "true" | ":")
 }
 
+// Looks up a string-valued `[package]` field in a Cargo.toml, tolerating
+// any whitespace between key, `=`, and value (taplo's `align_entries`
+// pads to the longest key in the table, so substring matching against a
+// fixed-width assignment is brittle). Returns the literal string value
+// without quotes, or `None` if the key isn't present in `[package]`.
+// Other sections (`[dependencies]`, `[lib]`, etc.) are skipped to avoid
+// confusing `name`/`version` here with package-level fields.
+fn cargo_package_field(contents: &str, key: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in contents.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            in_package = trimmed.starts_with("[package]");
+            continue;
+        }
+        if !in_package || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some(after_key) = trimmed.strip_prefix(key) else {
+            continue;
+        };
+        // Reject when `key` is a prefix of a longer key (for example
+        // `name` matching `name-suffix`).
+        let next = after_key.chars().next()?;
+        if !next.is_whitespace() && next != '=' {
+            continue;
+        }
+        let Some(after_eq) = after_key.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let after_eq = after_eq.trim_start();
+        let Some(after_quote) = after_eq.strip_prefix('"') else {
+            continue;
+        };
+        let Some(end) = after_quote.find('"') else {
+            continue;
+        };
+        return Some(after_quote[..end].to_string());
+    }
+    None
+}
+
 // Parses an inline `<input_name>.url = "<url>";` declaration, accepting
 // both the in-block form (inside `inputs = { ... }`) and the top-level
 // `inputs.<input_name>.url = "..."` form. Returns the URL if found,
@@ -468,6 +539,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustHasTests),
         Box::new(RustCoverageThresholdNonzero),
         Box::new(RustLicenseDual),
+        Box::new(RustVersionPinned),
         Box::new(KoloheliosNixViaFlakehub),
         Box::new(KoloheliosHomeViaFlakehub),
         Box::new(ValidateRecipeMeaningful),
@@ -1064,6 +1136,26 @@ mod tests {
     }
 
     #[test]
+    fn rust_license_dual_passes_for_taplo_aligned_license() {
+        // `taplo fmt --check` with `align_entries = true` pads to the
+        // widest key in `[package]`, so once `rust-version` is in play
+        // every other key gets multi-space padding before `=`. The
+        // substring check used to be `r#"license = "MIT OR Apache-2.0""#`
+        // (one space) and broke as soon as the table was wider; this
+        // guards against regressing to that form.
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nedition      = \"2021\"\nlicense      = \"MIT OR Apache-2.0\"\nname         = \"x\"\nrust-version = \"1.95\"\nversion      = \"0.1.0\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustLicenseDual.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
     fn rust_license_dual_fails_when_cargo_toml_missing() {
         let tmp = TempDir::new().unwrap();
         match RustLicenseDual.check(tmp.path(), &rust_meta()) {
@@ -1400,6 +1492,132 @@ mod tests {
         assert_eq!(
             ValidateRecipeMeaningful.check(tmp.path(), &rust_meta()),
             RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_version_pinned_applies_to_rust_and_rust_worker_only() {
+        assert!(RustVersionPinned.applies(&rust_meta()));
+        assert!(RustVersionPinned.applies(&rust_worker_meta()));
+        assert!(!RustVersionPinned.applies(&infra_meta()));
+    }
+
+    #[test]
+    fn rust_version_pinned_passes_for_canonical_msrv() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustVersionPinned.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_version_pinned_passes_for_taplo_aligned_msrv() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nedition      = \"2021\"\nlicense      = \"MIT OR Apache-2.0\"\nname         = \"x\"\nrust-version = \"1.95\"\nversion      = \"0.1.0\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustVersionPinned.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_version_pinned_fails_when_cargo_toml_missing() {
+        let tmp = TempDir::new().unwrap();
+        match RustVersionPinned.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("missing Cargo.toml"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_version_pinned_fails_when_field_absent() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"MIT OR Apache-2.0\"\n",
+        )
+        .unwrap();
+        match RustVersionPinned.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("must declare"), "got: {msg}");
+                assert!(msg.contains("rust-version"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_version_pinned_fails_for_wrong_version() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nrust-version = \"1.80\"\n",
+        )
+        .unwrap();
+        match RustVersionPinned.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("1.95"), "got: {msg}");
+                assert!(msg.contains("1.80"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_version_pinned_ignores_rust_version_in_dependencies() {
+        // A dep called `rust-version` (unlikely but defensible) in
+        // `[dependencies]` must not be picked up as the `[package]` field.
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies]\nrust-version = \"99.0\"\n",
+        )
+        .unwrap();
+        match RustVersionPinned.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("must declare"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cargo_package_field_finds_aligned_value() {
+        let toml = "[package]\nedition      = \"2021\"\nrust-version = \"1.95\"\n";
+        assert_eq!(
+            cargo_package_field(toml, "rust-version"),
+            Some("1.95".into())
+        );
+        assert_eq!(cargo_package_field(toml, "edition"), Some("2021".into()));
+    }
+
+    #[test]
+    fn cargo_package_field_rejects_prefix_match() {
+        // `name` must not match `name-suffix`.
+        let toml = "[package]\nname-suffix = \"actual\"\n";
+        assert_eq!(cargo_package_field(toml, "name"), None);
+    }
+
+    #[test]
+    fn cargo_package_field_only_reads_package_section() {
+        let toml = "[package]\nname = \"good\"\n\n[lib]\nname = \"bad\"\n";
+        assert_eq!(cargo_package_field(toml, "name"), Some("good".into()));
+    }
+
+    #[test]
+    fn cargo_package_field_skips_comments() {
+        let toml = "[package]\n# rust-version = \"99.0\"\nrust-version = \"1.95\"\n";
+        assert_eq!(
+            cargo_package_field(toml, "rust-version"),
+            Some("1.95".into())
         );
     }
 
