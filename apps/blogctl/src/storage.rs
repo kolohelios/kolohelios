@@ -613,6 +613,12 @@ impl Repository {
     /// Non-Markdown entries living inside any stage directory.
     /// Captures both files (`.DS_Store`, stray drafts in other
     /// formats) and subdirectories (which the layout never expects).
+    ///
+    /// `.gitkeep` is the one exception — it's the standard way to
+    /// keep an otherwise-empty stage directory alive across a git
+    /// checkout, and flagging it would force consumers to fabricate
+    /// the dirs at audit time (`mkdir -p`) instead. Other dotfiles
+    /// (`.DS_Store`, etc.) still surface — those are real noise.
     pub fn stray_entries(&self) -> Result<Vec<StrayEntry>> {
         let mut out = Vec::new();
         for &stage in Stage::ALL {
@@ -626,6 +632,9 @@ impl Repository {
                 let entry = entry.map_err(|e| Error::io(&dir, e))?;
                 let path = entry.path();
                 if path.is_file() && is_markdown(&path) {
+                    continue;
+                }
+                if path.file_name().and_then(|n| n.to_str()) == Some(".gitkeep") {
                     continue;
                 }
                 out.push(StrayEntry {
@@ -1094,6 +1103,28 @@ mod tests {
         let paths: Vec<&Path> = stray.iter().map(|s| s.path.as_path()).collect();
         assert!(paths.iter().any(|p| p.ends_with(".DS_Store")));
         assert!(paths.iter().any(|p| p.ends_with("notes.txt")));
+    }
+
+    #[test]
+    fn stray_entries_silent_on_gitkeep() {
+        // `.gitkeep` is the standard empty-dir marker; doctor must not
+        // flag it. Other dotfiles (e.g. `.DS_Store`) still surface to
+        // keep the macOS-noise-catching behavior intact.
+        let (tmp, repo) = fresh_repo();
+        fs::write(tmp.path().join("concepts/.gitkeep"), "").unwrap();
+        fs::write(tmp.path().join("ideation/.gitkeep"), "").unwrap();
+        fs::write(tmp.path().join("editing/.DS_Store"), "noise").unwrap();
+
+        let stray = repo.stray_entries().unwrap();
+        let paths: Vec<&Path> = stray.iter().map(|s| s.path.as_path()).collect();
+        assert!(
+            !paths.iter().any(|p| p.ends_with(".gitkeep")),
+            "expected no .gitkeep findings: {paths:?}",
+        );
+        assert!(
+            paths.iter().any(|p| p.ends_with(".DS_Store")),
+            "expected .DS_Store still flagged: {paths:?}",
+        );
     }
 
     #[test]
