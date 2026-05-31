@@ -206,12 +206,12 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// Nixpkgs attrs baked onto the binary's PATH via
 		// `wrapProgram --prefix PATH`. Non-empty implies
 		// `makeWrapper` in nativeBuildInputs and a postFixup block.
-		runtimePathDeps?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
+		runtimePathDeps?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 
 		// Nixpkgs attrs added to `nativeCheckInputs` so the build
 		// sandbox's check phase (and `nix flake check`) can run
 		// tests that shell out.
-		checkInputs?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
+		checkInputs?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 
 		// Emit the `installShellCompletion` postInstall plumbing
 		// for `<binaryName> completions <shell>`. Off by default
@@ -221,7 +221,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 
 		// Extra nixpkgs attrs dropped into the devShell, on top of
 		// the rust toolchain and `workflowPackages`.
-		extraDevShellPackages?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
+		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 	}
 } | {
 	// Rust crate that compiles to wasm32-unknown-unknown and ships
@@ -259,10 +259,61 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		}
 		build?: #CiBuild
 	}
+	infra?: {
+		// Top-level flake `description`. Defaults to project name.
+		description?: string & !=""
+
+		// Extra flake inputs beyond the standard kolohelios-nix +
+		// nixpkgs. Each key is the input name; value is the URL
+		// plus optional follows declarations. Required for projects
+		// that consume sibling flakes (devbox → home-env, home →
+		// home-manager / nix-darwin / claude-hooks).
+		extraInputs?: [Name=string & =~"^[a-z][a-z0-9-]*$"]: {
+			url: string & !=""
+			// Map of `inputs.<key>.follows = <value>`. The
+			// generator emits one `inputs.<src>.follows` line per
+			// entry inside the input's block.
+			follows?: [Src=string & =~"^[a-z][a-z0-9-]*$"]: string & !=""
+		}
+
+		// Nixpkgs attrs added to the devShell's `packages` list, on
+		// top of `(workflowPackages pkgs)`. Cloudflare-style
+		// Terraform projects typically list `opentofu` and
+		// `_1password-cli`; devbox uses `opentofu` and `linode-cli`;
+		// home uses none.
+		devShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
+
+		// Raw nix snippet appended inside the
+		// `outputs.{...}: let .. in { HERE }` block, after the
+		// generator's standard outputs (devShells, formatter). This
+		// is the escape sandbox for projects that expose
+		// project-specific outputs — devbox's
+		// `nixosConfigurations` / `packages.linodeImage` /
+		// `checks.devbox-eval`, home's `darwinConfigurations` /
+		// `nixosModules`. Lose CUE syntax-highlighting and
+		// structural validation in exchange for keeping the project
+		// inside the generator's drift-checked envelope.
+		extra?: string
+	}
 } | {
 	kind: "nix-lib"
 	ci?: {
 		build?: #CiBuild
+	}
+	nixLib?: {
+		// Top-level flake `description`. Defaults to project name.
+		description?: string & !=""
+
+		// Raw nix snippet for the entire `let .. in { ... }` body
+		// of `outputs`. nix-lib *defines* what other flakes import,
+		// so its shape isn't a fixed template — the let-bindings,
+		// the `lib = { inherit ... }` export, formatter, devShells
+		// are all project-specific. The template provides only the
+		// flake header, description, nixpkgs input, and outputs
+		// signature; everything else lives here. Same
+		// escape-sandbox trade-off as `infra.extra` but covering a
+		// wider surface.
+		extra?: string
 	}
 } | {
 	// Pandoc-rendered document project. Source `*.md` files are
