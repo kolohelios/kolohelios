@@ -44,7 +44,7 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
         } else {
             println!("would run: shaka preflight");
         }
-        send::run(Some(bookmark), false, true);
+        send::run(Some(bookmark), false, false, true);
         return;
     }
 
@@ -94,5 +94,5 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
     }
 
     println!("{BOLD}step 6/6: handing off to repo send{RESET}");
-    send::run(Some(bookmark), false, false);
+    send::run(Some(bookmark), false, false, false);
 }

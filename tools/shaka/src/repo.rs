@@ -69,6 +69,12 @@ pub enum RepoCommand {
         #[arg(long)]
         no_pr: bool,
 
+        /// Skip queueing GitHub auto-merge after PR creation. The PR
+        /// will be opened (and any existing PR left in place) but the
+        /// merge has to be triggered manually.
+        #[arg(long)]
+        no_auto_merge: bool,
+
         /// Print the commands that would run without executing them
         #[arg(long)]
         dry_run: bool,
@@ -78,6 +84,12 @@ pub enum RepoCommand {
         /// Bookmark name (auto-detected from the current change if omitted)
         #[arg(long)]
         bookmark: Option<String>,
+
+        /// Skip queueing GitHub auto-merge after PR creation. The PR
+        /// will be opened (and any existing PR left in place) but the
+        /// merge has to be triggered manually.
+        #[arg(long)]
+        no_auto_merge: bool,
 
         /// Print the commands that would run without executing them
         #[arg(long)]
@@ -193,9 +205,14 @@ pub fn run(cmd: RepoCommand) {
         RepoCommand::Send {
             bookmark,
             no_pr,
+            no_auto_merge,
             dry_run,
-        } => send::run(bookmark, no_pr, dry_run),
-        RepoCommand::Pr { bookmark, dry_run } => pr::run(bookmark, dry_run),
+        } => send::run(bookmark, no_pr, no_auto_merge, dry_run),
+        RepoCommand::Pr {
+            bookmark,
+            no_auto_merge,
+            dry_run,
+        } => pr::run(bookmark, no_auto_merge, dry_run),
         RepoCommand::Ship {
             bookmark,
             skip_preflight,
