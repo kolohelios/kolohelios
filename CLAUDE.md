@@ -287,10 +287,10 @@ shaka project new --name <name> --slot <slot>
 ```
 
 `<slot>` is one of `apps`, `packages`, `projects`, `tools`. The command
-writes the canonical skeleton (`project.cue`, `Cargo.toml`, `flake.nix`,
-`.envrc`, `README.md`, `.gitignore`, `src/main.rs`), generates the
-per-project `justfile`, and runs `schema-check` + `audit` against the
-result.
+writes the canonical skeleton (`project.cue`, `Cargo.toml`, `.envrc`,
+`README.md`, `.gitignore`, `deny.toml`, `src/main.rs`), generates the
+per-project `justfile` and `flake.nix`, and runs `schema-check` +
+`audit` against the result.
 
 For `infra` and `nix-lib` projects (and any non-rust kind), scaffold by
 hand for now — `project new` only ships the rust template:

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::project::{audit, generate_justfiles, schema_check};
+use crate::project::{audit, generate_flakes, generate_justfiles, schema_check};
 use crate::term::{BOLD, GREEN, RED, RESET};
 
 const SLOTS: &[&str] = &["apps", "packages", "projects", "tools"];
@@ -33,6 +33,10 @@ pub fn run(name: String, slot: String) {
 
     schema_check::run();
     generate_justfiles::run(false);
+    // generate-flakes must run before audit: `kolohelios-nix-via-flakehub`
+    // scans the project's flake.nix for the FlakeHub URL pattern, so the
+    // generator needs to have produced one by then.
+    generate_flakes::run(false);
     audit::run();
 }
 
@@ -71,7 +75,6 @@ fn scaffold_rust(dir: &Path, name: &str) -> std::io::Result<()> {
     fs::create_dir_all(dir.join("src"))?;
     fs::write(dir.join("project.cue"), project_cue(name))?;
     fs::write(dir.join("Cargo.toml"), cargo_toml(name))?;
-    fs::write(dir.join("flake.nix"), flake_nix(name))?;
     fs::write(dir.join(".envrc"), ENVRC)?;
     fs::write(dir.join("README.md"), readme(name))?;
     fs::write(dir.join(".gitignore"), GITIGNORE)?;
@@ -117,76 +120,6 @@ fn cargo_toml(name: &str) -> String {
          \n\
          [lints.clippy]\n\
          mod_module_files = \"deny\"\n"
-    )
-}
-
-fn flake_nix(name: &str) -> String {
-    format!(
-        r#"{{
-  description = "{name}";
-
-  inputs = {{
-    kolohelios-nix.url = "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
-    nixpkgs.follows = "kolohelios-nix/nixpkgs";
-    rust-overlay = {{
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    }};
-  }};
-
-  outputs =
-    {{
-      self,
-      kolohelios-nix,
-      nixpkgs,
-      rust-overlay,
-      ...
-    }}:
-    let
-      inherit (kolohelios-nix.lib) supportedSystems workflowPackages;
-
-      forEachSupportedSystem =
-        f:
-        nixpkgs.lib.genAttrs supportedSystems (
-          system:
-          f {{
-            inherit system;
-            pkgs = import nixpkgs {{
-              inherit system;
-              config.allowUnfree = true;
-              overlays = [ rust-overlay.overlays.default ];
-            }};
-          }}
-        );
-
-      rustToolchain =
-        pkgs:
-        pkgs.rust-bin.nightly.latest.default.override {{
-          extensions = [
-            "rust-src"
-            "rust-analyzer"
-            "llvm-tools-preview"
-          ];
-        }};
-    in
-    {{
-      devShells = forEachSupportedSystem (
-        {{ pkgs, ... }}:
-        {{
-          default = pkgs.mkShell {{
-            packages = [
-              (rustToolchain pkgs)
-            ]
-            ++ (workflowPackages pkgs)
-            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
-          }};
-        }}
-      );
-
-      formatter = kolohelios-nix.formatter;
-    }};
-}}
-"#
     )
 }
 
@@ -379,5 +312,21 @@ mod tests {
         scaffold_rust(&dir, "demo").expect("scaffold");
         let written = std::fs::read_to_string(dir.join("deny.toml")).expect("read deny.toml");
         assert_eq!(written, DENY_TOML);
+    }
+
+    #[test]
+    fn scaffold_rust_does_not_write_flake_nix() {
+        // flake.nix is generator-owned now (#616). The scaffold writes
+        // only the inputs `generate-flakes` reads — project.cue and
+        // the rust source skeleton; the public `run` entry point
+        // invokes `generate_flakes::run` after scaffold completes.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("demo");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        scaffold_rust(&dir, "demo").expect("scaffold");
+        assert!(
+            !dir.join("flake.nix").exists(),
+            "scaffold should not write flake.nix; generate-flakes owns it"
+        );
     }
 }
