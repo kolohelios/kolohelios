@@ -5,7 +5,10 @@ package project
 // defaults) and should fail cue vet.
 #Project & {
 	name: "shaka"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "shaka"
+	}
 	coverage: {
 		line: {fail:   30}
 		branch: {fail: 20}

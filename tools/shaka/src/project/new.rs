@@ -86,7 +86,10 @@ fn project_cue(name: &str) -> String {
          \n\
          #Project & {{\n\
          \tname: \"{name}\"\n\
-         \tkind: \"rust\"\n\
+         \tkind: \"rust-cli\"\n\
+         \tcli: {{\n\
+         \t\tbinaryName: \"{name}\"\n\
+         \t}}\n\
          \tcoverage: {{\n\
          \t\tline: {{\n\
          \t\t\tfail: 1\n\
@@ -315,7 +318,9 @@ mod tests {
     fn project_cue_includes_name_and_kind() {
         let out = project_cue("demo");
         assert!(out.contains("name: \"demo\""));
-        assert!(out.contains("kind: \"rust\""));
+        assert!(out.contains("kind: \"rust-cli\""));
+        assert!(out.contains("cli: {"));
+        assert!(out.contains("binaryName: \"demo\""));
         assert!(out.contains("coverage:"));
     }
 

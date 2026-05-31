@@ -2,7 +2,16 @@ package project
 
 #Project & {
 	name: "blogctl"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName:       "blogctl"
+		shellCompletions: true
+		// Integration tests in `tests/cli.rs` spawn `jj` directly
+		// (and exercise blogctl commands whose precondition checks
+		// shell out to `jj status`). Without `jujutsu` on PATH the
+		// test suite fails inside the nix-build sandbox.
+		checkInputs: ["jujutsu"]
+	}
 	coverage: {
 		// Floors picked from the current measured coverage minus
 		// ~7% headroom: as of #442, line is ~92% and branch is ~72%.

@@ -37,7 +37,7 @@ struct AuditConfig {
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectKind {
-    Rust,
+    RustCli,
     RustWorker,
     Infra,
     NixLib,
@@ -48,7 +48,7 @@ impl ProjectKind {
     /// Rust-flavored kinds share the cargo/clippy/license rules even
     /// when coverage requirements diverge.
     fn is_rust_flavored(self) -> bool {
-        matches!(self, ProjectKind::Rust | ProjectKind::RustWorker)
+        matches!(self, ProjectKind::RustCli | ProjectKind::RustWorker)
     }
 }
 
@@ -170,7 +170,9 @@ impl Rule for RustCoverageThresholdNonzero {
             // (cargo-llvm-cov can't see the wasm-target code, so
             // gating on native-only coverage is misleading).
             return match meta.kind {
-                ProjectKind::Rust => RuleResult::Fail("rust project missing coverage block".into()),
+                ProjectKind::RustCli => {
+                    RuleResult::Fail("rust-cli project missing coverage block".into())
+                }
                 ProjectKind::RustWorker => RuleResult::Pass,
                 _ => RuleResult::Pass,
             };
@@ -697,7 +699,7 @@ mod tests {
     fn rust_meta() -> ProjectMeta {
         ProjectMeta {
             name: "demo".into(),
-            kind: ProjectKind::Rust,
+            kind: ProjectKind::RustCli,
             coverage: Some(Coverage {
                 line: CoverageThreshold { fail: 30 },
                 branch: CoverageThreshold { fail: 20 },
@@ -909,7 +911,7 @@ mod tests {
     }
 
     #[test]
-    fn coverage_threshold_fails_when_block_missing_on_rust() {
+    fn coverage_threshold_fails_when_block_missing_on_rust_cli() {
         let tmp = TempDir::new().unwrap();
         let meta = ProjectMeta {
             coverage: None,

@@ -2,7 +2,10 @@ package project
 
 #Project & {
 	name: "zero-branch-coverage"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "zero-branch-coverage"
+	}
 	coverage: {
 		line: {
 			fail: 1

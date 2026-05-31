@@ -2,7 +2,10 @@ package project
 
 #Project & {
 	name: "plain-app"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "plain-app"
+	}
 	coverage: {
 		line: {
 			fail: 0

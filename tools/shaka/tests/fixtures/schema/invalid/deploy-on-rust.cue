@@ -1,10 +1,13 @@
 package project
 
-// deploy lives on rust-worker, not rust — the only target today is
-// cloudflare-worker, which only makes sense for wasm builds.
+// deploy lives on rust-worker, not rust-cli — the only target today
+// is cloudflare-worker, which only makes sense for wasm builds.
 #Project & {
 	name: "kolohelios-portfolio"
-	kind: "rust"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "kolohelios-portfolio"
+	}
 	coverage: {
 		line: {
 			fail: 30

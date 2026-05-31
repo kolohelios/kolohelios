@@ -392,7 +392,7 @@ pub fn run(check: bool) {
 
 fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
     match kind {
-        "rust" => Some(RUST_TEMPLATE.to_string()),
+        "rust-cli" => Some(RUST_TEMPLATE.to_string()),
         "rust-worker" => Some(
             // `src/bin/build-site.rs` signals a static-site build
             // pipeline (templates + tailwind → committed `dist/`).
@@ -567,10 +567,10 @@ mod tests {
     }
 
     #[test]
-    fn template_for_rust_returns_rust_template() {
-        let dir = tmp_project("rust");
+    fn template_for_rust_cli_returns_rust_template() {
+        let dir = tmp_project("rust-cli");
         assert_eq!(
-            template_for("rust", dir.path()).as_deref(),
+            template_for("rust-cli", dir.path()).as_deref(),
             Some(RUST_TEMPLATE)
         );
     }
