@@ -18,6 +18,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\a'"
+          }
+        ]
+      }
     ]
   }
 }
