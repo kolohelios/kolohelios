@@ -5,12 +5,20 @@ name    = "aof"
 publish = false
 version = "0.1.0"
 
+[lib]
+name = "aof"
+path = "src/lib.rs"
+
 [[bin]]
 name = "aof"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+base64 = "0.22"
+clap   = { version = "4", features = ["derive"] }
+image  = { version = "0.25", default-features = false, features = ["png"] }
+resvg  = "0.45"
+snafu  = "0.9"
 
 [lints.clippy]
 mod_module_files = "deny"
