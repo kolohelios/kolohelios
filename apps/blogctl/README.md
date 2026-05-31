@@ -213,7 +213,18 @@ with values outside the declared list refuse to load — `blogctl
 doctor` surfaces the offenders.
 
 `multi = false` is the default (single-valued); `multi = true` accepts
-a list. `theme` is the only multi-valued dimension in v1.
+a list.
+
+`tags` (the free-form list on each post, separate from classifications)
+is uncapped by default. To enforce a per-workdir cap, declare:
+
+```toml
+[tags]
+max = 10
+```
+
+`blogctl doctor` then flags any post whose tag list overruns the cap;
+fix it by pruning the post's `tags` or raising `max`.
 
 ## Analytics workflow
 

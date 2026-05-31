@@ -53,6 +53,12 @@ pub struct Config {
     /// see `Config::stage_config`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub kinds: BTreeMap<String, KindConfig>,
+    /// Constraints on the free-form `tags: Vec<String>` field on each
+    /// post. Currently a single `max` cap, surfaced by doctor as a
+    /// `TagsExceedMax` finding when a post overruns it. Unset =
+    /// unlimited; workdirs opt in by declaring `[tags] max = N`.
+    #[serde(default, skip_serializing_if = "TagsConfig::is_default")]
+    pub tags: TagsConfig,
 }
 
 /// Workdir-wide defaults. The theme `blogctl new` selects when `--theme`
@@ -89,6 +95,25 @@ fn default_theme_name() -> String {
 pub struct ThemeConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub prompts: BTreeMap<String, String>,
+}
+
+/// Settings for the per-post `tags` field. Today: a single `max` cap
+/// (free-form tags only; classification dimensions are constrained by
+/// `[classifications.*]`). `max = None` means unlimited — workdirs
+/// opt in to the cap by writing `[tags] max = N` in `.blog-os.toml`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct TagsConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+}
+
+impl TagsConfig {
+    /// True when no fields are set — used by `skip_serializing_if`
+    /// to keep `[tags]` out of `.blog-os.toml` for workdirs that
+    /// haven't opted in.
+    fn is_default(&self) -> bool {
+        self.max.is_none()
+    }
 }
 
 /// Per-kind stage configuration. Keyed by `Stage::as_str()` so the TOML
@@ -167,6 +192,7 @@ impl Config {
             sync: SyncConfig::default(),
             classifications: Taxonomy::current_v1().to_btreemap(),
             kinds: BTreeMap::new(),
+            tags: TagsConfig::default(),
         }
     }
 
