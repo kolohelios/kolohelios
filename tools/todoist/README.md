@@ -52,6 +52,17 @@ through `4` (highest) — out-of-range values are rejected before the
 request reaches the server. Repeating `--label` attaches multiple
 labels at once.
 
+## Listing projects
+
+```
+todoist projects list [--json]
+```
+
+Prints the project list as a column table (`name`, `id`, `parent_id`,
+where `parent_id` is blank for top-level projects). `--json` emits one
+project object per line — the shape `aof reconcile` consumes to detect
+drift against the areas-of-focus tree.
+
 ## Completing tasks
 
 ```

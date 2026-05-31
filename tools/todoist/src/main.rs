@@ -3,6 +3,7 @@ use clap::{Args, Parser, Subcommand};
 
 mod api;
 mod auth;
+mod projects;
 mod tasks;
 
 use auth::OpRunner;
@@ -18,6 +19,8 @@ struct Cli {
 enum Command {
     /// Manage Todoist API credentials
     Auth(AuthCmd),
+    /// Inspect Todoist projects
+    Projects(ProjectsCmd),
     /// Manage tasks
     Tasks(TasksCmd),
 }
@@ -40,6 +43,22 @@ enum AuthSubcommand {
     Status,
     /// Forget the stored token reference
     Logout,
+}
+
+#[derive(Args)]
+struct ProjectsCmd {
+    #[command(subcommand)]
+    command: ProjectsSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ProjectsSubcommand {
+    /// List all projects
+    List {
+        /// Emit raw project objects as ndjson
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args)]
@@ -100,7 +119,24 @@ fn main() -> Result<()> {
 fn dispatch(command: Command) -> Result<()> {
     match command {
         Command::Auth(AuthCmd { command }) => handle_auth(command),
+        Command::Projects(ProjectsCmd { command }) => handle_projects(command),
         Command::Tasks(TasksCmd { command }) => handle_tasks(command),
+    }
+}
+
+fn handle_projects(cmd: ProjectsSubcommand) -> Result<()> {
+    match cmd {
+        ProjectsSubcommand::List { json } => {
+            let token = resolve_token()?;
+            let client = api::RealClient::default();
+            let projects = projects::run_list(&client, &token)?;
+            if json {
+                println!("{}", projects::render_ndjson(&projects));
+            } else {
+                println!("{}", projects::render_table(&projects));
+            }
+            Ok(())
+        }
     }
 }
 
@@ -332,6 +368,29 @@ mod tests {
         });
         assert!(out.contains("op://x"));
         assert!(out.contains("vault locked"));
+    }
+
+    #[test]
+    fn parses_projects_list_default() {
+        let cli = Cli::try_parse_from(["todoist", "projects", "list"]).expect("should parse");
+        match cli.command {
+            Command::Projects(ProjectsCmd {
+                command: ProjectsSubcommand::List { json },
+            }) => assert!(!json),
+            _ => panic!("expected Projects::List"),
+        }
+    }
+
+    #[test]
+    fn parses_projects_list_with_json_flag() {
+        let cli =
+            Cli::try_parse_from(["todoist", "projects", "list", "--json"]).expect("should parse");
+        match cli.command {
+            Command::Projects(ProjectsCmd {
+                command: ProjectsSubcommand::List { json },
+            }) => assert!(json),
+            _ => panic!("expected Projects::List"),
+        }
     }
 
     #[test]

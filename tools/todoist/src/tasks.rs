@@ -362,6 +362,7 @@ mod tests {
         Project {
             id: id.to_string(),
             name: name.to_string(),
+            parent_id: None,
         }
     }
 

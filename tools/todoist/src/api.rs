@@ -29,6 +29,8 @@ impl std::error::Error for ApiError {}
 pub struct Project {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
 }
 
 // Todoist v1 list endpoints wrap results in a paginated envelope.
@@ -218,6 +220,21 @@ mod tests {
         let page: Paginated<Project> = serde_json::from_str(raw).unwrap();
         assert_eq!(page.results.len(), 1);
         assert_eq!(page.results[0].name, "Inbox");
+        assert_eq!(page.results[0].parent_id, None);
+    }
+
+    #[test]
+    fn project_round_trips_parent_id() {
+        // `projects list` and `aof reconcile` rely on parent_id to render and
+        // walk the hierarchy. Missing parent_id (top-level project) must
+        // deserialize as None, present parent_id must round-trip its value.
+        let raw = r#"{"results":[
+            {"id":"1","name":"Top","parent_id":null},
+            {"id":"2","name":"Child","parent_id":"1"}
+        ],"next_cursor":null}"#;
+        let page: Paginated<Project> = serde_json::from_str(raw).unwrap();
+        assert_eq!(page.results[0].parent_id, None);
+        assert_eq!(page.results[1].parent_id.as_deref(), Some("1"));
     }
 
     #[test]
