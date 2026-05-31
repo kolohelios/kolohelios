@@ -592,7 +592,6 @@ body
         // Dimensions not set in YAML stay at their defaults.
         assert!(post.metadata.classifications.tone.is_none());
         assert!(post.metadata.classifications.audience.is_none());
-        assert!(post.metadata.classifications.strategic_role.is_none());
     }
 
     #[test]
@@ -658,7 +657,6 @@ body
             hook: Some("contradiction".into()),
             tone: Some("sharp".into()),
             audience: Some("engineering".into()),
-            strategic_role: Some("career-brand".into()),
             theme: vec!["ambiguity".into(), "delivery".into()],
         };
         let original = Post::new(metadata, "Body.\n");

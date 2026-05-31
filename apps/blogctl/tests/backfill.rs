@@ -344,9 +344,8 @@ fn interactive_writes_classification_picked_by_number() {
     //   hook:   skip
     //   tone:   skip
     //   audience: skip
-    //   strategic_role: skip
     //   metrics for linkedin: skip-post (S)
-    let input_bytes = b"2\n\n\n\n\nS\n";
+    let input_bytes = b"2\n\n\n\nS\n";
     let mut input = std::io::Cursor::new(&input_bytes[..]);
     let mut output: Vec<u8> = Vec::new();
     commands::backfill::run_interactive(

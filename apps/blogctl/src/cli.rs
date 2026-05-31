@@ -201,8 +201,8 @@ pub enum Command {
         no_sync: bool,
     },
     /// Set classification dimensions on a post (format, hook, tone,
-    /// audience, strategic-role, theme). Missing flags leave the
-    /// existing value alone; `--clear-<dim>` removes it.
+    /// audience, theme). Missing flags leave the existing value alone;
+    /// `--clear-<dim>` removes it.
     Classify {
         slug: String,
         /// Workdir path. Defaults to the current working directory.
@@ -216,8 +216,6 @@ pub enum Command {
         tone: Option<String>,
         #[arg(long)]
         audience: Option<String>,
-        #[arg(long)]
-        strategic_role: Option<String>,
         /// Comma-separated list of themes. Replaces the existing
         /// theme list entirely.
         #[arg(long, value_delimiter = ',')]
@@ -230,8 +228,6 @@ pub enum Command {
         clear_tone: bool,
         #[arg(long)]
         clear_audience: bool,
-        #[arg(long)]
-        clear_strategic_role: bool,
         #[arg(long)]
         clear_theme: bool,
         /// Skip the post-write `jj` commit + push for this invocation.
@@ -578,13 +574,11 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             hook,
             tone,
             audience,
-            strategic_role,
             theme,
             clear_format,
             clear_hook,
             clear_tone,
             clear_audience,
-            clear_strategic_role,
             clear_theme,
             no_sync,
         } => commands::classify::run(
@@ -596,13 +590,11 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                 hook,
                 tone,
                 audience,
-                strategic_role,
                 theme,
                 clear_format,
                 clear_hook,
                 clear_tone,
                 clear_audience,
-                clear_strategic_role,
                 clear_theme,
                 no_sync,
             },
@@ -869,8 +861,6 @@ mod tests {
                 "sharp",
                 "--audience",
                 "engineering",
-                "--strategic-role",
-                "career-brand",
                 "--theme",
                 "ambiguity,delivery",
             ],
@@ -884,7 +874,6 @@ mod tests {
                 "--clear-hook",
                 "--clear-tone",
                 "--clear-audience",
-                "--clear-strategic-role",
                 "--clear-theme",
             ],
             vec![

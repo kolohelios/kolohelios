@@ -5,9 +5,9 @@
 //!
 //! The taxonomy is data, not code — adding a new format or theme
 //! is a config edit, not a Rust change. The struct's *dimension
-//! names* (`format`, `hook`, `tone`, `audience`, `strategic_role`,
-//! `theme`) come from `Classifications`'s field names and are
-//! fixed; the *values* inside each dimension are user-configurable.
+//! names* (`format`, `hook`, `tone`, `audience`, `theme`) come from
+//! `Classifications`'s field names and are fixed; the *values*
+//! inside each dimension are user-configurable.
 
 use std::collections::BTreeMap;
 
@@ -98,7 +98,7 @@ pub struct Violation {
 /// The dimension names `Classifications` knows about. Kept in code
 /// because the struct's field set is fixed; only the *values* inside
 /// each dimension are config-driven.
-pub const SINGLE_VALUED: &[&str] = &["format", "hook", "tone", "audience", "strategic_role"];
+pub const SINGLE_VALUED: &[&str] = &["format", "hook", "tone", "audience"];
 pub const MULTI_VALUED: &[&str] = &["theme"];
 
 fn starter_v1() -> BTreeMap<String, Dimension> {
@@ -148,19 +148,6 @@ fn starter_v1() -> BTreeMap<String, Dimension> {
                 "leadership",
                 "founders",
                 "general",
-            ]),
-        },
-    );
-    m.insert(
-        "strategic_role".into(),
-        Dimension {
-            multi: false,
-            values: strs(&[
-                "salal-positioning",
-                "career-brand",
-                "recruiting",
-                "writing-practice",
-                "consulting-signal",
             ]),
         },
     );

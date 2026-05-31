@@ -175,9 +175,6 @@ fn classification_entries(c: &Classifications) -> Vec<(&'static str, String)> {
     if let Some(v) = &c.audience {
         out.push(("audience", v.clone()));
     }
-    if let Some(v) = &c.strategic_role {
-        out.push(("strategic_role", v.clone()));
-    }
     for v in &c.theme {
         out.push(("theme", v.clone()));
     }

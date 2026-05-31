@@ -53,8 +53,7 @@ Classifying posts and recording per-venue performance:
 ```text
 blogctl classify <slug> --workdir <path> \
   [--format X] [--hook X] [--tone X] [--audience X] \
-  [--strategic-role X] [--theme A,B,...] \
-  [--clear-<dim>]
+  [--theme A,B,...] [--clear-<dim>]
 blogctl metrics update <slug> --workdir <path> \
   --target <linkedin|blog> \
   --impressions N --reactions N --comments N --reposts N \
@@ -102,7 +101,6 @@ classifications:
   hook: contradiction
   tone: sharp
   audience: engineering
-  strategic_role: career-brand
   theme:
     - ambiguity
     - delivery
@@ -161,10 +159,6 @@ values = ["gentle", "sharp", "vulnerable", "reflective", "provocative"]
 [classifications.audience]
 values = ["engineering", "product", "leadership", "founders", "general"]
 
-[classifications.strategic_role]
-values = ["salal-positioning", "career-brand", "recruiting",
-          "writing-practice", "consulting-signal"]
-
 [classifications.theme]
 multi = true
 values = ["ambiguity", "delivery", "interfaces", "leadership", "ai",
@@ -208,7 +202,6 @@ blogctl classify the-only-way-out-is-through \
   --hook contradiction \
   --tone sharp \
   --audience engineering \
-  --strategic-role career-brand \
   --theme ambiguity,delivery \
   --workdir ~/blog-os
 

@@ -1,7 +1,7 @@
 //! Structured tag dimensions for analytics. Sits alongside the
 //! free-form `tags: Vec<String>` on `PostMetadata`: each named field
 //! captures one dimension of the post's intent (format, hook, tone,
-//! audience, strategic role) plus a multi-valued `theme` list.
+//! audience) plus a multi-valued `theme` list.
 //!
 //! Values stay `Option<String>` / `Vec<String>` rather than enums so
 //! the taxonomy can evolve in `.blog-os.toml` without touching code.
@@ -38,11 +38,6 @@ pub struct Classifications {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audience: Option<String>,
 
-    /// `salal-positioning`, `career-brand`, `recruiting`,
-    /// `writing-practice`, `consulting-signal`. Single-valued.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strategic_role: Option<String>,
-
     /// `ambiguity`, `delivery`, `interfaces`, `leadership`, `ai`,
     /// `engineering-culture`, `product`, `organizational-psychology`.
     /// Multi-valued — a post can sit in several themes.
@@ -59,7 +54,6 @@ impl Classifications {
             && self.hook.is_none()
             && self.tone.is_none()
             && self.audience.is_none()
-            && self.strategic_role.is_none()
             && self.theme.is_empty()
     }
 
@@ -113,13 +107,12 @@ impl Classifications {
         }
     }
 
-    fn single_valued_entries(&self) -> [(&'static str, Option<&str>); 5] {
+    fn single_valued_entries(&self) -> [(&'static str, Option<&str>); 4] {
         [
             ("format", self.format.as_deref()),
             ("hook", self.hook.as_deref()),
             ("tone", self.tone.as_deref()),
             ("audience", self.audience.as_deref()),
-            ("strategic_role", self.strategic_role.as_deref()),
         ]
     }
 
@@ -138,7 +131,6 @@ mod tests {
             hook: Some("contradiction".into()),
             tone: Some("sharp".into()),
             audience: Some("engineering".into()),
-            strategic_role: Some("career-brand".into()),
             theme: vec!["ambiguity".into(), "delivery".into()],
         }
     }

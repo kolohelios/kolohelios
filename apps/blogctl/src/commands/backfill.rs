@@ -213,10 +213,6 @@ fn merge_classifications(target: &mut Classifications, source: &Classifications)
         target.audience = source.audience.clone();
         changed = true;
     }
-    if source.strategic_role.is_some() && target.strategic_role != source.strategic_role {
-        target.strategic_role = source.strategic_role.clone();
-        changed = true;
-    }
     if !source.theme.is_empty() && target.theme != source.theme {
         target.theme = source.theme.clone();
         changed = true;
@@ -440,9 +436,6 @@ fn single_dim_missing(c: &Classifications) -> Vec<&'static str> {
     if c.audience.is_none() {
         out.push("audience");
     }
-    if c.strategic_role.is_none() {
-        out.push("strategic_role");
-    }
     out
 }
 
@@ -452,7 +445,6 @@ fn set_classification(c: &mut Classifications, dim: &str, value: &str) {
         "hook" => c.hook = Some(value.to_string()),
         "tone" => c.tone = Some(value.to_string()),
         "audience" => c.audience = Some(value.to_string()),
-        "strategic_role" => c.strategic_role = Some(value.to_string()),
         _ => {} // unknown dim — never reached for the dims we prompt for
     }
 }

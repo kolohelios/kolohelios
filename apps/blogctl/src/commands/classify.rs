@@ -28,13 +28,11 @@ pub struct ClassifyArgs {
     pub hook: Option<String>,
     pub tone: Option<String>,
     pub audience: Option<String>,
-    pub strategic_role: Option<String>,
     pub theme: Vec<String>,
     pub clear_format: bool,
     pub clear_hook: bool,
     pub clear_tone: bool,
     pub clear_audience: bool,
-    pub clear_strategic_role: bool,
     pub clear_theme: bool,
     pub no_sync: bool,
 }
@@ -110,13 +108,6 @@ fn apply(c: &mut Classifications, args: &ClassifyArgs) -> Vec<String> {
         &args.audience,
         args.clear_audience,
         "audience",
-        &mut changed,
-    );
-    apply_single(
-        &mut c.strategic_role,
-        &args.strategic_role,
-        args.clear_strategic_role,
-        "strategic_role",
         &mut changed,
     );
 

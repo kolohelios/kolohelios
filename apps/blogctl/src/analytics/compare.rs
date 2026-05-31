@@ -206,7 +206,6 @@ fn dimension_values(c: &Classifications, dim: &str) -> Vec<String> {
         "hook" => c.hook.iter().cloned().collect(),
         "tone" => c.tone.iter().cloned().collect(),
         "audience" => c.audience.iter().cloned().collect(),
-        "strategic_role" => c.strategic_role.iter().cloned().collect(),
         "theme" => c.theme.clone(),
         _ => vec![], // unknown dimension — no samples contribute
     }
