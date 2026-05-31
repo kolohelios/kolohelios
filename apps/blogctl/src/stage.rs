@@ -60,7 +60,7 @@ impl Stage {
             Stage::Ideation => Ok(Stage::Editing),
             Stage::Editing => Ok(Stage::FinalEditing),
             Stage::FinalEditing => Ok(Stage::Published),
-            Stage::Published | Stage::Abandoned => Err(Error::PromoteFromTerminal(self)),
+            Stage::Published | Stage::Abandoned => Err(Error::PromoteFromTerminal { stage: self }),
         }
     }
 
@@ -68,12 +68,12 @@ impl Stage {
     /// without an explicit force (a future flag); Abandoned can't demote.
     pub fn demote(self) -> Result<Stage> {
         match self {
-            Stage::Concept => Err(Error::DemoteFromInitial(self)),
+            Stage::Concept => Err(Error::DemoteFromInitial { stage: self }),
             Stage::Ideation => Ok(Stage::Concept),
             Stage::Editing => Ok(Stage::Ideation),
             Stage::FinalEditing => Ok(Stage::Editing),
             Stage::Published => Err(Error::DemotePublished),
-            Stage::Abandoned => Err(Error::DemoteFromInitial(self)),
+            Stage::Abandoned => Err(Error::DemoteFromInitial { stage: self }),
         }
     }
 }
@@ -94,7 +94,9 @@ impl FromStr for Stage {
             "final-editing" => Ok(Stage::FinalEditing),
             "published" => Ok(Stage::Published),
             "abandoned" => Ok(Stage::Abandoned),
-            other => Err(Error::InvalidStage(other.to_string())),
+            other => Err(Error::InvalidStage {
+                value: other.to_string(),
+            }),
         }
     }
 }
@@ -114,13 +116,23 @@ mod tests {
     #[test]
     fn promote_from_published_is_terminal() {
         let err = Stage::Published.promote().unwrap_err();
-        assert!(matches!(err, Error::PromoteFromTerminal(Stage::Published)));
+        assert!(matches!(
+            err,
+            Error::PromoteFromTerminal {
+                stage: Stage::Published
+            }
+        ));
     }
 
     #[test]
     fn promote_from_abandoned_is_terminal() {
         let err = Stage::Abandoned.promote().unwrap_err();
-        assert!(matches!(err, Error::PromoteFromTerminal(Stage::Abandoned)));
+        assert!(matches!(
+            err,
+            Error::PromoteFromTerminal {
+                stage: Stage::Abandoned
+            }
+        ));
     }
 
     #[test]
@@ -133,7 +145,12 @@ mod tests {
     #[test]
     fn demote_from_concept_is_initial() {
         let err = Stage::Concept.demote().unwrap_err();
-        assert!(matches!(err, Error::DemoteFromInitial(Stage::Concept)));
+        assert!(matches!(
+            err,
+            Error::DemoteFromInitial {
+                stage: Stage::Concept
+            }
+        ));
     }
 
     #[test]

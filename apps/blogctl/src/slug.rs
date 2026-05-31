@@ -26,7 +26,9 @@ pub fn slugify(title: &str) -> Result<String> {
     }
 
     if out.is_empty() {
-        return Err(Error::EmptyTitle(title.to_string()));
+        return Err(Error::EmptyTitle {
+            value: title.to_string(),
+        });
     }
     Ok(out)
 }
@@ -35,33 +37,39 @@ pub fn slugify(title: &str) -> Result<String> {
 /// no trailing `-`. Returns the slug as-is if valid.
 pub fn validate(slug: &str) -> Result<&str> {
     if slug.is_empty() {
-        return Err(Error::InvalidSlug(slug.to_string(), "empty".into()));
+        return Err(Error::InvalidSlug {
+            value: slug.to_string(),
+            reason: "empty".into(),
+        });
     }
     let bytes = slug.as_bytes();
     let first = bytes[0];
     if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
-        return Err(Error::InvalidSlug(
-            slug.to_string(),
-            "must start with [a-z0-9]".into(),
-        ));
+        return Err(Error::InvalidSlug {
+            value: slug.to_string(),
+            reason: "must start with [a-z0-9]".into(),
+        });
     }
     if bytes[bytes.len() - 1] == b'-' {
-        return Err(Error::InvalidSlug(
-            slug.to_string(),
-            "cannot end with '-'".into(),
-        ));
+        return Err(Error::InvalidSlug {
+            value: slug.to_string(),
+            reason: "cannot end with '-'".into(),
+        });
     }
     let mut prev_dash = false;
     for &b in bytes {
         let ok = b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-';
         if !ok {
-            return Err(Error::InvalidSlug(
-                slug.to_string(),
-                format!("contains invalid byte {:?}", b as char),
-            ));
+            return Err(Error::InvalidSlug {
+                value: slug.to_string(),
+                reason: format!("contains invalid byte {:?}", b as char),
+            });
         }
         if b == b'-' && prev_dash {
-            return Err(Error::InvalidSlug(slug.to_string(), "contains '--'".into()));
+            return Err(Error::InvalidSlug {
+                value: slug.to_string(),
+                reason: "contains '--'".into(),
+            });
         }
         prev_dash = b == b'-';
     }
@@ -97,9 +105,15 @@ mod tests {
 
     #[test]
     fn slugify_rejects_empty_titles() {
-        assert!(matches!(slugify("").unwrap_err(), Error::EmptyTitle(_)));
-        assert!(matches!(slugify("   ").unwrap_err(), Error::EmptyTitle(_)));
-        assert!(matches!(slugify("???").unwrap_err(), Error::EmptyTitle(_)));
+        assert!(matches!(slugify("").unwrap_err(), Error::EmptyTitle { .. }));
+        assert!(matches!(
+            slugify("   ").unwrap_err(),
+            Error::EmptyTitle { .. }
+        ));
+        assert!(matches!(
+            slugify("???").unwrap_err(),
+            Error::EmptyTitle { .. }
+        ));
     }
 
     #[test]
@@ -129,7 +143,7 @@ mod tests {
     #[test]
     fn validate_rejects_malformed_slugs() {
         for s in ["", "-foo", "foo-", "foo--bar", "Foo", "foo_bar", "foo bar"] {
-            assert!(matches!(validate(s), Err(Error::InvalidSlug(_, _))), "{s}");
+            assert!(matches!(validate(s), Err(Error::InvalidSlug { .. })), "{s}");
         }
     }
 }

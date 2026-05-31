@@ -374,7 +374,9 @@ pub fn run(jj: &dyn Jj, workdir: PathBuf) -> Result<()> {
     for finding in &findings {
         println!("{finding}");
     }
-    Err(Error::WorkdirUnhealthy(findings.len()))
+    Err(Error::WorkdirUnhealthy {
+        findings: findings.len(),
+    })
 }
 
 fn theme_known(cfg: &Config, theme: &str) -> bool {
@@ -807,7 +809,7 @@ mod tests {
         // stray-entry finding actually surfaces.
         let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::Ok);
         let err = run(&jj, tmp.path().to_path_buf()).unwrap_err();
-        assert!(matches!(err, Error::WorkdirUnhealthy(n) if n >= 1));
+        assert!(matches!(err, Error::WorkdirUnhealthy { findings: n } if n >= 1));
     }
 
     #[test]
@@ -843,7 +845,7 @@ mod tests {
         let (tmp, _workdir) = fresh_workdir();
         let jj = crate::sync::FakeJj::new().with_status(crate::sync::Status::NotAJjRepo);
         let err = run(&jj, tmp.path().to_path_buf()).unwrap_err();
-        assert!(matches!(err, Error::WorkdirUnhealthy(1)));
+        assert!(matches!(err, Error::WorkdirUnhealthy { findings: 1 }));
     }
 
     #[test]

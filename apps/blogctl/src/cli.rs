@@ -17,7 +17,7 @@ use crate::target::Target;
 fn workdir_or_pwd(workdir: Option<PathBuf>) -> Result<PathBuf> {
     match workdir {
         Some(p) => Ok(p),
-        None => env::current_dir().map_err(Error::CurrentDirUnavailable),
+        None => env::current_dir().map_err(|source| Error::CurrentDirUnavailable { source }),
     }
 }
 

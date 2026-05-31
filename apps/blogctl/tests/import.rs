@@ -105,7 +105,7 @@ fn import_refuses_when_slug_already_exists() {
     let second = commands::import::run(&FakeJj::new(), import_args(&workdir));
 
     match second {
-        Err(Error::DuplicateSlug(slug, _)) => {
+        Err(Error::DuplicateSlug { slug, .. }) => {
             assert_eq!(slug, "backfill-is-the-shape");
         }
         other => panic!("expected DuplicateSlug, got {other:?}"),

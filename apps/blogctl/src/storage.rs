@@ -324,7 +324,9 @@ pub struct Repository {
 impl Repository {
     pub fn open(workdir: Workdir) -> Result<Self> {
         if !workdir.config_path().is_file() {
-            return Err(Error::WorkdirNotInitialized(workdir.root().to_path_buf()));
+            return Err(Error::WorkdirNotInitialized {
+                path: workdir.root().to_path_buf(),
+            });
         }
         Ok(Self { workdir })
     }
@@ -345,15 +347,16 @@ impl Repository {
     /// created with `create_dir_all`.
     pub fn init(&self) -> Result<()> {
         if self.workdir.config_path().exists() {
-            return Err(Error::WorkdirAlreadyInitialized(
-                self.workdir.root().to_path_buf(),
-            ));
+            return Err(Error::WorkdirAlreadyInitialized {
+                path: self.workdir.root().to_path_buf(),
+            });
         }
         for dir in self.workdir.directories() {
             fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
         }
         let config_path = self.workdir.config_path();
-        let serialized = toml::to_string(&Config::current()).map_err(Error::ConfigSerialize)?;
+        let serialized = toml::to_string(&Config::current())
+            .map_err(|source| Error::ConfigSerialize { source })?;
         fs::write(&config_path, serialized).map_err(|e| Error::io(&config_path, e))?;
         self.write_readme(false)?;
         Ok(())
@@ -390,10 +393,10 @@ impl Repository {
     /// a file with that slug already exists in any stage.
     pub fn create_post(&self, post: &Post) -> Result<PathBuf> {
         if let Some(existing) = self.find_path(&post.metadata.slug)? {
-            return Err(Error::DuplicateSlug(
-                post.metadata.slug.clone(),
-                existing.display().to_string(),
-            ));
+            return Err(Error::DuplicateSlug {
+                slug: post.metadata.slug.clone(),
+                paths: existing.display().to_string(),
+            });
         }
         let stage = post.metadata.status;
         let dir = self.workdir.stage_dir(stage);
@@ -427,9 +430,9 @@ impl Repository {
     /// can still be rewritten to a valid set — otherwise the very
     /// tool meant to fix the problem would be blocked by it.
     pub fn load_raw(&self, slug: &str) -> Result<(PostHandle, Post)> {
-        let (stage, path) = self
-            .locate(slug)?
-            .ok_or_else(|| Error::PostNotFound(slug.to_string()))?;
+        let (stage, path) = self.locate(slug)?.ok_or_else(|| Error::PostNotFound {
+            slug: slug.to_string(),
+        })?;
         let raw = fs::read_to_string(&path).map_err(|e| Error::io(&path, e))?;
         let post = Post::parse(&path, &raw)?;
         if post.metadata.status != stage {
@@ -641,10 +644,10 @@ impl Repository {
             let candidate = self.workdir.post_path(stage, slug);
             if candidate.is_file() {
                 if let Some((_, existing_path)) = &found {
-                    return Err(Error::DuplicateSlug(
-                        slug.to_string(),
-                        format!("{} and {}", existing_path.display(), candidate.display(),),
-                    ));
+                    return Err(Error::DuplicateSlug {
+                        slug: slug.to_string(),
+                        paths: format!("{} and {}", existing_path.display(), candidate.display()),
+                    });
                 }
                 found = Some((stage, candidate));
             }
@@ -858,14 +861,14 @@ mod tests {
     fn init_refuses_to_clobber_existing_config() {
         let (_tmp, repo) = fresh_repo();
         let err = repo.init().unwrap_err();
-        assert!(matches!(err, Error::WorkdirAlreadyInitialized(_)));
+        assert!(matches!(err, Error::WorkdirAlreadyInitialized { .. }));
     }
 
     #[test]
     fn open_requires_an_initialized_workdir() {
         let tmp = TempDir::new().unwrap();
         let err = Repository::open(Workdir::new(tmp.path())).unwrap_err();
-        assert!(matches!(err, Error::WorkdirNotInitialized(_)));
+        assert!(matches!(err, Error::WorkdirNotInitialized { .. }));
     }
 
     #[test]
@@ -885,7 +888,7 @@ mod tests {
         let err = repo
             .create_post(&fixture_post("dup", Stage::Concept))
             .unwrap_err();
-        assert!(matches!(err, Error::DuplicateSlug(_, _)));
+        assert!(matches!(err, Error::DuplicateSlug { .. }));
     }
 
     #[test]
@@ -933,7 +936,7 @@ mod tests {
     fn load_returns_post_not_found_for_missing_slug() {
         let (_tmp, repo) = fresh_repo();
         let err = repo.load("nope").unwrap_err();
-        assert!(matches!(err, Error::PostNotFound(_)));
+        assert!(matches!(err, Error::PostNotFound { .. }));
     }
 
     #[test]
@@ -945,7 +948,7 @@ mod tests {
         fs::write(tmp.path().join("editing/dup.md"), p2.render().unwrap()).unwrap();
 
         let err = repo.load("dup").unwrap_err();
-        assert!(matches!(err, Error::DuplicateSlug(_, _)));
+        assert!(matches!(err, Error::DuplicateSlug { .. }));
     }
 
     #[test]

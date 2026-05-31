@@ -48,7 +48,9 @@ impl FromStr for Target {
         match s {
             "linkedin" => Ok(Target::Linkedin),
             "blog" => Ok(Target::Blog),
-            other => Err(Error::InvalidTarget(other.to_string())),
+            other => Err(Error::InvalidTarget {
+                value: other.to_string(),
+            }),
         }
     }
 }
@@ -92,7 +94,9 @@ impl FromStr for TargetStatus {
             "planned" => Ok(TargetStatus::Planned),
             "published" => Ok(TargetStatus::Published),
             "retracted" => Ok(TargetStatus::Retracted),
-            other => Err(Error::InvalidTargetStatus(other.to_string())),
+            other => Err(Error::InvalidTargetStatus {
+                value: other.to_string(),
+            }),
         }
     }
 }
@@ -150,7 +154,7 @@ mod tests {
     #[test]
     fn target_parse_rejects_unknown() {
         let err = "mastodon".parse::<Target>().unwrap_err();
-        assert!(matches!(err, Error::InvalidTarget(_)));
+        assert!(matches!(err, Error::InvalidTarget { .. }));
     }
 
     #[test]
@@ -163,7 +167,7 @@ mod tests {
     #[test]
     fn target_status_parse_rejects_unknown() {
         let err = "draft".parse::<TargetStatus>().unwrap_err();
-        assert!(matches!(err, Error::InvalidTargetStatus(_)));
+        assert!(matches!(err, Error::InvalidTargetStatus { .. }));
     }
 
     #[test]

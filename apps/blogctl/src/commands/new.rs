@@ -20,7 +20,7 @@ pub fn run(
     no_sync: bool,
 ) -> Result<()> {
     if title.trim().is_empty() {
-        return Err(Error::EmptyTitle(title));
+        return Err(Error::EmptyTitle { value: title });
     }
     let resolved_slug = match slug_override {
         Some(s) => slug::validate(&s)?.to_string(),

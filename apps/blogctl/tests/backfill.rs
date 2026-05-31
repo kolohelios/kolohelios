@@ -164,7 +164,7 @@ fn import_with_unknown_slug_warns_continues_and_returns_partial_failure() {
     );
     let err = result.expect_err("unknown slug should produce a partial-failure error");
     assert!(
-        matches!(err, blogctl::Error::BackfillPartialFailure(n) if n == 1),
+        matches!(err, blogctl::Error::BackfillPartialFailure { warnings: n } if n == 1),
         "got: {err:?}"
     );
     // Partial progress preserved: the known slug got its update.
@@ -203,7 +203,7 @@ fn import_with_metrics_for_missing_target_warns() {
     );
     let err = result.expect_err("missing target should produce a partial-failure error");
     assert!(
-        matches!(err, blogctl::Error::BackfillPartialFailure(n) if n == 1),
+        matches!(err, blogctl::Error::BackfillPartialFailure { warnings: n } if n == 1),
         "got: {err:?}"
     );
 }
@@ -227,7 +227,7 @@ fn import_with_invalid_classification_warns() {
     );
     let err = result.expect_err("invalid value should produce a partial-failure error");
     assert!(
-        matches!(err, blogctl::Error::BackfillPartialFailure(n) if n == 1),
+        matches!(err, blogctl::Error::BackfillPartialFailure { warnings: n } if n == 1),
         "got: {err:?}"
     );
     // File on disk must be untouched (the entry errored before write).

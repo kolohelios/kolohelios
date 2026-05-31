@@ -100,13 +100,17 @@ impl Predicate {
     /// the operator, trimmed" so quoted strings can contain spaces.
     pub fn parse(input: &str) -> Result<Self> {
         let trimmed = input.trim();
-        let (acc_tok, after_acc) = next_token(trimmed)
-            .ok_or_else(|| Error::PredicateParse(format!("empty predicate: {input:?}")))?;
-        let (op_tok, after_op) = next_token(after_acc)
-            .ok_or_else(|| Error::PredicateParse(format!("missing operator: {input:?}")))?;
+        let (acc_tok, after_acc) = next_token(trimmed).ok_or_else(|| Error::PredicateParse {
+            message: format!("empty predicate: {input:?}"),
+        })?;
+        let (op_tok, after_op) = next_token(after_acc).ok_or_else(|| Error::PredicateParse {
+            message: format!("missing operator: {input:?}"),
+        })?;
         let lit_tok = after_op.trim();
         if lit_tok.is_empty() {
-            return Err(Error::PredicateParse(format!("missing literal: {input:?}")));
+            return Err(Error::PredicateParse {
+                message: format!("missing literal: {input:?}"),
+            });
         }
 
         Ok(Self {
@@ -312,26 +316,28 @@ fn parse_accessor(tok: &str) -> Result<Accessor> {
         other => {
             if let Some(rest) = other.strip_prefix("frontmatter.") {
                 if rest.is_empty() {
-                    return Err(Error::PredicateParse(format!(
-                        "frontmatter accessor missing field name: {tok:?}"
-                    )));
+                    return Err(Error::PredicateParse {
+                        message: format!("frontmatter accessor missing field name: {tok:?}"),
+                    });
                 }
                 if let Some(field) = rest.strip_suffix(".len") {
                     if field.is_empty() || field.contains('.') {
-                        return Err(Error::PredicateParse(format!(
-                            "invalid frontmatter accessor: {tok:?}"
-                        )));
+                        return Err(Error::PredicateParse {
+                            message: format!("invalid frontmatter accessor: {tok:?}"),
+                        });
                     }
                     Ok(Accessor::FrontmatterLen(field.to_string()))
                 } else if rest.contains('.') {
-                    Err(Error::PredicateParse(format!(
-                        "nested frontmatter paths not supported: {tok:?}"
-                    )))
+                    Err(Error::PredicateParse {
+                        message: format!("nested frontmatter paths not supported: {tok:?}"),
+                    })
                 } else {
                     Ok(Accessor::Frontmatter(rest.to_string()))
                 }
             } else {
-                Err(Error::PredicateParse(format!("unknown accessor: {tok:?}")))
+                Err(Error::PredicateParse {
+                    message: format!("unknown accessor: {tok:?}"),
+                })
             }
         }
     }
@@ -345,9 +351,9 @@ fn parse_op(tok: &str) -> Result<Op> {
         "<=" => Ok(Op::Le),
         ">" => Ok(Op::Gt),
         "<" => Ok(Op::Lt),
-        other => Err(Error::PredicateParse(format!(
-            "unknown operator: {other:?}"
-        ))),
+        other => Err(Error::PredicateParse {
+            message: format!("unknown operator: {other:?}"),
+        }),
     }
 }
 
@@ -361,15 +367,17 @@ fn parse_literal(tok: &str) -> Result<Literal> {
     if let Some(inner) = tok.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
         // No escape syntax — embedded `"` is rejected to keep the grammar boring.
         if inner.contains('"') {
-            return Err(Error::PredicateParse(format!(
-                "string literal may not contain `\"`: {tok:?}"
-            )));
+            return Err(Error::PredicateParse {
+                message: format!("string literal may not contain `\"`: {tok:?}"),
+            });
         }
         return Ok(Literal::Str(inner.to_string()));
     }
     tok.parse::<i64>()
         .map(Literal::Int)
-        .map_err(|_| Error::PredicateParse(format!("not a valid literal: {tok:?}")))
+        .map_err(|_| Error::PredicateParse {
+            message: format!("not a valid literal: {tok:?}"),
+        })
 }
 
 #[cfg(test)]
@@ -437,11 +445,11 @@ mod tests {
     fn rejects_empty_input() {
         assert!(matches!(
             Predicate::parse(""),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
         assert!(matches!(
             Predicate::parse("   "),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -449,7 +457,7 @@ mod tests {
     fn rejects_missing_literal() {
         assert!(matches!(
             Predicate::parse("body.words >="),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -457,7 +465,7 @@ mod tests {
     fn rejects_unknown_accessor() {
         assert!(matches!(
             Predicate::parse("post.length > 0"),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -465,7 +473,7 @@ mod tests {
     fn rejects_unknown_operator() {
         assert!(matches!(
             Predicate::parse("body.words =~ 150"),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -475,7 +483,7 @@ mod tests {
         // with the only allowed suffix being `.len`.
         assert!(matches!(
             Predicate::parse("frontmatter.classifications.format == \"thesis\""),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -483,7 +491,7 @@ mod tests {
     fn rejects_bare_frontmatter() {
         assert!(matches!(
             Predicate::parse("frontmatter. == 1"),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -491,7 +499,7 @@ mod tests {
     fn rejects_invalid_literal() {
         assert!(matches!(
             Predicate::parse("body.words >= maybe"),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
@@ -499,7 +507,7 @@ mod tests {
     fn rejects_string_literal_with_embedded_quote() {
         assert!(matches!(
             Predicate::parse(r#"frontmatter.title == "a"b""#),
-            Err(Error::PredicateParse(_))
+            Err(Error::PredicateParse { .. })
         ));
     }
 
