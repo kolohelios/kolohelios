@@ -73,6 +73,16 @@ taxonomy and evidence rules are load-bearing):
 >   `"is_error":true`, error keywords, and the user's correction
 >   phrases above, then read the surrounding turns.
 >
+> **Proven-unfixable patterns to skip** (don't surface as findings,
+> even when the evidence triples exist):
+>
+> - `"File has not been read yet"` errors before `Edit`/`Write`. The
+>   harness's read-check runs upstream of `PreToolUse` hooks, so no
+>   hook-shaped fix is possible; `additionalContext` doesn't
+>   substitute for an actual `Read` invocation either. Ref #626 for
+>   the full spike. Revisit if the hook API gains a
+>   `pre-tool-validate` event or hook ordering changes.
+>
 > **Output format** — one row per pattern with these fields:
 >
 > - Pattern: one-sentence description
