@@ -273,4 +273,14 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// byte-reproducible via `SOURCE_DATE_EPOCH=0` and a pinned nix
 	// closure for the toolchain.
 	kind: "document"
+	document?: {
+		// Top-level flake `description`. Defaults to the project
+		// name; override when a longer phrase reads better.
+		// pandoc + tectonic are baked into the generator's
+		// document template (matching the justfile DOCUMENT_TEMPLATE
+		// hardcode of `--pdf-engine=tectonic`); if a future document
+		// project wants different renderers, this block grows a
+		// `packages` knob.
+		description?: string & !=""
+	}
 })
