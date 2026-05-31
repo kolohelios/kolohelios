@@ -1,11 +1,16 @@
 ---
 description: Ship the current change — rebase, lint commits, self-review, preflight, push, open PR
 allowed-tools: Bash(shaka *), Bash(jj *), Bash(gh pr *), Bash(gh issue view:*), Read, Edit, Glob, Grep
+argument-hint: [--then <next-issue-number>]
 ---
 
 Ship the current `jj` change as a PR. Walk the user through each step,
 surface any failures, and stop for input when something needs human
 judgment. Do not silently push past errors.
+
+If the invocation includes `--then <N>`, after the PR is open continue
+into issue `#<N>` in the same session via the `/start` flow — see
+[Step 6: Continue the train](#6-continue-the-train).
 
 ## Workflow
 
@@ -84,6 +89,29 @@ If `shaka repo send` errors because the change has no description, stop and
 ask the user to run `jj describe`. If the rebase hits a conflict, stop and
 let the user resolve it.
 
+### 6. Continue the train
+
+Only when the invocation included `--then <N>`. Otherwise, this step is
+skipped — end the workflow after Step 5.
+
+Don't wait for CI on the PR just opened. The whole point: PR opened is
+enough to move on. CI failures arrive as notifications and become an
+interrupt on the next stop, not a blocker now.
+
+Pick up issue `#<N>` by following the `/start` flow against it:
+
+1. `shaka issue brief <N>` to read it (any `cwd` is fine).
+2. `shaka workspace new --issue <N>` to create `../kolohelios-i<N>`
+   parented on the freshly advanced `main@origin`.
+3. From the new workspace, derive a `<type>/<short-description>`
+   bookmark from the issue title and `jj bookmark create <name> -r @`.
+4. Outline an implementation plan and stop for the user to confirm
+   before writing any code — same beat as `/start` proper.
+
+If `shaka issue brief <N>` or `shaka workspace new --issue <N>` errors,
+stop and report. Don't silently abandon the continuation; the user
+asked for `--then <N>` and needs to know it didn't happen.
+
 ## Conventions
 
 - Never use `git` for working-copy mutations — only `jj`.
@@ -104,5 +132,7 @@ Halt the workflow and report to the user when:
   `shaka repo send` when `main@origin` advanced during the work)
 - `shaka repo send`'s pre-push rebase hits a conflict — let the user resolve
 - The change has no description (push step needs one)
+- `--then <N>` was passed but `shaka issue brief <N>` or `shaka workspace
+  new --issue <N>` failed — report and let the user decide
 
 A failed step is a stop — not a prompt to retry blindly. Diagnose first.
