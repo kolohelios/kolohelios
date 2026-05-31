@@ -1,4 +1,5 @@
 mod audit;
+mod generate_flakes;
 mod generate_justfiles;
 mod new;
 pub mod schema_check;
@@ -11,6 +12,13 @@ pub enum ProjectCommand {
     SchemaCheck,
     /// Generate justfiles from each project.cue (root + per-project)
     GenerateJustfiles {
+        /// Compare generated content to disk and fail on any drift instead of writing
+        #[arg(long)]
+        check: bool,
+    },
+    /// Generate per-project flake.nix from each project.cue's `cli:` block
+    /// (rust-cli kind only; other kinds keep their hand-authored flake)
+    GenerateFlakes {
         /// Compare generated content to disk and fail on any drift instead of writing
         #[arg(long)]
         check: bool,
@@ -32,6 +40,7 @@ pub fn run(cmd: ProjectCommand) {
     match cmd {
         ProjectCommand::SchemaCheck => schema_check::run(),
         ProjectCommand::GenerateJustfiles { check } => generate_justfiles::run(check),
+        ProjectCommand::GenerateFlakes { check } => generate_flakes::run(check),
         ProjectCommand::Audit => audit::run(),
         ProjectCommand::New { name, slot } => new::run(name, slot),
     }
