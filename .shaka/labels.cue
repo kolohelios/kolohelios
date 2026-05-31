@@ -4,10 +4,12 @@ package labels
 	labels: [
 		// Scope labels — every open issue must carry at least one,
 		// per `shaka issue audit`.
+		{name: "aof", color:          "d93f0b", description: "Personal-OS / areas tree tooling", scope: true},
 		{name: "blogctl", color:      "1f77b4", description: "blogctl CLI / blog post workflow tooling", scope: true},
 		{name: "ci", color:           "fbca04", description: "CI pipeline / GitHub Actions / preflight gates", scope: true},
 		{name: "claude", color:       "d4c5f9", description: "claude-code config, hooks, settings", scope: true},
 		{name: "infra/devbox", color: "0052cc", description: "Devbox / dev-environment infrastructure", scope: true},
+		{name: "infra/home", color:   "006b75", description: "Home-manager / personal workstation infrastructure", scope: true},
 		{name: "meta", color:         "ededed", description: "Cross-cutting repo / monorepo policy issues", scope: true},
 		{name: "nix", color:          "5277c3", description: "Nix flakes, kolohelios-nix shared lib", scope: true},
 		{name: "pollen-alert", color: "0e8a16", description: "Pollen alert worker", scope: true},
