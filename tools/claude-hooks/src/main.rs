@@ -18,7 +18,8 @@
 use std::io::Read;
 use std::process::Command;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use serde::Deserialize;
 
 /// Env-var prefix that lets the user opt out of the duplicate-check
@@ -57,12 +58,19 @@ enum Hook {
     /// invocations and runs a duplicate-search; blocks with a list of
     /// candidate matches if any open issue's title overlaps.
     PreIssueCreate,
+    #[command(hide = true)]
+    Completions { shell: Shell },
 }
 
 fn main() {
     let cli = Cli::parse();
     match cli.command {
         Hook::PreIssueCreate => pre_issue_create(),
+        Hook::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+        }
     }
 }
 

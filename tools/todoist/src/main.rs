@@ -1,6 +1,7 @@
 use std::error::Error;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use snafu::{ResultExt, Snafu};
 
 mod api;
@@ -49,6 +50,8 @@ enum Command {
     Projects(ProjectsCmd),
     /// Manage tasks
     Tasks(TasksCmd),
+    #[command(hide = true)]
+    Completions { shell: Shell },
 }
 
 #[derive(Args)]
@@ -155,6 +158,12 @@ fn dispatch(command: Command) -> Result<(), CliError> {
         Command::Auth(AuthCmd { command }) => handle_auth(command),
         Command::Projects(ProjectsCmd { command }) => handle_projects(command),
         Command::Tasks(TasksCmd { command }) => handle_tasks(command),
+        Command::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            Ok(())
+        }
     }
 }
 
@@ -298,7 +307,6 @@ fn render_status(state: auth::AuthState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
 
     #[test]
     fn cli_definition_is_valid() {
