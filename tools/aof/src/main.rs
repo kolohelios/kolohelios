@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use aof::render;
+use aof::{render, todoist};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -19,8 +19,13 @@ struct Cli {
 enum Command {
     /// Validate the areas-of-focus tree against its CUE schema
     Validate,
-    /// Reconcile areas against Todoist projects and report drift
-    Sync,
+    /// Fetch and print the current Todoist project list (sanity check
+    /// for reconciliation; reconciliation itself lands in #610).
+    Sync {
+        /// Emit ndjson instead of the default human-readable table
+        #[arg(long)]
+        json: bool,
+    },
     /// Render an SVG diagram inline in the current terminal
     Render {
         /// Path to the SVG file to render
@@ -36,10 +41,13 @@ fn main() -> ExitCode {
             unimplemented("validate");
             ExitCode::FAILURE
         }
-        Command::Sync => {
-            unimplemented("sync");
-            ExitCode::FAILURE
-        }
+        Command::Sync { json } => match run_sync(json) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("aof sync: {e}");
+                ExitCode::FAILURE
+            }
+        },
         Command::Render { from } => match run_render(&from) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -53,6 +61,17 @@ fn main() -> ExitCode {
 fn run_render(from: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let svg = std::fs::read(from)?;
     render::render_svg(&svg)?;
+    Ok(())
+}
+
+fn run_sync(json: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let projects = todoist::list_projects()?;
+    let out = if json {
+        todoist::render_ndjson(&projects)
+    } else {
+        todoist::render_table(&projects)
+    };
+    println!("{out}");
     Ok(())
 }
 
