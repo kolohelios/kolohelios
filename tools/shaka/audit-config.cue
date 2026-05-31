@@ -10,5 +10,7 @@ package audit
 		{name: "kolohelios-nix-via-flakehub", severity: "fail"},
 		{name: "kolohelios-home-via-flakehub", severity: "fail"},
 		{name: "validate-recipe-meaningful", severity: "fail"},
+		{name: "rust-cli-package-true-requires-ci-build", severity: "fail"},
+		{name: "rust-cli-package-false-requires-override", severity: "fail"},
 	]
 }

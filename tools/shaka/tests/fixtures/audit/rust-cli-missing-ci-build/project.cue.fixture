@@ -1,0 +1,19 @@
+package project
+
+#Project & {
+	name: "rust-cli-missing-ci-build"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "rust-cli-missing-ci-build"
+		// `package` defaults to true; no ci.build set — should fail
+		// `rust-cli-package-true-requires-ci-build`.
+	}
+	coverage: {
+		line: {
+			fail: 30
+		}
+		branch: {
+			fail: 20
+		}
+	}
+}

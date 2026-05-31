@@ -5,6 +5,7 @@ package project
 	kind: "rust-cli"
 	cli: {
 		binaryName: "clean-rust"
+		package:    false
 	}
 	coverage: {
 		line: {
@@ -13,5 +14,14 @@ package project
 		branch: {
 			fail: 20
 		}
+	}
+	audit: {
+		overrides: [
+			{
+				rule:          "rust-cli-package-false-requires-override"
+				severity:      "off"
+				justification: "test fixture; this rule is not under test"
+			},
+		]
 	}
 }

@@ -89,6 +89,12 @@ fn scaffold_rust(dir: &Path, name: &str) -> std::io::Result<()> {
 }
 
 fn project_cue(name: &str) -> String {
+    // `ci.build` is emitted so the scaffold passes
+    // `rust-cli-package-true-requires-ci-build` out of the box. New
+    // crates that won't be built via `nix build` (the rare case — see
+    // `tools/todoist`) should flip `cli.package` to false, drop `ci`,
+    // and add an `audit.overrides` entry for
+    // `rust-cli-package-false-requires-override`.
     format!(
         "package project\n\
          \n\
@@ -104,6 +110,19 @@ fn project_cue(name: &str) -> String {
          \t\t}}\n\
          \t\tbranch: {{\n\
          \t\t\tfail: 0\n\
+         \t\t}}\n\
+         \t}}\n\
+         \tci: {{\n\
+         \t\tbuild: {{\n\
+         \t\t\tfilterKey:   \"{name}\"\n\
+         \t\t\tjobId:       \"{name}\"\n\
+         \t\t\tdisplayName: \"{name}\"\n\
+         \t\t\tpublish: {{\n\
+         \t\t\t\tkind:       \"flakehub\"\n\
+         \t\t\t\tname:       \"kolohelios/{name}\"\n\
+         \t\t\t\tvisibility: \"public\"\n\
+         \t\t\t\trolling:    true\n\
+         \t\t\t}}\n\
          \t\t}}\n\
          \t}}\n\
          }}\n"
@@ -260,6 +279,20 @@ mod tests {
         assert!(out.contains("cli: {"));
         assert!(out.contains("binaryName: \"demo\""));
         assert!(out.contains("coverage:"));
+    }
+
+    #[test]
+    fn project_cue_ships_ci_build_so_audit_passes() {
+        // `rust-cli-package-true-requires-ci-build` fails if the
+        // scaffold doesn't include a `ci.build` block — the scaffolded
+        // project must satisfy every audit rule out of the box.
+        let out = project_cue("demo");
+        assert!(out.contains("ci: {"), "missing ci block: {out}");
+        assert!(out.contains("build: {"), "missing ci.build block: {out}");
+        assert!(
+            out.contains("kolohelios/demo"),
+            "missing flakehub name: {out}"
+        );
     }
 
     #[test]

@@ -211,3 +211,29 @@ fn placeholder_validate_recipe_fails_audit() {
     );
     assert!(stdout.contains("placeholder"), "stdout: {stdout}");
 }
+
+#[test]
+fn rust_cli_missing_ci_build_fails_audit() {
+    let staged = Staged::new(&["rust-cli-missing-ci-build"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("rust-cli-package-true-requires-ci-build"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("ci.build"), "stdout: {stdout}");
+}
+
+#[test]
+fn rust_cli_package_false_without_override_fails_audit() {
+    let staged = Staged::new(&["rust-cli-package-false-no-override"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(
+        stdout.contains("rust-cli-package-false-requires-override"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("audit.overrides"), "stdout: {stdout}");
+}
