@@ -61,6 +61,11 @@ struct InfraMeta {
     extra_inputs: BTreeMap<String, ExtraInput>,
     #[serde(default)]
     dev_shell_packages: Vec<String>,
+    /// Raw nix snippet inserted inside the standard `let ..` block,
+    /// before `in { ... }`. Used by projects whose extra outputs share
+    /// computed values (devbox's `devboxConfig` / `imageConfig`).
+    #[serde(default)]
+    let_extra: Option<String>,
     /// Raw nix snippet inserted inside `outputs.{...}: let .. in { HERE }`,
     /// after the standard `devShells` block but before `formatter`. See
     /// `feedback_no_exceptions.md` — this is the escape sandbox for
@@ -407,6 +412,11 @@ fn render_infra_flake(name: &str, infra: &InfraMeta) -> String {
     }
     out.push_str("      ...\n    }:\n    let\n");
     out.push_str("      inherit (kolohelios-nix.lib) forEachSupportedSystem workflowPackages;\n");
+    if let Some(let_extra) = &infra.let_extra {
+        out.push('\n');
+        out.push_str(let_extra.trim_end());
+        out.push('\n');
+    }
     out.push_str("    in\n    {\n");
     out.push_str(&render_infra_devshell(&infra.dev_shell_packages));
     if let Some(extra) = &infra.extra {

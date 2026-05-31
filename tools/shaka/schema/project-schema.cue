@@ -283,16 +283,22 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// home uses none.
 		devShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 
-		// Raw nix snippet appended inside the
-		// `outputs.{...}: let .. in { HERE }` block, after the
-		// generator's standard outputs (devShells, formatter). This
-		// is the escape sandbox for projects that expose
-		// project-specific outputs — devbox's
-		// `nixosConfigurations` / `packages.linodeImage` /
+		// Raw nix snippet appended inside the standard `let ..` block,
+		// before `in { ... }`. Used by projects whose extra outputs
+		// share computed values that would otherwise repeat
+		// (devbox's `devboxConfig`, `imageConfig`). Optional;
+		// projects that don't need shared bindings leave this empty.
+		letExtra?: string
+
+		// Raw nix snippet appended inside `outputs.{...}: let .. in
+		// { HERE }`, after the standard `devShells` block but before
+		// `formatter`. Escape sandbox for project-specific outputs —
+		// devbox's `nixosConfigurations` / `packages.linodeImage` /
 		// `checks.devbox-eval`, home's `darwinConfigurations` /
-		// `nixosModules`. Lose CUE syntax-highlighting and
-		// structural validation in exchange for keeping the project
-		// inside the generator's drift-checked envelope.
+		// `nixosModules`. Loses CUE syntax-highlighting and
+		// structural validation; the trade-off is keeping every
+		// project inside the generator's drift-checked envelope
+		// instead of carving exceptions.
 		extra?: string
 	}
 } | {
