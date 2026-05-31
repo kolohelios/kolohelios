@@ -60,6 +60,12 @@ pub fn run(dry_run: bool) {
                     short_sha(&new_sha)
                 );
             }
+            Ok(Outcome::NoOverlap) => {
+                println!(
+                    "  {GREEN}rebased{RESET} #{} (no file overlap, skipped CI)",
+                    pr.number
+                );
+            }
             Ok(Outcome::WouldRebase) => {
                 println!("  {YELLOW}would rebase{RESET} #{}", pr.number);
             }
@@ -93,6 +99,7 @@ pub fn run(dry_run: bool) {
 enum Outcome {
     UpToDate,
     Rebased { new_sha: String },
+    NoOverlap,
     WouldRebase,
     ConcurrentPush,
     Conflict { files: Vec<String> },
@@ -120,6 +127,10 @@ fn rebase_one(
         return Ok(Outcome::WouldRebase);
     }
 
+    let main_files = changed_files(&merge_base, &main_sha)?;
+    let pr_files = changed_files(&merge_base, &pr.head_sha)?;
+    let has_overlap = main_files.iter().any(|f| pr_files.contains(f));
+
     let worktree = PathBuf::from(format!("/tmp/auto-rebase-{}", pr.number));
     cleanup_worktree(&worktree);
     git(&[
@@ -132,7 +143,7 @@ fn rebase_one(
         &pr.head_sha,
     ])?;
 
-    let result = run_rebase(repo, pr, &worktree, target_url);
+    let result = run_rebase(repo, pr, &worktree, target_url, has_overlap);
     cleanup_worktree(&worktree);
     result
 }
@@ -142,6 +153,7 @@ fn run_rebase(
     pr: &OpenPr,
     worktree: &Path,
     target_url: Option<&str>,
+    has_overlap: bool,
 ) -> Result<Outcome, String> {
     let rebase = Command::new("git")
         .current_dir(worktree)
@@ -158,6 +170,20 @@ fn run_rebase(
         let description = format!("Rebase failed — {}", summarize_files(&files));
         post_status(repo, &pr.head_sha, "failure", target_url, &description)?;
         return Ok(Outcome::Conflict { files });
+    }
+
+    if !has_overlap {
+        let main_short = git_capture(&["rev-parse", "--short", "origin/main"])?
+            .trim()
+            .to_string();
+        post_status(
+            repo,
+            &pr.head_sha,
+            "success",
+            target_url,
+            &format!("Rebased onto main@{main_short} (no file overlap, CI skipped)"),
+        )?;
+        return Ok(Outcome::NoOverlap);
     }
 
     let new_sha = git_capture_in(worktree, &["rev-parse", "HEAD"])?
@@ -194,6 +220,11 @@ fn run_rebase(
         &format!("Rebased onto main@{main_short}"),
     )?;
     Ok(Outcome::Rebased { new_sha })
+}
+
+fn changed_files(base: &str, head: &str) -> Result<Vec<String>, String> {
+    let output = git_capture(&["diff", "--name-only", base, head])?;
+    Ok(output.lines().map(|l| l.to_string()).collect())
 }
 
 fn post_status(
