@@ -2,9 +2,9 @@ use crate::gh;
 use crate::jj;
 use crate::repo::describe;
 use crate::repo::send::resolve_bookmark;
-use crate::term::{BOLD, GREEN, RED, RESET};
+use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
-pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
+pub fn run(bookmark_arg: Option<String>, no_auto_merge: bool, dry_run: bool) {
     let description = match jj::current_description() {
         Ok(d) => d,
         Err(e) => {
@@ -45,6 +45,9 @@ pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
         println!("would run: jj bookmark set {bookmark} -r @");
         println!("would run: jj git push --allow-new --bookmark {bookmark}");
         println!("would ensure PR exists for head {bookmark}");
+        if !no_auto_merge {
+            println!("would run: gh pr merge --auto --rebase <pr-url>");
+        }
         return;
     }
 
@@ -68,10 +71,16 @@ pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
         }
     };
 
-    match gh::pr_for_head(&repo, &bookmark) {
-        Ok(Some(pr)) => println!("{GREEN}{BOLD}pushed{RESET} (PR: {})", pr.url),
+    let pr_url = match gh::pr_for_head(&repo, &bookmark) {
+        Ok(Some(pr)) => {
+            println!("{GREEN}{BOLD}pushed{RESET} (PR: {})", pr.url);
+            pr.url
+        }
         Ok(None) => match gh::pr_create(&repo, title, body, &bookmark) {
-            Ok(url) => println!("{GREEN}{BOLD}created{RESET} ({url})"),
+            Ok(url) => {
+                println!("{GREEN}{BOLD}created{RESET} ({url})");
+                url
+            }
             Err(e) => {
                 eprintln!("{RED}{BOLD}pr create failed:{RESET} {e}");
                 std::process::exit(1);
@@ -80,6 +89,15 @@ pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
         Err(e) => {
             eprintln!("{RED}{BOLD}error:{RESET} {e}");
             std::process::exit(1);
+        }
+    };
+
+    if !no_auto_merge {
+        match gh::pr_merge_auto_rebase(&pr_url) {
+            Ok(()) => println!("{DIM}auto-merge queued{RESET}"),
+            Err(e) => {
+                eprintln!("{YELLOW}{BOLD}warn:{RESET} could not queue auto-merge for {pr_url}: {e}")
+            }
         }
     }
 }
