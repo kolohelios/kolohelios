@@ -53,4 +53,4 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint doc-check deny machete test coverage nix-fmt-check flake-check whitespace-check
+validate: fmt-check lint doc-check deny machete coverage nix-fmt-check flake-check whitespace-check
