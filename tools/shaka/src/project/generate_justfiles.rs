@@ -63,7 +63,7 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint doc-check deny machete test coverage nix-fmt-check flake-check whitespace-check
+validate: fmt-check lint doc-check deny machete coverage nix-fmt-check flake-check whitespace-check
 "#;
 
 const NIX_LIB_TEMPLATE: &str = r#"fmt-toml:
@@ -160,7 +160,7 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint doc-check deny machete test coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
+validate: fmt-check lint doc-check deny machete coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
 "#;
 
 // Infra projects intentionally do NOT run `nix flake check` in `validate`.
@@ -768,7 +768,7 @@ mod tests {
         assert!(RUST_TEMPLATE.contains("fmt-check"));
         assert!(RUST_TEMPLATE.contains("clippy"));
         assert!(RUST_TEMPLATE.contains(
-            "validate: fmt-check lint doc-check deny machete test coverage nix-fmt-check flake-check whitespace-check"
+            "validate: fmt-check lint doc-check deny machete coverage nix-fmt-check flake-check whitespace-check"
         ));
     }
 
