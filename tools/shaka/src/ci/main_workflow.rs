@@ -554,55 +554,27 @@ fn gate_job(specs: &[MainBuildSpec]) -> InlineJob {
         needs_list.push(format!("build-{}", spec.build.job_id));
     }
 
-    let mut nix_install_with: BTreeMap<String, Value> = BTreeMap::new();
-    nix_install_with.insert("determinate".to_string(), Value::Bool(true));
-    nix_install_with.insert("flakehub".to_string(), Value::Bool(true));
-
     InlineJob {
         name: Some("Gate".to_string()),
         needs: Needs::Multiple(needs_list),
         if_: Some("always()".to_string()),
         runs_on: "ubuntu-latest".to_string(),
-        permissions: Some(Permissions {
-            id_token: Some(PermissionLevel::Write),
-            contents: Some(PermissionLevel::Read),
-            pull_requests: None,
-        }),
+        permissions: None,
         env: BTreeMap::new(),
         outputs: BTreeMap::new(),
-        steps: vec![
-            Step::Action(ActionStep {
-                uses: "actions/checkout@v6".to_string(),
-                id: None,
-                name: None,
-                if_: None,
-                with: BTreeMap::new(),
-                env: BTreeMap::new(),
-            }),
-            Step::Action(ActionStep {
-                uses: "DeterminateSystems/nix-installer-action@main".to_string(),
-                id: None,
-                name: None,
-                if_: None,
-                with: nix_install_with,
-                env: BTreeMap::new(),
-            }),
-            Step::Action(ActionStep {
-                uses: "DeterminateSystems/flakehub-cache-action@v3".to_string(),
-                id: None,
-                name: None,
-                if_: None,
-                with: BTreeMap::new(),
-                env: BTreeMap::new(),
-            }),
-            Step::Run(RunStep {
-                id: None,
-                name: None,
-                if_: None,
-                run: r#"nix run ./tools/shaka -- ci gate --needs '${{ toJson(needs) }}'"#
-                    .to_string(),
-                env: BTreeMap::new(),
-            }),
-        ],
+        steps: vec![Step::Run(RunStep {
+            id: None,
+            name: None,
+            if_: None,
+            run: r#"echo '${{ toJson(needs) }}' | jq -e '
+  to_entries
+  | map(select(.value.result != "success" and .value.result != "skipped"))
+  | if length == 0 then "Gate passed"
+    else error("Gate failed: \(map(.key) | join(", "))")
+    end
+'"#
+            .to_string(),
+            env: BTreeMap::new(),
+        })],
     }
 }
