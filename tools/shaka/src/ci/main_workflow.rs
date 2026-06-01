@@ -344,7 +344,7 @@ fn preflight_job() -> InlineJob {
 fn build_job(spec: &MainBuildSpec) -> InlineJob {
     let project_dir_str = spec.project_dir.to_string_lossy().to_string();
     let if_cond = format!(
-        "github.event_name != 'pull_request' || needs.changes.outputs.{} == 'true'",
+        "github.event_name == 'workflow_dispatch' || needs.changes.outputs.{} == 'true'",
         spec.build.filter_key,
     );
     let publish_if = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'";
