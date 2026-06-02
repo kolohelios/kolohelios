@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keep the Main Thread Free with Web Workers · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">Keep the Main Thread Free with Web Workers</h1>
+    <p class="mt-2 text-stone-600">Courtney Yatteau · Esri · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>UX responsiveness is a workload problem. <strong>Jank is a workload problem.</strong> When
+the main thread is busy, the UI freezes — so move the heavy work off it.</p>
+<h2>The mental model</h2>
+<p>The main thread is the <strong>front desk</strong>: clicks, paints, UI updates — and any
+heavy JS blocks the line. A worker is <strong>not</strong> a second UI; the main thread
+still owns the user experience. A worker thread is for plain data calculation:
+the main thread requests work, the worker returns a result.</p>
+<h2>THREAD — the method</h2>
+<ol>
+<li><strong>Trigger</strong> the stutter — reproduce the freeze.</li>
+<li><strong>Hunt</strong> for the blocker — dev tools, code review, performance recording.</li>
+<li><strong>Relocate</strong> the blocker — move it out of the UI thread.</li>
+<li><strong>Establish</strong> the protocol for handing work to/from the worker.</li>
+<li><strong>Add</strong> guardrails — progress, debounce, cancellation.</li>
+<li><strong>Decide</strong> where the work belongs.</li>
+</ol>
+<h2>Trigger / hunt</h2>
+<p>The demo: a heartbeat UI that freezes when a click kicks off an expensive task
+(sin/cos math over state data). Do a performance recording and you can see the
+JS work blocking the main thread.</p>
+<h2>Relocate</h2>
+<p>Offload the CPU-heavy work to a worker and the main thread is no longer
+UI-blocked.</p>
+<h2>Establish / guardrails</h2>
+<ul>
+<li><strong>Make worker messages boring.</strong> Boring is good when two threads talk — e.g.
+<code>{ type, requestId, payload }</code>.</li>
+<li><strong>Make requests cancellable.</strong> A request can become stale; preempt when a new
+message arrives by treating the latest message's <code>requestId</code> as the live one.</li>
+<li>Add the usual usability guardrails: <strong>debounce</strong> (wait), <strong>progress</strong>
+(inform), <strong>cancel</strong> (stop). For fast filters, ask whether the worker <em>can</em>
+do the work — and whether it can do <em>only enough</em> of it.</li>
+</ul>
+<h2>Decide</h2>
+<p>Workers add complexity, so they're worth it for genuinely heavy computation —
+but <strong>too heavy-handed for ordinary UI work.</strong> Use the pattern where it earns
+its keep.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-stone-400">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://github.com/cyatteau/cascadiajs-2026-web-workers">cyatteau/cascadiajs-2026-web-workers</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <a class="text-stone-600 hover:text-blue-700" href="/talks/modern-css-colors/">← Practical Refactors with Modern CSS Colors</a>
+
+
+  <a class="text-right text-stone-600 hover:text-blue-700" href="/talks/ai-to-learn/">Using AI to Learn →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>

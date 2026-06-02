@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linked Literate Programming · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">Linked Literate Programming</h1>
+    <p class="mt-2 text-stone-600">James Ide · Expo · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>When agents write the code, <strong>where does the intent live?</strong> We still need
+durable intent.</p>
+<h2>The problem with harness memory</h2>
+<p>Agent harnesses have memory, but it's <strong>tightly coupled</strong> to the harness and
+brings lock-in. Markdown files, by contrast, are <strong>portable</strong>. So use markdown
+to hold the "memory."</p>
+<h2>Linked Literate Programming (LLP)</h2>
+<p>LLP = <strong>markdown specs + references from code</strong>. Code links back to the spec
+with a comment:</p>
+<pre><code>// @ref LLP 0000mediastream-constructor
+</code></pre>
+<pre><code class="language-markdown"># Constructors [mediastream-constructor]
+</code></pre>
+<p>The links matter for three things:</p>
+<ul>
+<li><strong>Coverage</strong> — you can see whether each part of the spec was implemented.</li>
+<li><strong>Accuracy</strong> — does the spec actually match the code?</li>
+<li><strong>Intent</strong> — are decisions visible <em>above</em> the code level?</li>
+</ul>
+<h2>Web specs are great LLP inputs</h2>
+<p>Web specs already have the edge cases considered and the APIs designed. Agents
+import the spec, then leave linking comments back to it. The same spec can drive
+<strong>both web and native</strong> implementations. Pair it with <strong>WPT</strong> (Web Platform
+Tests) to close the loop: set up LLP, pull in the relevant parts of a spec, and
+test coverage against it. LLP + web specs makes the whole thing more
+programmatic.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-stone-400">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://github.com/web-platform-tests/wpt">Web Platform Tests</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <a class="text-stone-600 hover:text-blue-700" href="/talks/ai-to-learn/">← Using AI to Learn</a>
+
+
+  <a class="text-right text-stone-600 hover:text-blue-700" href="/talks/wrong-abstraction/">Choosing the Wrong Abstraction (And What It Cost Us) →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>
