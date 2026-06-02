@@ -6,19 +6,19 @@
 <title>{% block title %}CascadiaJS 2026 Notes{% endblock %}</title>
 <link rel="stylesheet" href="/style.css">
 </head>
-<body class="bg-stone-50 text-stone-800 antialiased">
-<header class="border-b border-stone-200">
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
   <div class="mx-auto max-w-3xl px-6 py-5">
-    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
   </div>
 </header>
 <main class="mx-auto max-w-3xl px-6 py-10">
 {% block content %}{% endblock %}
 </main>
-<footer class="mt-16 border-t border-stone-200">
-  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
-    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
-    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
   </div>
 </footer>
 </body>
