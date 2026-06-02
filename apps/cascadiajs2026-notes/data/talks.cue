@@ -44,9 +44,9 @@ talks: [...#Talk] & [
 	},
 	{
 		slug:    "agent-swarms"
-		speaker: "Joel Duffy"
-		company: "Pulumi"
-		title:   "Agent Swarms & Harness Engineering"
+		speaker: "Joel Hooks"
+		company: "Badass Courses"
+		title:   "AI Agent Swarms Are Amazing"
 		day:     1
 		order:   2
 		projects: [
@@ -57,12 +57,12 @@ talks: [...#Talk] & [
 	},
 	{
 		slug:    "modern-css-colors"
-		speaker: "James Steinbeck"
+		speaker: "James Steinbach"
 		company: "Delinea"
 		title:   "Practical Refactors with Modern CSS Colors"
 		day:     1
 		order:   3
-		slides:  "https://jds.li/css-colors"
+		slides:  "https://jdsteinbach.com/practical-color-css/"
 	},
 	{
 		slug:    "web-workers"
@@ -79,18 +79,22 @@ talks: [...#Talk] & [
 		slug:    "ai-to-learn"
 		speaker: "Daniel Mendoza"
 		company: "Storyblok"
-		title:   "Using AI to Learn"
+		title:   "AI Helped Me Learn: Vue Through the Lens of a React Developer"
 		day:     1
 		order:   5
+		slides:  "https://new.express.adobe.com/publishedV2/urn:aaid:sc:US:5b2e8fce-4bc0-5bcc-bb70-62f7c36f80b2?promoid=Y69SGM5H&mv=other"
 	},
 	{
 		slug:    "linked-literate-programming"
 		speaker: "James Ide"
 		company: "Expo"
-		title:   "Linked Literate Programming"
+		title:   "Implementing the Web on Native with Linked Literate Programming"
 		day:     1
 		order:   6
+		slides:  "https://github.com/expo/web-standard-camera-demo/releases/download/v1.0.0/slides.pdf"
 		projects: [
+			{name: "ccheever/llp", url: "https://github.com/ccheever/llp"},
+			{name: "Web demo", url: "https://standard-camera-demo.expo.app/"},
 			{name: "Web Platform Tests", url: "https://github.com/web-platform-tests/wpt"},
 		]
 	},
@@ -104,6 +108,7 @@ talks: [...#Talk] & [
 		projects: [
 			{name: "decepulis/ax-bench", url: "https://github.com/decepulis/ax-bench"},
 			{name: "Observable Plot", url: "https://observablehq.com/plot/"},
+			{name: "Bret Victor — Ladder of Abstraction", url: "https://worrydream.com/LadderOfAbstraction/"},
 		]
 	},
 	{
@@ -113,6 +118,7 @@ talks: [...#Talk] & [
 		title:   "Shared Components Beyond the Design System"
 		day:     1
 		order:   8
+		slides:  "https://jonathankeslin.com/cascadiajs26"
 	},
 	{
 		slug:    "junior-dev-team"
@@ -121,6 +127,7 @@ talks: [...#Talk] & [
 		title:   "How to Successfully Build a Junior Dev Team"
 		day:     1
 		order:   9
+		slides:  "https://learningasleadership.my.canva.site/cascadiajs-presentation"
 	},
 	{
 		slug:    "skeptics-to-champions"
@@ -134,7 +141,7 @@ talks: [...#Talk] & [
 		slug:    "spec-driven-development"
 		speaker: "Erik Hanchett"
 		company: "AWS"
-		title:   "Spec-Driven Development"
+		title:   "How to Use Spec-Driven Development for Production Workflows"
 		day:     1
 		order:   11
 		projects: [
