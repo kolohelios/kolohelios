@@ -56,7 +56,7 @@
       cleanup = "none";
     };
     casks = [
-      "claude-code"
+      "claude-code@latest"
     ];
   };
 
