@@ -2,26 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens. `color-scheme: light dark` makes the document follow the
+   OS appearance and lets `light-dark()` resolve per the active scheme —
+   so every token below is a single source of truth for both modes with
+   no `dark:` variants, no media queries, and no JavaScript. Templates
+   reference these via Tailwind arbitrary values (`bg-[var(--bg)]`,
+   `text-[color:var(--fg)]`, ...). Fittingly, `light-dark()` is the
+   technique from the Steinbach "Modern CSS Colors" talk hosted here. */
+:root {
+  color-scheme: light dark;
+
+  --bg: light-dark(#fafaf9, #1c1917); /* stone-50  / stone-900 */
+  --fg: light-dark(#292524, #e7e5e4); /* stone-800 / stone-200 */
+  --fg-strong: light-dark(#1c1917, #f5f5f4); /* stone-900 / stone-100 */
+  --fg-muted: light-dark(#57534e, #a8a29e); /* stone-600 / stone-400 */
+  --fg-faint: light-dark(#a8a29e, #78716c); /* stone-400 / stone-500 */
+  --border: light-dark(#e7e5e4, #292524); /* stone-200 / stone-800 */
+  --link: light-dark(#1d4ed8, #60a5fa); /* blue-700  / blue-400  */
+  --link-hover: light-dark(#1e3a8a, #93c5fd); /* blue-900  / blue-300  */
+  --code-bg: light-dark(#f5f5f4, #292524); /* stone-100 / stone-800 */
+  --pre-bg: light-dark(#1c1917, #0c0a09); /* stone-900 / stone-950 */
+  --pre-fg: light-dark(#fafaf9, #e7e5e4); /* stone-50  / stone-200 */
+  --quote-border: light-dark(#d6d3d1, #44403c); /* stone-300 / stone-700 */
+}
+
 /* Typographic styles for rendered Markdown bodies. The standalone
    Tailwind CLI doesn't bundle @tailwindcss/typography, so style the
    raw HTML elements directly within the `.notes` container. The
    `@tailwind base` reset strips default list/heading styling, so
-   these rules restore it for prose. */
+   these rules restore it for prose. Colors come from the tokens
+   above, so prose themes with the rest of the page. */
 .notes {
   line-height: 1.7;
-  color: #44403c;
+  color: var(--fg);
 }
 .notes h2 {
   margin-top: 2rem;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1c1917;
+  color: var(--fg-strong);
 }
 .notes h3 {
   margin-top: 1.5rem;
   font-size: 1.05rem;
   font-weight: 600;
-  color: #292524;
+  color: var(--fg-strong);
 }
 .notes p {
   margin-top: 1rem;
@@ -40,28 +65,28 @@
   margin-top: 0.25rem;
 }
 .notes a {
-  color: #1d4ed8;
+  color: var(--link);
   text-decoration: underline;
 }
 .notes a:hover {
-  color: #1e3a8a;
+  color: var(--link-hover);
 }
 .notes strong {
   font-weight: 600;
-  color: #1c1917;
+  color: var(--fg-strong);
 }
 .notes code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.875em;
-  background: #f5f5f4;
+  background: var(--code-bg);
   padding: 0.1em 0.3em;
   border-radius: 0.25rem;
 }
 .notes pre {
   margin-top: 1rem;
   padding: 1rem;
-  background: #1c1917;
-  color: #fafaf9;
+  background: var(--pre-bg);
+  color: var(--pre-fg);
   border-radius: 0.5rem;
   overflow-x: auto;
 }
@@ -73,12 +98,12 @@
 .notes blockquote {
   margin-top: 1rem;
   padding-left: 1rem;
-  border-left: 3px solid #d6d3d1;
-  color: #57534e;
+  border-left: 3px solid var(--quote-border);
+  color: var(--fg-muted);
   font-style: italic;
 }
 .notes hr {
   margin: 2rem 0;
   border: 0;
-  border-top: 1px solid #e7e5e4;
+  border-top: 1px solid var(--border);
 }
