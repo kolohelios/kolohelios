@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AX: Agent Experience · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">AX: Agent Experience</h1>
+    <p class="mt-2 text-stone-600">Matt Biilman · Netlify · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>The progression is real: co-pilot → AI agent → AI assistance. We're moving
+from autocomplete toward genuine autonomy, and it changes the economics of
+building software.</p>
+<p><strong>Build vs. buy has flipped.</strong> Things that weren't viable to build before are
+now in reach — even whole HR systems. The SaaS budget is being replaced with a
+dev budget. Autonomous coding agents (e.g. <strong>openclaw.ai</strong>) are still early;
+one fun pattern is repurposing an old laptop as the host for one.</p>
+<p>The analogy that stuck: autonomous cars made us rethink cities; autonomous
+agents make us rethink programming and systems. <strong>Software is now read/write
+for everyone.</strong></p>
+<h2>Chapter II: AX (Agent Experience)</h2>
+<p>Build tools for the people that build tools.</p>
+<ul>
+<li><strong>UX</strong> differentiates products from competitors.</li>
+<li><strong>DX</strong> differentiates platforms.</li>
+<li><strong>AX</strong> differentiates platforms <em>and</em> products.</li>
+</ul>
+<p>The question: what experience do agents have with your tools and products? AX
+is <strong>not</strong> a single feature or protocol — and it's definitely not "just MCP."</p>
+<h2>The four pillars</h2>
+<p><strong>Access</strong> — can agents reach the product at all? <code>netlify.ai</code> is built for
+humans <em>and</em> agents; the database is "batteries included" and available to
+agents directly. Emerging standards matter here too — e.g. WorkOS exploring
+self-authenticating identity for AI agents.</p>
+<p><strong>Context</strong> — does the agent understand the product? Optimize for agent
+consumption: prefer plain text / markdown, negotiate content types. <strong>MCP is UI
+for LLMs</strong> — context is the most important piece. Expose what the agent can act
+on, and steer it.</p>
+<p><strong>Tools</strong> — agents will use your product <em>even if you provide no tools</em>. Every
+product <strong>already has an agent experience</strong> — the only question is whether it's
+good or bad. A CLI is often great DX but bad AX (interactive prompts are
+terrible for agents). API vs. MCP is the same product, different surfaces —
+naively shifting an entire API to MCP overwhelms the context window, so limit
+to a handful of tools. Provide <strong>prompt escape hatches</strong>.</p>
+<p><strong>Orchestration</strong> — can agents do real work? Linear and Notion let you kick off
+longer-running tasks. Nobody wants another chat bot; orchestration lets people
+use tools they're <em>already</em> comfortable with. Agent runners execute in a
+sandbox so they can <strong>actually do the thing</strong> — async agents. The goal: make the
+whole team <strong>builders</strong>.</p>
+<h2>Measuring it</h2>
+<p><strong>Evals</strong> are how you measure agent experience — <code>axis.run</code> actually tries to
+onboard against your product and measure the AX. As this gets more abstract, it
+also gets more required.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-stone-400">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://netlify.ai">netlify.ai</a></li>
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://openclaw.ai">openclaw.ai</a></li>
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://axis.run">axis.run</a></li>
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://workos.com">WorkOS</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <span></span>
+
+
+  <a class="text-right text-stone-600 hover:text-blue-700" href="/talks/agent-swarms/">Agent Swarms &amp; Harness Engineering →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>

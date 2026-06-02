@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Swarms &amp; Harness Engineering · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">Agent Swarms &amp; Harness Engineering</h1>
+    <p class="mt-2 text-stone-600">Joel Duffy · Pulumi · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>Capability is going exponential with Opus 4.5+, and the leverage point is no
+longer the model — it's the <strong>harness</strong>.</p>
+<pre><code>model | harness | context
+</code></pre>
+<p><strong>Harness engineering is the state of the art.</strong> The Claude Code architecture
+diagram is wild once you see everything it bundles: prompts, skills,
+directives, subagents, tools, bundled infra, orchestration logic, hooks,
+middleware, and observability (logs!).</p>
+<p>The takeaway in three words: <strong>own the tools.</strong> <code>opencode</code> gave us the
+opportunity to build our own.</p>
+<h2>Swarms</h2>
+<p>A swarm is <strong>multi-agent coordination to survive context death</strong> — when one
+agent's context fills up, the work survives across the swarm. Useful pattern:
+use the Socratic method to align intent and outcomes, plan, then fan out
+parallel agents.</p>
+<h2>Build a harness that makes you smile</h2>
+<ul>
+<li><code>SOUL.md</code> — give the agent a personality and an icon. Your harness should
+make you smile.</li>
+<li>There's another harness called <strong>Pi</strong> whose workflow implementation is much
+better than the default. Pi <strong>updates itself</strong> — it reads its own source code
+to add capabilities. Out of the box it's intentionally not featureful.</li>
+<li>Pi subagents run in parallel and chains — a great extension for swarm-style
+work.</li>
+<li><code>pi-cmux</code> — a terminal replacement built on Ghostty, managed by a Pi
+extension.</li>
+<li><code>pi-notes</code> — HTML is <em>not</em> better than markdown; notes should be human
+readable but also agent readable. (<code>mdsvex</code> is the Svelte take on MDX.)</li>
+<li><code>pi-feedback</code> — a support inbox: the last turn of a session sends a diff to
+process feedback. With a lot of users you get a lot of support tickets, so a
+feedback tool that improves the automated support over many turns pays off.</li>
+</ul>
+<p>A recurring theme: <strong>slow down.</strong> Don't do everything, and don't do it quickly
+(cf. <em>Slow Productivity</em>).</p>
+<h2>Worth following</h2>
+<p>Cloudflare Durable Objects for state. Sunil Pai (something called "Think").
+Dillon Mulroy on artifacts, memory, and primitives. Addy Osmani's <strong>"The
+Orchestration Tax"</strong> — cognitive bandwidth is <em>not</em> parallelizable. Agent swarms
+are genuinely hard; the real skill is building systems that can pull any and
+all threads through the context limit.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-stone-400">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://github.com/sst/opencode">opencode</a></li>
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://github.com/mattpocock/skills">mattpocock/skills</a></li>
+
+      <li><a class="text-blue-700 underline hover:text-blue-900" href="https://agentdungeon.ai">agentdungeon.ai</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <a class="text-stone-600 hover:text-blue-700" href="/talks/biilman-agent-experience/">← AX: Agent Experience</a>
+
+
+  <a class="text-right text-stone-600 hover:text-blue-700" href="/talks/modern-css-colors/">Practical Refactors with Modern CSS Colors →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>

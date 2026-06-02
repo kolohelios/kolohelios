@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Last Mile Is Code · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">The Last Mile Is Code</h1>
+    <p class="mt-2 text-stone-600">Joe Duffy · Pulumi · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>Agents got really good at code, really fast — and you can represent almost any
+problem as code (one demo: <code>gc.cpp</code>, a million lines transpiled from LISP).</p>
+<p>On SWE-bench, the contamination-resistant <strong>Pro</strong> variant has moved fast:
+quality from ~33 (Aug '24) to 94, with Pro at 78 — and roughly 40 → 70 over the
+year.</p>
+<h2>The stack shifted</h2>
+<pre><code>old: programming language --compiler--&gt; machine code
+new: natural language --LLM--&gt; programming language --compiler--&gt; machine code
+</code></pre>
+<p>The hard part <strong>isn't the code anymore</strong> — it's everything underneath it:
+ClickOps, infra, API keys, secrets. As Karpathy put it, <em>"Building a modern app
+is a bit like assembling IKEA furniture."</em></p>
+<h2>The last mile</h2>
+<p>For most of this, the last mile has always been <strong>someone else's job</strong> — a
+platform team, an SRE rotation, the person on call. And it's wildly lopsided:
+the agent only has what it was trained on, or what's in context.</p>
+<p>So <strong>put the last mile in code, too.</strong> Take action in code space; a runtime
+(IaC) reflects it back into the cloud. <strong>IaC is like <code>git diff</code> for your infra</strong>
+— you see what it's going to do before it does it. Vibe infra like apps: ask for
+code you can review, approve, and merge.</p>
+<p>This isn't just ergonomics. Per <em>CodeAct (Executable Code Actions Elicit Better
+LLM Agents)</em>, agents do <strong>~20% better</strong> when they act by <strong>writing code</strong> rather
+than emitting config. The shift is already underway: agents now drive <strong>28% of
+deployments</strong>, up from 4% late last year. <strong>Shipping isn't a separate team's job
+anymore.</strong></p>
+
+  </div>
+
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <a class="text-stone-600 hover:text-blue-700" href="/talks/spec-driven-development/">← Spec-Driven Development</a>
+
+
+  <span></span>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>

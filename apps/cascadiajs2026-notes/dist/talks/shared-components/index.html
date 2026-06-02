@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared Components Beyond the Design System · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">Shared Components Beyond the Design System</h1>
+    <p class="mt-2 text-stone-600">Jonathan Keslin · Atlassian · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>Shared components that live <em>beyond</em> the design system. The design system is
+UX foundations and atomicity; above it sits navigation, higher-level UX,
+team-specific components, and design-system candidates.</p>
+<h2>Before you build</h2>
+<ul>
+<li><strong>Who are you building for?</strong> Anchor on one consumer, then add a <em>second</em>
+consumer early so the implementation doesn't get coupled to the anchor's use
+case.</li>
+<li><strong>Where are you building it?</strong> Keep it separate from the app so it can evolve
+independently, and publish artifacts to avoid copy-paste habits.</li>
+<li><strong>Build it thoughtfully</strong> — hold it to a higher standard than app code, and
+keep the API consistent. The common case should take little to no effort; the
+most custom case will take the most effort. Layer the complexity (1 → 2 → 3),
+prioritize common use cases, and don't forget the complex-but-frequent ones.
+Hard mode is allowed to be hard.</li>
+</ul>
+<h2>Six principles</h2>
+<ol>
+<li><strong>Build up</strong> from the design system.</li>
+<li><strong>Design with layered extensibility</strong> — make the right way the easy way (e.g.
+a button with an icon).</li>
+<li><strong>Don't build a Homer car</strong> — don't cram in every feature.</li>
+<li><strong>It's okay to be opinionated.</strong></li>
+<li><strong>Consider including batteries</strong> — reduce boilerplate, handle data fetching
+where you can (like Relay's fragments), but keep an escape hatch so consumers
+can do it themselves when needed.</li>
+<li><strong>Make it maintainable</strong> — thorough tests, liberal docs, and a changelog
+that says what changed and whether consumers need to act.</li>
+</ol>
+<h2>Ecosystem and governance</h2>
+<p>Shared components are valuable, so invest in <strong>discoverability</strong> — a docs site
+or marketplace; good docs matter more than ever. Provide <strong>governance</strong>: define
+patterns and practices, use a quality scale (Home Assistant's bronze / silver /
+gold is a nice model), and <strong>recognize authors</strong> for their contributions.</p>
+
+  </div>
+
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <a class="text-stone-600 hover:text-blue-700" href="/talks/wrong-abstraction/">← Choosing the Wrong Abstraction (And What It Cost Us)</a>
+
+
+  <a class="text-right text-stone-600 hover:text-blue-700" href="/talks/junior-dev-team/">How to Successfully Build a Junior Dev Team →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>

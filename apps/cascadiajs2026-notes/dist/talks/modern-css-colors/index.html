@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practical Refactors with Modern CSS Colors · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased">
+<header class="border-b border-stone-200">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-stone-900 hover:text-stone-600">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-stone-500 hover:text-stone-700">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">Practical Refactors with Modern CSS Colors</h1>
+    <p class="mt-2 text-stone-600">James Steinbeck · Delinea · Day 1</p>
+  </header>
+  <div class="notes mt-8">
+<p>Practical refactors you can do today with modern CSS color features. The
+through-line: a lot of what we reached for a preprocessor to do, CSS now does
+natively, <strong>in context</strong>.</p>
+<h2>Theming with <code>light-dark()</code></h2>
+<p><code>light-dark()</code> takes two values — a light-mode color and a dark-mode color (both
+must be colors) — and does the media query's job for you.</p>
+<p>Overrides stay tiny. A six-line override (one block each for dark and light) is
+enough:</p>
+<pre><code class="language-css">[data-theme="dark"] {
+  color-scheme: dark;
+}
+</code></pre>
+<p>Global support is ~87% (check caniuse for the current number); Electron already
+supports it. Tailwind's <code>@theme</code> can lean on <code>light-dark()</code> too.</p>
+<h2>Color manipulation with relative colors</h2>
+<p>Relative color syntax pulls the raw channels out of an existing color:</p>
+<pre><code class="language-css">rgb(from var(--red) r g b / 1);
+</code></pre>
+<p><code>from</code> extracts the source color's values. Modern color functions drop the
+commas — but alpha still needs a slash: <code>hsl(120 50% 20% / 0.2)</code>. Alpha is
+implicit regardless of whether you write <code>rgb</code> or <code>rgba</code>.</p>
+<p>This unlocks, all without a preprocessor:</p>
+<ul>
+<li><strong>Tints</strong> — <code>rgb(from var(--surface-primary) r g 255)</code>. No clamping needed.</li>
+<li><strong>Adjust alpha</strong> — <code>rgb(from var(--surface-primary) r g b / 0.2)</code>.</li>
+<li><strong>Normalized lightness</strong> — same idea as alpha, but in <code>hsl</code>.</li>
+<li><strong>Color math</strong> — start from a named color and rotate hue: secondary at 120°,
+tertiary at 240°.</li>
+</ul>
+<p>These are the <strong>mixins</strong> we used SASS color functions for — now native (~89%
+support). Change one line to derive a variable and operate on it right there.</p>
+<h2><code>color-mix()</code> and <code>contrast-color()</code></h2>
+<p><code>color-mix()</code> blends colors in real time, in a chosen color space:</p>
+<pre><code class="language-css">color-mix(in hsl, var(--button-color), var(--button-active-color))
+</code></pre>
+<p>(~91% support.)</p>
+<p>For accessibility, <code>contrast-color()</code> returns black or white — whichever
+contrasts better against a given color, regardless of color scheme. It's
+<strong>stackable</strong>: use <code>color-mix()</code> <em>inside</em> <code>contrast-color()</code> with relative
+colors to mix a tint in and still get a legible foreground. Support is only
+~67% today, so progressively enhance.</p>
+
+  </div>
+
+
+
+
+  <section class="mt-6">
+    <a class="text-blue-700 underline hover:text-blue-900" href="https://jds.li/css-colors">Slides</a>
+  </section>
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-stone-200 pt-6 text-sm">
+
+  <a class="text-stone-600 hover:text-blue-700" href="/talks/agent-swarms/">← Agent Swarms &amp; Harness Engineering</a>
+
+
+  <a class="text-right text-stone-600 hover:text-blue-700" href="/talks/web-workers/">Keep the Main Thread Free with Web Workers →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-stone-200">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-stone-500">
+    <p>Personal notes from <a class="underline hover:text-stone-700" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-stone-700" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+  </div>
+</footer>
+</body>
+</html>
