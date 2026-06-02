@@ -16,10 +16,10 @@
 //!    `push: main` or `workflow_dispatch`.
 //!
 //! The `cleanup` job that runs on `pull_request: closed` lives in a
-//! hand-authored sibling file `<name>-cleanup.yml`: its trigger and
-//! concern (Worker deletion) are orthogonal to the deploy lifecycle,
-//! and the wrangler invocation is project-specific in ways the
-//! schema would only awkwardly express.
+//! generated sibling file `<name>-cleanup.yml` (see
+//! `worker_cleanup_workflow.rs`): its trigger and concern (Worker
+//! deletion) are orthogonal to the deploy lifecycle, so it gets its
+//! own file, but both derive from the same `ci.deploy` block.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ use serde_yaml_ng::Value;
 
 use super::workflow::{
     ActionStep, CancelInProgress, Concurrency, Empty, InlineJob, Job, Needs, On, PermissionLevel,
-    Permissions, PushTrigger, ReusableCall, RunStep, Step, Workflow,
+    Permissions, PullRequestTrigger, PushTrigger, ReusableCall, RunStep, Step, Workflow,
 };
 
 /// One Worker project's deploy workflow inputs.
@@ -59,10 +59,10 @@ pub fn build(spec: &WorkerDeploySpec) -> Workflow {
         name: format!("{} deploy", spec.project_name),
         on: On {
             // Default PR types (opened/synchronize/reopened); the
-            // `closed` event goes to the hand-authored cleanup
-            // sibling so generated jobs don't carry redundant
-            // `action != 'closed'` guards.
-            pull_request: Some(Empty),
+            // `closed` event goes to the generated cleanup sibling
+            // (`<name>-cleanup.yml`) so deploy jobs don't carry
+            // redundant `action != 'closed'` guards.
+            pull_request: Some(PullRequestTrigger::All(Empty)),
             push: Some(PushTrigger {
                 branches: vec!["main".to_string()],
                 paths: vec![],

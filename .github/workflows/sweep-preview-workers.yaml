@@ -1,0 +1,69 @@
+# Hand-authored (allowlisted in tools/shaka/src/ci/audit_workflows.rs).
+#
+# Repo-wide backstop for the per-PR `<name>-cleanup.yml` jobs: deletes
+# any Cloudflare preview Worker `<previewScriptPrefix>-pr-<N>` whose PR
+# has closed or merged. Runs `shaka deploy sweep-previews`, which
+# discovers every Worker app from its `project.cue` and cross-checks
+# each preview's PR state via `gh`. #719.
+#
+# Project-agnostic, so it can't live in any single project's `ci:`
+# block — hence hand-authored rather than generated.
+#
+# Triggers: every `push: main` (reap a just-merged PR's preview
+# promptly), a daily cron (catch abandoned PRs and any per-PR cleanup
+# that errored), and manual dispatch.
+#
+# `id-token: write` lets nix-installer authenticate with FlakeHub for
+# the private `kolohelios-nix` input. CF creds resolve through `op run`
+# from the shared `.env.example` (account-scoped deploy token); `gh`
+# reads PR state via `GITHUB_TOKEN`.
+name: sweep preview workers
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: read
+
+# One sweep at a time so a cron tick and a push:main don't race on the
+# same delete.
+concurrency:
+  group: sweep-preview-workers
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    env:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: verify OP_SERVICE_ACCOUNT_TOKEN
+        run: |
+          if [[ -z "$OP_SERVICE_ACCOUNT_TOKEN" ]]; then
+            echo "::error::OP_SERVICE_ACCOUNT_TOKEN is empty; check repo/org secret"
+            exit 1
+          fi
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: sweep orphaned preview Workers
+        # The CF deploy token + account id are identical across every
+        # Worker app's `.env.example`; copy any one to the repo root so
+        # `op run` resolves the `op://` refs `sweep-previews` reads from
+        # the env. `shaka` runs from the repo root so its project walk
+        # sees every `project.cue`.
+        run: |
+          cp apps/kolohelios-portfolio/.env.example .env
+          nix develop ./tools/shaka --command \
+            op run --env-file=.env -- \
+            shaka deploy sweep-previews

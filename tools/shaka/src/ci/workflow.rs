@@ -22,11 +22,24 @@ pub struct Workflow {
 #[derive(Serialize, Debug, Default)]
 pub struct On {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pull_request: Option<Empty>,
+    pub pull_request: Option<PullRequestTrigger>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub push: Option<PushTrigger>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow_dispatch: Option<Empty>,
+}
+
+/// The `pull_request:` trigger, in either of the two shapes the
+/// generated workflows need. `All` emits a bare `pull_request:` (null)
+/// — every default activity type, used by the deploy workflow. `Types`
+/// restricts to specific activity types (e.g. `[closed]`), used by the
+/// cleanup workflow. Untagged so each serializes to its native YAML
+/// shape; `actionlint` rejects a quoted scalar here.
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+pub enum PullRequestTrigger {
+    All(Empty),
+    Types { types: Vec<String> },
 }
 
 #[derive(Serialize, Debug)]

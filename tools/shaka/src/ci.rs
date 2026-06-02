@@ -7,6 +7,7 @@ mod gate;
 mod generate;
 mod main_workflow;
 mod mask_and_run;
+mod worker_cleanup_workflow;
 mod worker_deploy_workflow;
 mod workflow;
 
