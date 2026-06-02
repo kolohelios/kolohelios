@@ -81,10 +81,21 @@ pub fn run(check: bool) {
                     project_name: meta.name.clone(),
                     deploy,
                 };
-                let workflow = super::worker_deploy_workflow::build(&spec);
-                let target =
-                    PathBuf::from(".github/workflows").join(format!("{}-deploy.yml", meta.name));
-                items.push((target, workflow::emit(&workflow)));
+                // A `ci.deploy` block emits two siblings from the same
+                // spec: `<name>-deploy.yml` (verify/preview/deploy) and
+                // `<name>-cleanup.yml` (delete the preview Worker on PR
+                // close). Generating cleanup alongside deploy means a
+                // new Worker app can't silently leak previews (#719).
+                let deploy_workflow = super::worker_deploy_workflow::build(&spec);
+                items.push((
+                    PathBuf::from(".github/workflows").join(format!("{}-deploy.yml", meta.name)),
+                    workflow::emit(&deploy_workflow),
+                ));
+                let cleanup_workflow = super::worker_cleanup_workflow::build(&spec);
+                items.push((
+                    PathBuf::from(".github/workflows").join(format!("{}-cleanup.yml", meta.name)),
+                    workflow::emit(&cleanup_workflow),
+                ));
             }
         }
     }

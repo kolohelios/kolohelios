@@ -24,16 +24,16 @@ const HAND_AUTHORED: &[&str] = &[
     // Reusable workflow_call templates
     "tf-apply.yml",
     "cf-deploy.yml",
-    // Hand-authored sibling of the generated
-    // `kolohelios-portfolio-deploy.yml`: runs on `pull_request: closed`
-    // to delete the ephemeral preview Worker. Different trigger and
-    // project-specific wrangler invocation; not derivable from
-    // `ci.deploy` metadata.
-    "kolohelios-portfolio-cleanup.yml",
     // Repo-event-driven
     "auto-rebase-prs.yaml",
     "bump-kolohelios-nix.yaml",
     "codeql.yml",
+    // Repo-wide backstop: deletes any preview Worker whose PR has
+    // closed. Runs on `push: main` + a daily cron + manual dispatch
+    // (#719). Project-agnostic — not derivable from any single
+    // project's `ci:` block, unlike the per-PR `<name>-cleanup.yml`
+    // siblings, which `shaka ci generate-workflows` now owns.
+    "sweep-preview-workers.yaml",
     // Hand-authored darwin build of infra/home — runs on macos-latest
     // to populate the FlakeHub Cache so cold-bootstrap on a fresh
     // aarch64-darwin host pulls cached artifacts instead of compiling
@@ -150,7 +150,10 @@ fn generated_filenames() -> Vec<String> {
                     any_build = true;
                 }
                 if ci.deploy.is_some() {
+                    // A `ci.deploy` block emits two siblings: the
+                    // deploy workflow and the preview-Worker cleanup.
                     out.push(format!("{}-deploy.yml", meta.name));
+                    out.push(format!("{}-cleanup.yml", meta.name));
                 }
             }
         }

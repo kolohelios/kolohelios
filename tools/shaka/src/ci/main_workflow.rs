@@ -22,7 +22,7 @@ use serde_yaml_ng::Value;
 
 use super::workflow::{
     ActionStep, CancelInProgress, Concurrency, Empty, InlineJob, Job, Needs, On, PermissionLevel,
-    Permissions, PushTrigger, RunStep, Step, Workflow,
+    Permissions, PullRequestTrigger, PushTrigger, RunStep, Step, Workflow,
 };
 
 /// One project's contribution to `main.yaml`: its filesystem location,
@@ -100,7 +100,7 @@ pub fn build(specs: &[MainBuildSpec]) -> Workflow {
     Workflow {
         name: "CI".to_string(),
         on: On {
-            pull_request: Some(Empty),
+            pull_request: Some(PullRequestTrigger::All(Empty)),
             push: Some(PushTrigger {
                 branches: vec!["main".to_string()],
                 paths: vec![],
