@@ -44,17 +44,7 @@ pub fn run(json: bool) {
             std::process::exit(1);
         }
     };
-    if json {
-        match serde_json::to_string_pretty(&status) {
-            Ok(s) => println!("{s}"),
-            Err(e) => {
-                eprintln!("{RED}{BOLD}error:{RESET} failed to serialize status: {e}");
-                std::process::exit(1);
-            }
-        }
-    } else {
-        render_human(&status);
-    }
+    crate::output::emit(json, &status, render_human);
 }
 
 fn collect() -> Result<Status, String> {

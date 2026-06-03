@@ -12,6 +12,7 @@ mod gh;
 mod issue;
 mod jj;
 mod object_store;
+mod output;
 mod preflight;
 mod project;
 mod repo;
