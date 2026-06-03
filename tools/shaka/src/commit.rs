@@ -9,6 +9,7 @@ use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 use crate::workspace;
 
 pub mod issue_ref;
+mod suggest;
 pub mod title;
 
 use title::TitleError;
@@ -33,6 +34,19 @@ pub enum CommitCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Draft a conventional commit message from a diff's changed paths
+    Suggest {
+        /// Revset to inspect (jj syntax). Defaults to the working copy.
+        #[arg(short = 'r', long, default_value = "@")]
+        revset: String,
+        /// Emit the draft as JSON for assistant consumers.
+        #[arg(long)]
+        json: bool,
+        /// Set the draft as the working-copy (`@`) description. Refuses
+        /// to overwrite a non-empty existing description.
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 pub fn run(cmd: CommitCommand) {
@@ -42,6 +56,11 @@ pub fn run(cmd: CommitCommand) {
             allow_no_issue_link,
             json,
         } => lint(&revset, allow_no_issue_link, json),
+        CommitCommand::Suggest {
+            revset,
+            json,
+            apply,
+        } => suggest::run(&revset, json, apply),
     }
 }
 
@@ -275,7 +294,13 @@ fn jj_template(rev: &str, template: &str) -> Result<String, String> {
 }
 
 fn jj_files(rev: &str) -> Result<Vec<String>, String> {
+    // Anchor at the repo root so `--name-only` paths are repo-root-relative,
+    // not cwd-relative. Project detection (`project_of`) keys off the
+    // leading slot segment, which only lines up from the root — running
+    // from a subdir like `tools/shaka` would otherwise yield `src/...`.
+    let root = jj::repo_root().map_err(|e| format!("failed to resolve repo root: {e}"))?;
     let out = Command::new("jj")
+        .current_dir(&root)
         .args(["diff", "-r", rev, "--name-only"])
         .output()
         .map_err(|e| format!("failed to run jj: {e}"))?;

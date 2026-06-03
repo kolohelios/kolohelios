@@ -58,11 +58,20 @@ impl std::fmt::Display for TitleError {
     }
 }
 
-/// Validate `title` against the conventional-commit shape. Returns
-/// `Ok(())` when the title is acceptable; otherwise the first failure
-/// encountered (in parse order, so the message points at the first
-/// thing that didn't match).
-pub fn validate(title: &str) -> Result<(), TitleError> {
+/// The three components of a parsed conventional-commit title. Borrows
+/// from the input so callers can reuse the slices without allocating.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parsed<'a> {
+    pub ty: &'a str,
+    pub scope: Option<&'a str>,
+    pub subject: &'a str,
+}
+
+/// Parse `title` into its `<type>`, `<scope>`, and `<subject>`
+/// components, validating the conventional-commit shape along the way.
+/// Returns the first failure encountered (in parse order). `validate`
+/// is the discard-the-parts wrapper for call sites that only gate.
+pub fn parse(title: &str) -> Result<Parsed<'_>, TitleError> {
     let Some(colon_idx) = title.find(": ") else {
         return Err(TitleError::MissingSeparator);
     };
@@ -108,7 +117,19 @@ pub fn validate(title: &str) -> Result<(), TitleError> {
         }
     }
 
-    Ok(())
+    Ok(Parsed {
+        ty: type_part,
+        scope: scope_part,
+        subject,
+    })
+}
+
+/// Validate `title` against the conventional-commit shape. Returns
+/// `Ok(())` when the title is acceptable; otherwise the first failure
+/// encountered (in parse order, so the message points at the first
+/// thing that didn't match).
+pub fn validate(title: &str) -> Result<(), TitleError> {
+    parse(title).map(|_| ())
 }
 
 #[cfg(test)]
@@ -170,6 +191,26 @@ mod tests {
             validate("feat(scope with spaces): x"),
             Err(TitleError::InvalidScope { .. })
         ));
+    }
+
+    #[test]
+    fn parse_returns_components() {
+        assert_eq!(
+            parse("feat(shaka): add thing"),
+            Ok(Parsed {
+                ty: "feat",
+                scope: Some("shaka"),
+                subject: "add thing",
+            })
+        );
+        assert_eq!(
+            parse("docs: tidy readme"),
+            Ok(Parsed {
+                ty: "docs",
+                scope: None,
+                subject: "tidy readme",
+            })
+        );
     }
 
     #[test]

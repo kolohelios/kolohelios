@@ -80,6 +80,10 @@ hand. CI fails on drift.
     the schema.
   - `shaka commit lint -r <revset>` — enforces conventional commit format,
     title length, body wrap, and atomicity (warns on cross-project commits).
+  - `shaka commit suggest` — drafts a conventional-commit message from the
+    paths a diff touches (type/scope heuristics, tied-issue title as
+    fallback). `--json` for assistant use; `--apply` writes it to the
+    empty working-copy description.
   - `shaka repo sync|send|pr|audit` — `jj`/PR workflow helpers.
 
 The single CI gate is `shaka preflight`. It runs in two phases:
