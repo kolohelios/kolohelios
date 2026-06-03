@@ -91,7 +91,7 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, no_auto_merge: bool, dry_r
         println!(
             "{BOLD}main@origin advanced — re-running preflight{RESET} {DIM}(rebase pulled in new ancestors){RESET}"
         );
-        preflight::run(false, Some("main@origin".to_string()));
+        preflight::run(false, Some("main@origin".to_string()), false);
     }
 
     println!("{BOLD}setting bookmark {bookmark}{RESET}");

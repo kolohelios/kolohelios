@@ -81,6 +81,9 @@ enum Commands {
         /// Skip checks whose path scope does not intersect changes since this git ref
         #[arg(long, value_name = "REF")]
         since: Option<String>,
+        /// Emit a machine-readable JSON report instead of streaming progress
+        #[arg(long)]
+        json: bool,
     },
     /// Project tooling (schema validation, justfile generation, etc.)
     Project {
@@ -133,7 +136,11 @@ fn main() {
         Commands::Domain { command } => domain::run(command),
         Commands::Issue { command } => issue::run(command),
         Commands::ObjectStore { command } => object_store::run(command),
-        Commands::Preflight { keep_going, since } => preflight::run(keep_going, since),
+        Commands::Preflight {
+            keep_going,
+            since,
+            json,
+        } => preflight::run(keep_going, since, json),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
         Commands::Terraform { command } => terraform::run(command),
