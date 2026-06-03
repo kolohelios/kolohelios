@@ -78,6 +78,7 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
     commit::run(CommitCommand::Lint {
         revset: SHIP_REVSET.to_string(),
         allow_no_issue_link: false,
+        json: false,
     });
 
     println!("{BOLD}step 4/6: self-review diff{RESET} {DIM}({SHIP_REVSET}){RESET}");
