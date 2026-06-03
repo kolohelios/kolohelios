@@ -4,6 +4,7 @@ mod create;
 mod label;
 mod labels;
 mod list;
+mod next;
 
 use clap::{ArgGroup, Subcommand, ValueEnum};
 
@@ -112,6 +113,19 @@ pub enum IssueCommand {
         #[arg(long)]
         json: bool,
     },
+    /// List open issues not already in flight (no assignee, no open PR,
+    /// no local `i<N>` workspace) — the unstarted work to pick from.
+    Next {
+        /// Repository in owner/repo format (auto-detected from git remote if omitted)
+        #[arg(long)]
+        repo: Option<String>,
+        /// Maximum number of open issues to consider before filtering
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
+        /// Emit normalized JSON instead of the human-readable tree
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -174,5 +188,6 @@ pub fn run(cmd: IssueCommand) {
             limit,
             json,
         } => list::run(repo, state.into(), labels, milestone, search, limit, json),
+        IssueCommand::Next { repo, limit, json } => next::run(repo, limit, json),
     }
 }
