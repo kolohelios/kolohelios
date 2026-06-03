@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::process::Command;
 
 use clap::Subcommand;
+use serde::Serialize;
 
 use crate::jj;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
@@ -28,6 +29,9 @@ pub enum CommitCommand {
         /// docs sweeps, exploratory branches).
         #[arg(long)]
         allow_no_issue_link: bool,
+        /// Emit a machine-readable JSON report instead of prose
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -36,11 +40,29 @@ pub fn run(cmd: CommitCommand) {
         CommitCommand::Lint {
             revset,
             allow_no_issue_link,
-        } => lint(&revset, allow_no_issue_link),
+            json,
+        } => lint(&revset, allow_no_issue_link, json),
     }
 }
 
-fn lint(revset: &str, allow_no_issue_link: bool) {
+/// Machine-readable `commit lint` result, emitted under `--json`.
+#[derive(Serialize)]
+struct LintReport {
+    commits: Vec<CommitReport>,
+    total_errors: usize,
+    total_warnings: usize,
+    clean: usize,
+    success: bool,
+}
+
+#[derive(Serialize)]
+struct CommitReport {
+    change_id: String,
+    title: String,
+    findings: Vec<Finding>,
+}
+
+fn lint(revset: &str, allow_no_issue_link: bool, json: bool) {
     let commits = match collect_commits(revset) {
         Ok(c) => c,
         Err(e) => {
@@ -50,7 +72,16 @@ fn lint(revset: &str, allow_no_issue_link: bool) {
     };
 
     if commits.is_empty() {
-        println!("no commits found in revset {revset:?}");
+        let report = LintReport {
+            commits: Vec::new(),
+            total_errors: 0,
+            total_warnings: 0,
+            clean: 0,
+            success: true,
+        };
+        crate::output::emit(json, &report, |_| {
+            println!("no commits found in revset {revset:?}");
+        });
         return;
     }
 
@@ -59,65 +90,87 @@ fn lint(revset: &str, allow_no_issue_link: bool) {
         tied_issues: gather_tied_issues(revset),
     };
 
+    let mut commit_reports: Vec<CommitReport> = Vec::new();
     let mut total_errors = 0usize;
     let mut total_warnings = 0usize;
     let mut clean = 0usize;
 
     for commit in &commits {
         let findings = lint_commit(commit, &ctx);
-        let errors = findings
+        total_errors += findings
             .iter()
             .filter(|f| matches!(f.severity, Severity::Error))
             .count();
-        let warnings = findings
+        total_warnings += findings
             .iter()
             .filter(|f| matches!(f.severity, Severity::Warn))
             .count();
-
         if findings.is_empty() {
             clean += 1;
-        } else {
-            print_commit_findings(commit, &findings);
         }
 
-        total_errors += errors;
-        total_warnings += warnings;
+        let title = commit
+            .description
+            .lines()
+            .next()
+            .unwrap_or("(empty)")
+            .to_string();
+        commit_reports.push(CommitReport {
+            change_id: commit.change_id.clone(),
+            title,
+            findings,
+        });
     }
 
-    println!();
-    if total_errors > 0 {
-        eprintln!(
-            "{RED}{BOLD}commit lint failed{RESET} ({} commit(s), {total_errors} error(s), {total_warnings} warning(s))",
-            commits.len()
-        );
+    let report = LintReport {
+        commits: commit_reports,
+        total_errors,
+        total_warnings,
+        clean,
+        success: total_errors == 0,
+    };
+
+    crate::output::emit(json, &report, render_human);
+
+    if !report.success {
         std::process::exit(1);
     }
-    let warn_str = if total_warnings > 0 {
-        format!(" ({total_warnings} warning(s))")
+}
+
+fn render_human(report: &LintReport) {
+    for c in &report.commits {
+        if c.findings.is_empty() {
+            continue;
+        }
+        let short = &c.change_id[..c.change_id.len().min(8)];
+        println!("\n{BOLD}{short} {DIM}{}{RESET}", c.title);
+        for f in &c.findings {
+            let label = match f.severity {
+                Severity::Error => format!("{RED}{BOLD}error{RESET}"),
+                Severity::Warn => format!("{YELLOW}{BOLD}warn{RESET} "),
+            };
+            println!("  {label}  {}", f.message);
+        }
+    }
+
+    let n = report.commits.len();
+    println!();
+    if report.total_errors > 0 {
+        eprintln!(
+            "{RED}{BOLD}commit lint failed{RESET} ({n} commit(s), {} error(s), {} warning(s))",
+            report.total_errors, report.total_warnings
+        );
+        return;
+    }
+    let warn_str = if report.total_warnings > 0 {
+        format!(" ({} warning(s))", report.total_warnings)
     } else {
         String::new()
     };
     println!(
-        "{GREEN}{BOLD}commit lint passed{RESET} ({clean}/{} clean){warn_str}",
-        commits.len()
+        "{GREEN}{BOLD}commit lint passed{RESET} ({}/{n} clean){warn_str}",
+        report.clean
     );
-}
-
-fn print_commit_findings(commit: &Commit, findings: &[Finding]) {
-    let title = commit
-        .description
-        .lines()
-        .next()
-        .unwrap_or("(empty)")
-        .to_string();
-    println!("\n{BOLD}{} {DIM}{}{RESET}", commit.short_id(), title);
-    for f in findings {
-        let label = match f.severity {
-            Severity::Error => format!("{RED}{BOLD}error{RESET}"),
-            Severity::Warn => format!("{YELLOW}{BOLD}warn{RESET} "),
-        };
-        println!("  {label}  {}", f.message);
-    }
 }
 
 #[derive(Debug)]
@@ -145,19 +198,14 @@ struct LintContext {
     tied_issues: Vec<u64>,
 }
 
-impl Commit {
-    fn short_id(&self) -> &str {
-        &self.change_id[..self.change_id.len().min(8)]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 enum Severity {
     Error,
     Warn,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Finding {
     severity: Severity,
     message: String,
@@ -759,5 +807,46 @@ mod tests {
             !findings.iter().any(|f| f.message.contains("Closes #")),
             "expected suppression, got: {findings:?}"
         );
+    }
+
+    #[test]
+    fn lint_report_json_shape_is_stable() {
+        let report = LintReport {
+            commits: vec![
+                CommitReport {
+                    change_id: "abcdef1234567890".to_string(),
+                    title: "feat(x): clean one".to_string(),
+                    findings: vec![],
+                },
+                CommitReport {
+                    change_id: "0011223344556677".to_string(),
+                    title: "bad title".to_string(),
+                    findings: vec![
+                        Finding {
+                            severity: Severity::Error,
+                            message: "title must follow <type>(<scope>): <subject>".to_string(),
+                        },
+                        Finding {
+                            severity: Severity::Warn,
+                            message: "commit spans multiple projects".to_string(),
+                        },
+                    ],
+                },
+            ],
+            total_errors: 1,
+            total_warnings: 1,
+            clean: 1,
+            success: false,
+        };
+        let v: serde_json::Value = serde_json::to_value(&report).unwrap();
+
+        assert_eq!(v["success"], false);
+        assert_eq!(v["total_errors"], 1);
+        assert_eq!(v["total_warnings"], 1);
+        assert_eq!(v["clean"], 1);
+        assert_eq!(v["commits"][0]["change_id"], "abcdef1234567890");
+        assert_eq!(v["commits"][0]["findings"].as_array().unwrap().len(), 0);
+        assert_eq!(v["commits"][1]["findings"][0]["severity"], "error");
+        assert_eq!(v["commits"][1]["findings"][1]["severity"], "warn");
     }
 }
