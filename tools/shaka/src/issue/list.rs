@@ -200,6 +200,7 @@ mod tests {
             url: format!("https://github.com/o/r/issues/{number}"),
             created_at: "2026-05-06T00:00:00Z".to_string(),
             updated_at: "2026-05-06T00:00:00Z".to_string(),
+            assignees: Vec::new(),
         }
     }
 
