@@ -24,6 +24,11 @@ pub enum RepoCommand {
         /// Apply recommended settings automatically
         #[arg(long)]
         fix: bool,
+
+        /// Emit a machine-readable JSON report instead of grouped tables.
+        /// Read-only, so it cannot be combined with --fix.
+        #[arg(long, conflicts_with = "fix")]
+        json: bool,
     },
     /// Fetch from origin and rebase the current change onto main@origin
     Sync {
@@ -196,7 +201,7 @@ pub enum RepoCommand {
 
 pub fn run(cmd: RepoCommand) {
     match cmd {
-        RepoCommand::Audit { repo, fix } => audit::run(repo, fix),
+        RepoCommand::Audit { repo, fix, json } => audit::run(repo, fix, json),
         RepoCommand::Sync {
             dry_run,
             no_cleanup_hint,

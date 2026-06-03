@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use crate::gh;
@@ -8,7 +9,8 @@ use crate::repo::policy::{
 };
 use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 enum Status {
     Pass,
     Fail,
@@ -16,10 +18,26 @@ enum Status {
     Error,
 }
 
+#[derive(Serialize)]
 struct Check {
     name: &'static str,
     status: Status,
     detail: String,
+}
+
+/// Machine-readable `repo audit` result, emitted under `--json`. Mirrors
+/// the grouped human output 1:1.
+#[derive(Serialize)]
+struct AuditReport {
+    repo: String,
+    groups: Vec<Group>,
+    success: bool,
+}
+
+#[derive(Serialize)]
+struct Group {
+    title: String,
+    checks: Vec<Check>,
 }
 
 impl Check {
@@ -69,7 +87,7 @@ impl Check {
     }
 }
 
-pub fn run(repo_arg: Option<String>, fix: bool) {
+pub fn run(repo_arg: Option<String>, fix: bool, json: bool) {
     // Policy source decision: when --repo is explicit, fetch the
     // target's own .shaka/repo.cue via the GitHub contents API.
     // Using cwd's policy across repos compared the wrong policy
@@ -128,26 +146,42 @@ pub fn run(repo_arg: Option<String>, fix: bool) {
         }
     };
 
-    println!("{BOLD}Auditing {repo}{RESET}\n");
+    // JSON mode emits a single document at the end, so suppress the
+    // streamed header and per-group tables; human mode keeps them.
+    let stream = !json;
+    if stream {
+        println!("{BOLD}Auditing {repo}{RESET}\n");
+    }
 
+    let mut groups: Vec<Group> = Vec::new();
     let mut has_failure = false;
 
     let (checks, _repo_data) = check_general(&repo, &policy);
-    print_group("Repository Settings", &checks);
     has_failure |= checks.iter().any(|c| c.status == Status::Fail);
-
+    if stream {
+        print_group("Repository Settings", &checks);
+    }
     if fix {
         fix_general(&repo, &checks, &policy);
     }
+    groups.push(Group {
+        title: "Repository Settings".to_string(),
+        checks,
+    });
 
     if let Some(bp) = &policy.branch_protection {
         let checks = check_branch_protection(&repo, bp);
-        print_group("Branch Protection (main)", &checks);
         has_failure |= checks.iter().any(|c| c.status == Status::Fail);
-
+        if stream {
+            print_group("Branch Protection (main)", &checks);
+        }
         if fix {
             fix_branch_protection(&repo, &checks, bp);
         }
+        groups.push(Group {
+            title: "Branch Protection (main)".to_string(),
+            checks,
+        });
     }
 
     if let Some(rs) = &policy.rulesets {
@@ -155,32 +189,53 @@ pub fn run(repo_arg: Option<String>, fix: bool) {
         let expected_checks = bp_ref.map(|bp| bp.required_checks.as_slice());
         let expected_strict = bp_ref.map(|bp| bp.strict_status_checks);
         let checks = check_rulesets(&repo, rs, expected_checks, expected_strict);
-        print_group("Rulesets", &checks);
         has_failure |= checks.iter().any(|c| c.status == Status::Fail);
-
+        if stream {
+            print_group("Rulesets", &checks);
+        }
         if fix {
             fix_rulesets(&repo, &checks, expected_strict);
         }
+        groups.push(Group {
+            title: "Rulesets".to_string(),
+            checks,
+        });
     }
 
     if let Some(sec) = &policy.security {
         let checks = check_security(&repo, sec);
-        print_group("Security", &checks);
         has_failure |= checks.iter().any(|c| c.status == Status::Fail);
-
+        if stream {
+            print_group("Security", &checks);
+        }
         if fix {
             fix_security(&repo, &checks);
         }
+        groups.push(Group {
+            title: "Security".to_string(),
+            checks,
+        });
     }
 
-    println!();
-    if has_failure {
-        if !fix {
+    let report = AuditReport {
+        repo,
+        groups,
+        success: !has_failure,
+    };
+
+    // Human mode already streamed the group tables above; the renderer
+    // only adds the trailing summary line.
+    crate::output::emit(json, &report, |r| {
+        println!();
+        if r.success {
+            println!("{GREEN}{BOLD}All checks passed{RESET}");
+        } else if !fix {
             println!("{YELLOW}Run with --fix to apply recommended settings{RESET}");
         }
+    });
+
+    if has_failure {
         std::process::exit(1);
-    } else {
-        println!("{GREEN}{BOLD}All checks passed{RESET}");
     }
 }
 
@@ -703,5 +758,39 @@ fn bool_check(name: &'static str, pass: bool, pass_msg: &str, fail_msg: &str) ->
         Check::pass(name, pass_msg)
     } else {
         Check::fail(name, fail_msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_report_json_shape_is_stable() {
+        let report = AuditReport {
+            repo: "owner/repo".to_string(),
+            groups: vec![Group {
+                title: "Security".to_string(),
+                checks: vec![
+                    Check::pass("Dependabot alerts", "enabled"),
+                    Check::fail("Secret scanning", "disabled"),
+                    Check::warn("Code scanning", "no default setup"),
+                    Check::error("Unknown", "api error"),
+                ],
+            }],
+            success: false,
+        };
+        let v: serde_json::Value = serde_json::to_value(&report).unwrap();
+
+        assert_eq!(v["repo"], "owner/repo");
+        assert_eq!(v["success"], false);
+        assert_eq!(v["groups"][0]["title"], "Security");
+        let checks = &v["groups"][0]["checks"];
+        assert_eq!(checks[0]["status"], "pass");
+        assert_eq!(checks[0]["name"], "Dependabot alerts");
+        assert_eq!(checks[0]["detail"], "enabled");
+        assert_eq!(checks[1]["status"], "fail");
+        assert_eq!(checks[2]["status"], "warn");
+        assert_eq!(checks[3]["status"], "error");
     }
 }
