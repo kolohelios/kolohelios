@@ -86,6 +86,12 @@ pub fn current_description() -> Result<String, JjError> {
     run(&["log", "-r", "@", "-T", "description", "--no-graph"])
 }
 
+/// Set the description of the working-copy commit (`@`). The whole
+/// `message` (including newlines) becomes the description verbatim.
+pub fn describe(message: &str) -> Result<(), JjError> {
+    run(&["describe", "-m", message]).map(|_| ())
+}
+
 /// Resolve a single revset to its commit id. Errors if the revset matches
 /// zero or more than one revision.
 pub fn commit_id_of(revset: &str) -> Result<String, JjError> {
