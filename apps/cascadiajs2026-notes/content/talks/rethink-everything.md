@@ -1,6 +1,6 @@
 Building software is **WAYYYY different** because…
 
-**AI is the cloud!**
+**~~AI~~ the cloud!**
 
 ## Life before the cloud
 
