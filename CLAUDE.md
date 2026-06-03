@@ -275,6 +275,14 @@ this before scripting against `jj`:
 Work is tracked in **GitHub Issues**. References like `#21` are GitHub issue
 numbers; use `gh issue view <n>` to read them.
 
+When asked "what's next" (or to suggest work to pick up), run **`shaka issue
+next`** — don't hand-roll `gh issue list` filtered by intuition. `issue next`
+returns only issues that aren't already in flight: it drops any issue with an
+assignee, an open PR that would close it, or a local `i<N>` workspace. Pair
+it with `--json` when routing programmatically. Because `shaka workspace new
+--issue <N>` (which `/start` calls) self-assigns you on GitHub, starting an
+issue removes it from `issue next` automatically.
+
 ## Secrets
 
 **1Password** is the canonical secret store for local development

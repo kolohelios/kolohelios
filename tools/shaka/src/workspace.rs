@@ -92,6 +92,31 @@ pub fn find_for_issue(n: u64) -> Option<WorkspaceRef> {
     None
 }
 
+/// Issue numbers that currently have a linked workspace (excluding the
+/// default workspace and any without a persisted link). Used by
+/// `shaka issue next` to drop issues already being worked locally.
+///
+/// Returns an empty set if the workspace listing can't be read, so the
+/// caller degrades to "no local filter" rather than failing.
+pub fn active_issue_numbers() -> std::collections::BTreeSet<u64> {
+    let mut out = std::collections::BTreeSet::new();
+    let Ok(primary) = jj::primary_workspace_root() else {
+        return out;
+    };
+    let Ok(workspaces) = jj::workspaces() else {
+        return out;
+    };
+    for ws in workspaces {
+        if ws.name == "default" {
+            continue;
+        }
+        if let Some(link) = issue_link::read(&primary, &ws.name).ok().flatten() {
+            out.insert(link.issue);
+        }
+    }
+    out
+}
+
 /// Path where a workspace directory lives, by convention:
 /// `<repo-root>/../<repo-basename>-<name>`. Tying the prefix to the repo
 /// basename keeps tests hermetic (each tempdir gets its own prefix) and
