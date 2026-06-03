@@ -21,47 +21,62 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">James Steinbach · Delinea · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>Practical refactors you can do today with modern CSS color features. The
-through-line: a lot of what we reached for a preprocessor to do, CSS now does
-natively, <strong>in context</strong>.</p>
-<h2>Theming with <code>light-dark()</code></h2>
-<p><code>light-dark()</code> takes two values — a light-mode color and a dark-mode color (both
-must be colors) — and does the media query's job for you.</p>
-<p>Overrides stay tiny. A six-line override (one block each for dark and light) is
-enough:</p>
+<h2>Theming</h2>
+<p>Practical refactors with modern CSS colors</p>
+<p><code>jds.li/css-colors</code></p>
+<p>CSS abstraction — how do we DRY our CSS?</p>
+<p>Use a pre-processor?</p>
+<p><code>light-dark()</code> — two values: light mode color, dark mode color. Must be a color.</p>
+<p>Already doing the media-query's job.</p>
+<p>What about overrides?</p>
+<p>6-line override (one each for dark and light):</p>
 <pre><code class="language-css">[data-theme="dark"] {
   color-scheme: dark;
 }
 </code></pre>
-<p>Global support is ~87% (check caniuse for the current number); Electron already
-supports it. Tailwind's <code>@theme</code> can lean on <code>light-dark()</code> too.</p>
-<h2>Color manipulation with relative colors</h2>
-<p>Relative color syntax pulls the raw channels out of an existing color:</p>
-<pre><code class="language-css">rgb(from var(--red) r g b / 1);
+<p><strong>87% global support</strong> — get more accurate on <code>caniuse</code>.</p>
+<p><code>Electron</code> already has support.</p>
+<p><code>tailwindcss</code> — <code>@theme</code> — <code>light-dark</code>?</p>
+<h2>Color Manipulation</h2>
+<p>CSS relative colors:</p>
+<pre><code class="language-css">rgb(from var(--red), r, g, b, alpha);
 </code></pre>
-<p><code>from</code> extracts the source color's values. Modern color functions drop the
-commas — but alpha still needs a slash: <code>hsl(120 50% 20% / 0.2)</code>. Alpha is
-implicit regardless of whether you write <code>rgb</code> or <code>rgba</code>.</p>
-<p>This unlocks, all without a preprocessor:</p>
+<p><code>from</code> pulls out the raw color value from the variable.</p>
+<p>Don't need commas anymore in color functions — but alpha needs a slash:</p>
+<pre><code class="language-css">hsl(120 50 20 / 0.2)
+</code></pre>
+<p>Alpha is an implicit value — regardless of whether you use <code>rgba</code> or just <code>rgb</code>.</p>
+<h2>Tints</h2>
+<pre><code class="language-css">from var(--surface-primary) r g 255
+</code></pre>
+<p>Do we need to clamp this? No, we don't.</p>
+<h2>Adjust Alpha</h2>
+<pre><code class="language-css">from var(--surface-primary) r g b / 0.2
+</code></pre>
+<h2>Normalized Lightness</h2>
+<p>Like alpha, but with <code>hsl</code>.</p>
+<h2>Color Math</h2>
+<p>Start from a named color.</p>
 <ul>
-<li><strong>Tints</strong> — <code>rgb(from var(--surface-primary) r g 255)</code>. No clamping needed.</li>
-<li><strong>Adjust alpha</strong> — <code>rgb(from var(--surface-primary) r g b / 0.2)</code>.</li>
-<li><strong>Normalized lightness</strong> — same idea as alpha, but in <code>hsl</code>.</li>
-<li><strong>Color math</strong> — start from a named color and rotate hue: secondary at 120°,
-tertiary at 240°.</li>
+<li>rotate secondary 120°, 67 33</li>
+<li>rotate tertiary 240°, 67 33</li>
 </ul>
-<p>These are the <strong>mixins</strong> we used SASS color functions for — now native (~89%
-support). Change one line to derive a variable and operate on it right there.</p>
-<h2><code>color-mix()</code> and <code>contrast-color()</code></h2>
-<p><code>color-mix()</code> blends colors in real time, in a chosen color space:</p>
+<h2>Mixins</h2>
+<p><code>SASS</code> color functions — requires pre-processor.</p>
+<p>Now we can do this in CSS — set the var and do stuff with it.</p>
+<p>Change one line to get the var — happens in context.</p>
+<p><strong>89% support globally.</strong></p>
+<p>CSS <code>color-mix()</code> — new function to manipulate colors in real time. Color space, use <code>hsl</code>.</p>
 <pre><code class="language-css">color-mix(in hsl, var(--button-color), var(--button-active-color))
 </code></pre>
-<p>(~91% support.)</p>
-<p>For accessibility, <code>contrast-color()</code> returns black or white — whichever
-contrasts better against a given color, regardless of color scheme. It's
-<strong>stackable</strong>: use <code>color-mix()</code> <em>inside</em> <code>contrast-color()</code> with relative
-colors to mix a tint in and still get a legible foreground. Support is only
-~67% today, so progressively enhance.</p>
+<p><strong>91%</strong></p>
+<h2>Automatic Contrast</h2>
+<p>Accessibility.</p>
+<p><code>contrast-color()</code> — returns white or black, regardless of color scheme, whichever is better for contrast.</p>
+<p>Use <code>color-mix()</code> inside <code>contrast-color()</code> — <code>from</code> — with relative colors.</p>
+<p>Mix the tint in.</p>
+<p><strong>All stackable.</strong></p>
+<p>Only <strong>67%</strong> right now.</p>
 
   </div>
 

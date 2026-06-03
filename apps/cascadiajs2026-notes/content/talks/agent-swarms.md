@@ -1,49 +1,91 @@
-Capability is going exponential with Opus 4.5+, and the leverage point is no
-longer the model — it's the **harness**.
+**Agent swarms.**
+
+Going exponentially with Opus 4.5+.
+
+**Harness engineering is the state of the art.**
 
 ```
 model | harness | context
 ```
 
-**Harness engineering is the state of the art.** The Claude Code architecture
-diagram is wild once you see everything it bundles: prompts, skills,
-directives, subagents, tools, bundled infra, orchestration logic, hooks,
-middleware, and observability (logs!).
+The Claude Code arch diagram is wild.
 
-The takeaway in three words: **own the tools.** `opencode` gave us the
-opportunity to build our own.
+Harness includes:
 
-## Swarms
+- prompts, skills, directives, subagent
+- tools, bundled infra, orchestration logic
+- hooks, middleware, observability — logs!
 
-A swarm is **multi-agent coordination to survive context death** — when one
-agent's context fills up, the work survives across the swarm. Useful pattern:
-use the Socratic method to align intent and outcomes, plan, then fan out
-parallel agents.
+**Own the tools.**
 
-## Build a harness that makes you smile
+`opencode` — gave us the opportunity to build.
 
-- `SOUL.md` — give the agent a personality and an icon. Your harness should
-  make you smile.
-- There's another harness called **Pi** whose workflow implementation is much
-  better than the default. Pi **updates itself** — it reads its own source code
-  to add capabilities. Out of the box it's intentionally not featureful.
-- Pi subagents run in parallel and chains — a great extension for swarm-style
-  work.
-- `pi-cmux` — a terminal replacement built on Ghostty, managed by a Pi
-  extension.
-- `pi-notes` — HTML is *not* better than markdown; notes should be human
-  readable but also agent readable. (`mdsvex` is the Svelte take on MDX.)
-- `pi-feedback` — a support inbox: the last turn of a session sends a diff to
-  process feedback. With a lot of users you get a lot of support tickets, so a
-  feedback tool that improves the automated support over many turns pays off.
+**Swarm** — multi-agent coordination to survive context death.
 
-A recurring theme: **slow down.** Don't do everything, and don't do it quickly
-(cf. *Slow Productivity*).
+- Socratic method to align intent/outcomes
+- plan
+- parallel agent
 
-## Worth following
+Anthropic nerfed `opencode`.
 
-Cloudflare Durable Objects for state. Sunil Pai (something called "Think").
-Dillon Mulroy on artifacts, memory, and primitives. Addy Osmani's **"The
-Orchestration Tax"** — cognitive bandwidth is *not* parallelizable. Agent swarms
-are genuinely hard; the real skill is building systems that can pull any and
-all threads through the context limit.
+AI Skills — Matt Pocock — `mattpocock/skills`
+
+**OpenClaw!**
+
+`SOUL.md` — give the agent personality, an icon.
+
+Your harness should make you smile.
+
+## Pi
+
+Other thing: agent harness called `Pi`.
+
+Workflow in `Pi` is better than Claude Code's garbage implementation.
+
+Follow Mario on X.
+
+**Slow the F*** Down** — don't do everything, and don't do it quickly. (*Slow Productivity*)
+
+`Pi` will update itself; it will read its own source code to add stuff. Out of the box is not featureful.
+
+Nico Bailon — `Pi` stuff — `Pi` subagents.
+
+- run parallel and chains — great extension to get swarm
+
+`pi-cmux` — replacement for Terminal/Ghostty, but built on Ghostty. `Pi` extension to manage it.
+
+`Pi` — modify yourself to be better.
+
+`pi-notes` — Thariq — HTML is not better than markdown.
+
+`mdsvx` — Svelte version of MDX (which is what?).
+
+Human readable, but the agent can read it as well.
+
+`wzzrd.sh` — notes to share with the team.
+
+**Second brain** — better notes.
+
+`pi-feedback` — support inbox, last turn of the session, sends diff to process the feedback for the session.
+
+**Key metrics** — having a lot of users will lead to a lot of support tickets.
+
+Feedback tool to improve the automated support, lots of turns.
+
+## Swarms in the wild
+
+`agentdungeon.ai` — agents playing DnD, one is the DM, and the other agents work and collaborate.
+
+Cloudflare — Durable Objects — state.
+
+Sunil Pai — follow recommendation. Something called Think.
+
+Dillon Mulroy — artifacts — memory, primitives.
+
+**Agent swarms are hard, it's true.**
+
+Addy Osmani — The Orchestration Tax.
+
+**Cognitive bandwidth is not parallelizable.**
+
+The real skill is building the systems that can pull any and all of the threads of the system and context limit.

@@ -21,18 +21,38 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Alex Moon · WP Engine · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>An intervention: <code>React</code> just turned 13, and how we work has changed. To bundle, or not to bundle?</p>
-<h2>Why we bundle</h2>
-<p>We bundle with <code>webpack</code> and <code>rollup</code> — but also with inlining, data URLs, and sprites. The <em>why</em> is historical: <code>TCP</code> was slow, and <code>HTTP/1.1</code> told us we had to. Caching hated bundling, so <strong>code splitting</strong> was invented to balance bundling against caching.</p>
-<h2>The protocols moved on</h2>
-<p>Then <code>HTTP/2</code> (<code>SPDY</code>) fixed the <code>HTTP/1.1</code> problem — but <code>TCP</code> is still the problem. <code>HTTP/3</code> over <code>QUIC</code> fixed a lot of hard problems. But did we actually <em>fix</em> this?</p>
-<p>Look at request granularity. Under <code>HTTP/1.1</code>, bundling is genuinely faster — the more you split into smaller pieces, the worse it looks, because the overhead of splitting goes up. <code>HTTP/3</code> is the opposite: the more you split, the <strong>better</strong> it looks, and delivery stays consistent. <strong><code>HTTP/3</code> plus caching is a love story.</strong></p>
-<h2>Takeaways, by audience</h2>
+<p>An intervention.</p>
+<p>React turned 13 years old — and how we've worked has changed.</p>
+<h2>To Bundle or Not to Bundle?</h2>
+<p><strong>How</strong> we bundle:</p>
 <ul>
-<li><strong>Average developers</strong> — optimize for <em>caching</em> and stop stressing about the network.</li>
-<li><strong>Framework and bundler maintainers</strong> — is the default still the right answer?</li>
-<li><strong>Cloudflare</strong> — can you get us more data? Follow up on the 2020 article on <code>HTTP/3</code> performance.</li>
-<li><strong>Everyone else</strong> — anyone have cool data?</li>
+<li><code>webpack</code>, <code>rollup</code></li>
+<li>BUT ALSO: inlining, data URLs, sprites</li>
+</ul>
+<p><strong>Why</strong> do we bundle?</p>
+<p>TCP was slow; HTTP/1.1 told us we had to bundle.</p>
+<p>Caching hated it.</p>
+<p>Code splitting invented to find a balance between bundling and caching.</p>
+<h2>HTTP Evolution</h2>
+<p><code>HTTP/2</code> — <code>SPDY</code> fixed the HTTP/1.1 problem.</p>
+<p>But TCP is still the problem.</p>
+<p><code>HTTP/3</code> over <code>QUIC</code> — fixed a lot of hard problems.</p>
+<p>But did we actually <strong>FIX</strong> this?</p>
+<h2>Request Granularity</h2>
+<p>HTTP/1.1 is actually faster when bundling.</p>
+<p>The more we split and make smaller, the better HTTP/3 looks.</p>
+<ul>
+<li><strong>HTTP/1.1</strong> — overhead of splitting goes up</li>
+<li><strong>HTTP/3</strong> — more consistent at delivery</li>
+</ul>
+<pre><code>HTTP/3 + caching = ❤️
+</code></pre>
+<h2>Prompts</h2>
+<ul>
+<li><strong>Average developers:</strong> OPTIMIZE for CACHING, stop stressing about the network.</li>
+<li><strong>Framework / bundler maintainers:</strong> is the default still the answer?</li>
+<li><strong>Cloudflare:</strong> can you get us more data? Can you follow up on the 2020 article on HTTP/3 performance?</li>
+<li>Anyone else have cool data?</li>
 </ul>
 
   </div>

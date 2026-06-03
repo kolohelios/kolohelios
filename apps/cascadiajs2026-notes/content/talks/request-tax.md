@@ -1,18 +1,48 @@
-An intervention: `React` just turned 13, and how we work has changed. To bundle, or not to bundle?
+An intervention.
 
-## Why we bundle
+React turned 13 years old — and how we've worked has changed.
 
-We bundle with `webpack` and `rollup` — but also with inlining, data URLs, and sprites. The *why* is historical: `TCP` was slow, and `HTTP/1.1` told us we had to. Caching hated bundling, so **code splitting** was invented to balance bundling against caching.
+## To Bundle or Not to Bundle?
 
-## The protocols moved on
+**How** we bundle:
 
-Then `HTTP/2` (`SPDY`) fixed the `HTTP/1.1` problem — but `TCP` is still the problem. `HTTP/3` over `QUIC` fixed a lot of hard problems. But did we actually *fix* this?
+- `webpack`, `rollup`
+- BUT ALSO: inlining, data URLs, sprites
 
-Look at request granularity. Under `HTTP/1.1`, bundling is genuinely faster — the more you split into smaller pieces, the worse it looks, because the overhead of splitting goes up. `HTTP/3` is the opposite: the more you split, the **better** it looks, and delivery stays consistent. **`HTTP/3` plus caching is a love story.**
+**Why** do we bundle?
 
-## Takeaways, by audience
+TCP was slow; HTTP/1.1 told us we had to bundle.
 
-- **Average developers** — optimize for *caching* and stop stressing about the network.
-- **Framework and bundler maintainers** — is the default still the right answer?
-- **Cloudflare** — can you get us more data? Follow up on the 2020 article on `HTTP/3` performance.
-- **Everyone else** — anyone have cool data?
+Caching hated it.
+
+Code splitting invented to find a balance between bundling and caching.
+
+## HTTP Evolution
+
+`HTTP/2` — `SPDY` fixed the HTTP/1.1 problem.
+
+But TCP is still the problem.
+
+`HTTP/3` over `QUIC` — fixed a lot of hard problems.
+
+But did we actually **FIX** this?
+
+## Request Granularity
+
+HTTP/1.1 is actually faster when bundling.
+
+The more we split and make smaller, the better HTTP/3 looks.
+
+- **HTTP/1.1** — overhead of splitting goes up
+- **HTTP/3** — more consistent at delivery
+
+```
+HTTP/3 + caching = ❤️
+```
+
+## Prompts
+
+- **Average developers:** OPTIMIZE for CACHING, stop stressing about the network.
+- **Framework / bundler maintainers:** is the default still the answer?
+- **Cloudflare:** can you get us more data? Can you follow up on the 2020 article on HTTP/3 performance?
+- Anyone else have cool data?

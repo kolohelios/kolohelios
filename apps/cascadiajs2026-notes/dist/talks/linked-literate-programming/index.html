@@ -21,32 +21,36 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">James Ide · Expo · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>When agents write the code, <strong>where does the intent live?</strong> We still need
-durable intent.</p>
-<h2>The problem with harness memory</h2>
-<p>Agent harnesses have memory, but it's <strong>tightly coupled</strong> to the harness and
-brings lock-in. Markdown files, by contrast, are <strong>portable</strong>. So use markdown
-to hold the "memory."</p>
-<h2>Linked Literate Programming (LLP)</h2>
-<p>LLP = <strong>markdown specs + references from code</strong>. Code links back to the spec
-with a comment:</p>
+<p>When agents write code, where does the intent live?</p>
+<p><strong>We still need durable intent.</strong></p>
+<p>Agent harnesses have memory, but it's tightly coupled — and we have lock-in.</p>
+<p>Markdown files, on the other hand, are portable.</p>
+<p>Use markdown to create "memory."</p>
+<p><strong>LLP</strong> — markdown specs + references from code.</p>
 <pre><code>// @ref LLP 0000mediastream-constructor
 </code></pre>
-<pre><code class="language-markdown"># Constructors [mediastream-constructor]
+<pre><code># Constructors [mediastream-constructor]
 </code></pre>
-<p>The links matter for three things:</p>
+<h2>Why links matter</h2>
+<p>Links matter for coverage, accuracy, and intent.</p>
 <ul>
-<li><strong>Coverage</strong> — you can see whether each part of the spec was implemented.</li>
+<li><strong>Coverage</strong> — we can see if we implemented each part of the spec.</li>
 <li><strong>Accuracy</strong> — does the spec actually match the code?</li>
 <li><strong>Intent</strong> — are decisions visible <em>above</em> the code level?</li>
 </ul>
-<h2>Web specs are great LLP inputs</h2>
-<p>Web specs already have the edge cases considered and the APIs designed. Agents
-import the spec, then leave linking comments back to it. The same spec can drive
-<strong>both web and native</strong> implementations. Pair it with <strong>WPT</strong> (Web Platform
-Tests) to close the loop: set up LLP, pull in the relevant parts of a spec, and
-test coverage against it. LLP + web specs makes the whole thing more
-programmatic.</p>
+<h2>Web specs as inputs</h2>
+<p>Web specs are good inputs for LLP:</p>
+<ul>
+<li>edge cases already considered</li>
+<li>designed APIs</li>
+</ul>
+<p>Agents import the spec, then use linking comments back to the spec.</p>
+<p><strong>LLP pattern</strong> — implementation for web and native apps using the same spec??</p>
+<h2>Workflow</h2>
+<p>Set up LLP, get the relevant parts of a spec, test coverage.</p>
+<p><code>WPT</code> — Web Platform Tests.</p>
+<p>Make a feedback loop with LLP.</p>
+<p><strong>LLP + web specs</strong> — more programmatic.</p>
 
   </div>
 

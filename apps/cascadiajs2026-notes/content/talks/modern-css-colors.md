@@ -1,14 +1,20 @@
-Practical refactors you can do today with modern CSS color features. The
-through-line: a lot of what we reached for a preprocessor to do, CSS now does
-natively, **in context**.
+## Theming
 
-## Theming with `light-dark()`
+Practical refactors with modern CSS colors
 
-`light-dark()` takes two values — a light-mode color and a dark-mode color (both
-must be colors) — and does the media query's job for you.
+`jds.li/css-colors`
 
-Overrides stay tiny. A six-line override (one block each for dark and light) is
-enough:
+CSS abstraction — how do we DRY our CSS?
+
+Use a pre-processor?
+
+`light-dark()` — two values: light mode color, dark mode color. Must be a color.
+
+Already doing the media-query's job.
+
+What about overrides?
+
+6-line override (one each for dark and light):
 
 ```css
 [data-theme="dark"] {
@@ -16,44 +22,83 @@ enough:
 }
 ```
 
-Global support is ~87% (check caniuse for the current number); Electron already
-supports it. Tailwind's `@theme` can lean on `light-dark()` too.
+**87% global support** — get more accurate on `caniuse`.
 
-## Color manipulation with relative colors
+`Electron` already has support.
 
-Relative color syntax pulls the raw channels out of an existing color:
+`tailwindcss` — `@theme` — `light-dark`?
+
+## Color Manipulation
+
+CSS relative colors:
 
 ```css
-rgb(from var(--red) r g b / 1);
+rgb(from var(--red), r, g, b, alpha);
 ```
 
-`from` extracts the source color's values. Modern color functions drop the
-commas — but alpha still needs a slash: `hsl(120 50% 20% / 0.2)`. Alpha is
-implicit regardless of whether you write `rgb` or `rgba`.
+`from` pulls out the raw color value from the variable.
 
-This unlocks, all without a preprocessor:
+Don't need commas anymore in color functions — but alpha needs a slash:
 
-- **Tints** — `rgb(from var(--surface-primary) r g 255)`. No clamping needed.
-- **Adjust alpha** — `rgb(from var(--surface-primary) r g b / 0.2)`.
-- **Normalized lightness** — same idea as alpha, but in `hsl`.
-- **Color math** — start from a named color and rotate hue: secondary at 120°,
-  tertiary at 240°.
+```css
+hsl(120 50 20 / 0.2)
+```
 
-These are the **mixins** we used SASS color functions for — now native (~89%
-support). Change one line to derive a variable and operate on it right there.
+Alpha is an implicit value — regardless of whether you use `rgba` or just `rgb`.
 
-## `color-mix()` and `contrast-color()`
+## Tints
 
-`color-mix()` blends colors in real time, in a chosen color space:
+```css
+from var(--surface-primary) r g 255
+```
+
+Do we need to clamp this? No, we don't.
+
+## Adjust Alpha
+
+```css
+from var(--surface-primary) r g b / 0.2
+```
+
+## Normalized Lightness
+
+Like alpha, but with `hsl`.
+
+## Color Math
+
+Start from a named color.
+
+- rotate secondary 120°, 67 33
+- rotate tertiary 240°, 67 33
+
+## Mixins
+
+`SASS` color functions — requires pre-processor.
+
+Now we can do this in CSS — set the var and do stuff with it.
+
+Change one line to get the var — happens in context.
+
+**89% support globally.**
+
+CSS `color-mix()` — new function to manipulate colors in real time. Color space, use `hsl`.
 
 ```css
 color-mix(in hsl, var(--button-color), var(--button-active-color))
 ```
 
-(~91% support.)
+**91%**
 
-For accessibility, `contrast-color()` returns black or white — whichever
-contrasts better against a given color, regardless of color scheme. It's
-**stackable**: use `color-mix()` *inside* `contrast-color()` with relative
-colors to mix a tint in and still get a legible foreground. Support is only
-~67% today, so progressively enhance.
+## Automatic Contrast
+
+Accessibility.
+
+`contrast-color()` — returns white or black, regardless of color scheme, whichever is better for contrast.
+
+Use `color-mix()` inside `contrast-color()` — `from` — with relative colors.
+
+Mix the tint in.
+
+**All stackable.**
+
+Only **67%** right now.

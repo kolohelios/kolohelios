@@ -1,21 +1,96 @@
-Keep choosing TypeScript — it matters more than ever. LLM output is **not** "the new machine code"; you should still learn a language well, and `TypeScript` is the perfect choice.
+**Keep choosing TypeScript** — it matters more than ever.
 
-## Why the language layer still matters
+**LLM output is not "new machine code."**
+You should learn a language well, and TS is the perfect choice.
 
-Look at the world we built for agents: a tower of abstractions. `0/1` at the bottom, then `ASM`, then compilers down to `C`, then `TS`/`Go`/`Python`, then frameworks, then applications. We've spent most of our time in the language layer. People who dabble in predictions imagine squashing the lower languages — even the high-level ones. The truth sits in the middle, between "languages become irrelevant" and "English is a programming language." **English is not a good programming language** (per Paul Graham). If the prediction held, we'd be committing prompts instead of code — and we're not, yet.
+## Why should we care about the language?
 
-## Why TypeScript specifically
+Consider the world we have built for the agents: a tower of abstractions, `0`/`1` at the bottom, climb the tower —
 
-Software engineering is **compression** — the time spent compressing personal context. Picture nested, overlapping concepts where `MEMORY` is the outsized layer:
+```
+ASM, compilers -> C, TS/Go/Python -> frameworks -> applications
+```
+
+We spent most of our time in the language layer in years past.
+
+People who dabble in predictions — where will they land? Squash lower lower languages, including high-level languages.
+
+The truth is in the middle: between irrelevancy and English being a programming language.
+
+**English is not a good programming language.**
+
+Paul Graham — "… writing in a language…"
+
+We wouldn't be committing code, we would be committing prompts (and we're not, yet).
+
+- `WASP` — framework
+
+## Why TypeScript?
+
+**Software engineering is compression** — time to compress personal context.
 
 ```
 types -> code -> docs -> memory
 ```
 
-Shoot first, ask questions later — code is cheap, right? Imagine there's no TypeScript. **Plan A: documentation.** But docs aren't the harness — non-deterministic, no guarantee they match reality; you've just moved memory into docs. **Plan B: tests.** You move some memory into code via coverage and case exhaustion plus the happy path — but you reduce entropy by adding *more* code, and tests still expect you and the agent to generalize. Pile on tests if you want to throw off 100k lines a day.
+(overlapping nested concepts)
 
-## Start with the types
+**MEMORY is outsized in space.**
 
-**Then: types.** Move context out of memory and code and into types — if *you* know something, the types should know it too. A prompt is just a specification written in English; step back and define the type **manually**. That's more precise. Fred Brooks: *"Show me your flowcharts and conceal your tables…"* Reach for the right type and you compress memory *and* preserve context — discover the domain *while* you build the model. (`GrillMe` is a skill for refining domain modeling.)
+Shoot first, ask questions later?
+Code is cheap? Right?
 
-He considered branded types, result types, exhaustiveness, smart constructors, edge type safety — and kept it simpler. `Rust` can do all this and more — maybe more than we need. Meanwhile `TS` keeps evolving: rewritten in `Go`, better errors, legacy baggage shed, still the most popular language.
+Imagine there is no TypeScript; what's reasonable as far as compressing complexity?
+
+Did we answer our domain questions? **NO!** Where are the limits, and so on.
+So we didn't compress memory into types.
+
+So, hey! Let's add documentation!
+We just moved some of our memory to docs.
+
+**Docs are not the harness.**
+Docs are not deterministic, and there is no guarantee that docs match reality.
+
+## Plan B: Tests
+
+We can move some memory into code with test coverage and case exhaustion, and add happy path.
+
+Just use JS, not TS, and add a bunch of tests if you want to throw off 100k lines of code a day 🤑
+
+- Reduce entropy by adding extra code.
+- Tests expect us *and* the agent to generalize.
+
+## Types
+
+**Move context from memory and code to Types.**
+Encode information into the type.
+
+In the naive case, we still don't answer constraint-related questions.
+
+**If you know something, the types should know it as well!**
+
+## What if we start with the questions? With the Types?
+
+Fred Brooks: "Show me your flowcharts and conceal your tables, and I shall continue to be mystified. Show me your tables, and I won't usually need your flowcharts; they'll be obvious."
+
+We could define what we want in a prompt, which is basically a specification.
+
+We should instead take a step back and define our type **MANUALLY**. That's better than using English; it's more precise.
+
+- We can compress our memory AND preserve context by reaching for the right type.
+- Think about the questions related to our domain, and then define the appropriate types.
+- Discover the domain WHILE building the model.
+
+- `GrillMe` — skill to help refine domain modeling.
+
+He thought about talking about "branded types", result types, ensuring exhaustiveness, smart constructors, edge type safety — decided to make it simpler.
+
+`Rust` can do all of this, and other stuff; it may do stuff we don't need.
+
+## TypeScript continues to evolve
+
+- modern and safer
+- rewritten in Go
+- better errors
+- most popular language
+- removed legacy baggage

@@ -1,59 +1,110 @@
-A war story: a component starts simple and gets out of control. What went
-wrong, and what else could we have done?
+**Choosing the Wrong Abstraction (And What It Cost Us)**
 
-Material UI is fantastic *when you start*. Then you outgrow it — the migration
-path was Material UI → Base UI (components you can compose).
+A component that starts simple — and it gets out of control!
 
-## Programming interfaces are user interfaces
+What went wrong? What else could have been done?
 
-From Mike Bostock's 2016 essay *What Makes Software Good?*:
+`Material UI` — when you start, it's fantastic!
 
-> Programming interfaces are user interfaces. Programmers are people, too.
-
-- **Form must communicate function.**
-- Functions that take many arguments are not good functions.
-- `chart.js` vs. D3 is a **vending machine vs. a kitchen**.
-
-## Configuration vs. composition
-
-The "right" abstraction question is really config-type APIs vs. composable
-APIs. **Composable APIs are independent and stackable:**
-
-- **Independent** — each part does one thing well (select, find, extend; read,
-  filter, count). Lego blocks.
-- **Stackable** — the type of the input equals the type of the output, so they
-  stack. (cf. Fernando Rojo's *Composition Is All You Need*, React Universe
-  Conf 2025.)
-
-But composable APIs **aren't free.** Configuration cost is linear; composition
-is log(n) — and someone asks "isn't this a bit complex?" So **lower the cost of
-composition**: good docs, good idioms, sensible defaults, errors that teach,
-types, consistency, discoverability, examples.
-
-## The abstraction ladder
-
-Don't make developers spend all their time learning the Lego blocks. Provide a
-ladder:
-
-- **Lowest rung** — low-level code for constructing views.
-- **Higher rung** — a visual editor.
-
-You should be able to ascend or descend **without starting over**:
-
-```js
-const chart = Plot.plot()
-d3(chart) // descend the ladder to the lower-level primitive
+```
+Material UI -> Base UI
 ```
 
-Examples: D3 ↔ Plot, chart.js ↔ Observable Plot, shadcn → Base UI → HTML/CSS,
-Video.js (eject the skin to get the primitives). **Escape hatches are a config
-trap** — design the ladder instead.
+Components that can be composed.
 
-## "Can't we just vibe-code this?"
+2016 essay — Mike Bostock — *What Makes Software Good?*
 
-Per *Coding After Coders* (NYT Magazine): the Google CEO said devs are only ~10%
-faster, while a startup claimed 20×. The difference is **brownfield vs.
-greenfield.** Make code **AI-ready** — open for LLMs to read, understand, and
-improve. `decepulis/ax-bench` did better with a composable API. **Good DX is
-usually good AX.** And the right abstraction leads to smaller bundles (with
-tree-shaking, at least).
+**Programming interfaces are user interfaces. Programmers are people, too.**
+
+Form must communicate function.
+
+Functions that take many arguments are not good functions.
+
+`chart.js` vs `D3`
+
+```
+vending machine vs kitchen
+```
+
+## What IS the "right" abstraction?
+
+Configuration-type APIs vs composable APIs.
+
+**Composable APIs are INDEPENDENT and STACKABLE.**
+
+- **Independent** — each part does one thing well; `select`, `find`, `extend`; `read`, `filter`, `count`. Lego blocks.
+- **Stackable** — the type of the input == the type of the output — stackkkkkkk!!!
+
+*Composition is All You Need* — Fernando Rojo — 2025 React Universe Conf.
+
+"isn't this a bit complex?"
+
+**Composable APIs AREN'T FREE.**
+
+Configuration is linear, but composition is log(n).
+
+**Lower the cost of composition!**
+
+Why do we have the developers spend all their time learning the lego blocks?
+
+Lower the cost:
+
+- good docs
+- good idioms
+- defaults
+- errors that teach
+- types
+- consistency
+- discoverability
+- examples
+
+## Provide an abstraction ladder
+
+- lowest rung — low-level code for constructing views
+- higher rung — visual editor
+
+Gives a tradeoff of getting started quickly and getting more power.
+
+`D3` vs `Plot`
+
+`chart.js` vs `Observable Plot`
+
+You should be able to descend or ascend the ladder without having to start all over.
+
+```
+const chart = Plot.plot()
+d3(chart)   // now descending the ladder
+```
+
+```
+shadcn -> BaseUI -> HTML/CSS
+```
+
+## Can't we just vibe code this?
+
+*Coding After Coders* — NYT magazine.
+
+CEO of Google said devs only working 10% faster; startup is 20x?? Brownfield vs greenfield is the reason.
+
+**AI-ready** — open code for LLMs to read, understand, and improve.
+
+`decepulis/ax-bench` — did better with a composable API.
+
+**Good DX is USUALLY good AX.**
+
+```
+|—————————————-|
+CONFIG          COMPOSE
+defaults        options
+```
+
+Add ladder.
+
+Escape hatches are a config trap.
+
+`VideoJS`
+
+- swapping lego blocks
+- eject skin to get primitives
+
+The right abstraction leads to smaller bundles (for JS, with tree-shaking at least).

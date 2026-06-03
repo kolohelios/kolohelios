@@ -21,15 +21,25 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Michael Liendo · Auth0 · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>How do we get safety from agents? Put a human in the loop — because agents aren't just answering questions anymore, they're taking actions. Three patterns, ordered by stakes.</p>
+<p>How do we get safety from agents? <strong>Put a human in the loop.</strong></p>
+<p>Agents aren't just answering questions anymore.</p>
 <h2>Pattern 1: Interrupt</h2>
-<p>A mid-task pause — the agent asks, the human answers, the agent continues. Low stakes, synchronous, <strong>one function call</strong>.</p>
+<ul>
+<li>Mid-task pause — agent asks, human answers, agent continues.</li>
+<li>Low stakes, sync, one function call.</li>
+</ul>
 <h2>Pattern 2: Token Vault</h2>
-<p>The agent hits a wall, you authorize it, and it succeeds on retry. The demo runs both patterns in one flow: hand out a <strong>short-lived token scoped ONLY to what's needed</strong>.</p>
+<ul>
+<li>Agent hits a wall, you auth it, agent succeeds on retry.</li>
+</ul>
+<p><strong>DEMO:</strong> both patterns in one flow.</p>
+<p>Give out a short-lived token that is scoped only to what is needed.</p>
 <h2>Pattern 3: CIBA</h2>
-<p><code>CIBA</code> — Client-Initiated Backchannel Authentication. The industry is <strong>already doing this</strong>.</p>
-<h2>Match the pattern to the stakes</h2>
-<p>That's the rule of thumb. <strong>The higher the stakes, the more security you want.</strong></p>
+<ul>
+<li>Client Initiated Backchannel Auth.</li>
+<li>Industry is already doing this.</li>
+</ul>
+<p><strong>Match the pattern to the stakes</strong> — the higher the stakes, the more security we need.</p>
 
   </div>
 

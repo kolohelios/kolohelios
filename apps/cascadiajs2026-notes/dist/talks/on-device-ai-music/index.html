@@ -21,18 +21,75 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Alex Hinson · Fleetio · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>AI plus <code>Strudel</code> — a web-based, code-driven music tool where you make music with code. The goal is to <strong>extend creativity, not replace it</strong>: use AI for the technical bits, not to hand the whole thing over. A small model under the hood adds structural awareness.</p>
-<p>The kicker: it all runs in your browser tab. <strong>No API, no cloud — all local.</strong> Why local? Keep cost down (free), reduce latency (no round-trip), and preserve privacy (input never leaves the browser).</p>
-<h2>Picking the model</h2>
-<p>How do you make a small model good at a niche domain? First pick the <em>type</em>. Is the problem translation? Audio classification? Text generation? Each lives in a different model family — text generation made the most sense. <code>transformers.js</code> runs Hugging Face models in the browser.</p>
-<h2>Shaping the I/O</h2>
-<p>AI is good at ambiguity, inference, unstructured input; code is good at precision, rules, structured output. The right answer sits on a continuum between them, with tradeoffs. Off-the-shelf "just ask for code" looks plausible but won't run. "Intent JSON → deterministic engine" turns intent into pseudo-code, but bigger schemas and prompts add latency and stop feeling fluid. A <strong>fine-tuned model</strong> gives structural context: small input, sanitized and parsed output. Optimize further and you drop the deterministic guarantee for a tighter surface — just the right number of tokens.</p>
-<h2>Training data, validated</h2>
-<p>The model didn't know <code>Strudel</code>, and there wasn't much training data. So Alex used LLMs to generate examples — some of it confident nonsense referencing things that don't exist. The fix: <strong>validate, then scale.</strong> Run each example through <code>Strudel</code>; if it doesn't parse, throw it out. Don't scale the hallucinations. Add grounding so the model doesn't freestyle, and reward cross-domain reasoning.</p>
-<p>The ongoing loop:</p>
-<pre><code>identify gap --&gt; generate --&gt; validate --&gt; retrain
+<p><strong>AI and Strudel</strong> — web-based music production tool.</p>
+<p><strong>Make music with code!</strong></p>
+<p>Extend creativity, not replace it — using AI to get help, not handing something to AI to do.</p>
+<p><strong>Structural awareness</strong> — a small model under the hood helping with the technical bits.</p>
+<p><strong>In your browser tab!</strong> No API, no cloud — all local.</p>
+<h2>Why local</h2>
+<p>Alex wants to:</p>
+<ul>
+<li><strong>keep cost down</strong> — free!</li>
+<li><strong>reduce latency</strong> — beats having a round-trip</li>
+<li><strong>privacy</strong> — input never leaves the browser</li>
+</ul>
+<p>So that's why local.</p>
+<h2>Getting a small model good at a niche domain</h2>
+<p>How do you get a small model to be good at a niche domain?</p>
+<p>Pick a model — but first pick <em>which type</em> of model?</p>
+<ul>
+<li><code>transformers.js</code> — HuggingFace models to run in the browser.</li>
+</ul>
+<p>Is this problem translation? Is it audio classification? Each one is in a different model family.</p>
+<p>Text generation made the most sense; what does the interface look like?</p>
+<p>Shaping the model's I/O —</p>
+<ul>
+<li><strong>AI</strong> good at ambiguity, inference, unstructured input</li>
+<li><strong>Code</strong> good at precision, rules, and structured output</li>
+</ul>
+<p>The right answer depends on the need.</p>
+<h2>Finding the AI/code boundary</h2>
+<ul>
+<li><strong>Off-the-shelf model: ask for code</strong> — NOT right! Looks plausible, but won't run.</li>
+<li><strong>Try intent JSON</strong> — deterministic engine; take intent and make pseudo code.</li>
+</ul>
+<p>A continuum of AI <code>&lt;——&gt;</code> code boundary, with tradeoffs between them.</p>
+<p>Latency to get a structured output; bigger schema, bigger prompt — doesn't feel fluid anymore.</p>
+<ul>
+<li><strong>Try fine-tuned</strong> -&gt; structural context. Keep input context small; model output is sanitized and parsed.</li>
+<li><strong>Optimized</strong> — remove the deterministic guarantee for tighter and smaller surface area, just the right amount of tokens.</li>
+</ul>
+<p>But the model didn't know Strudel! Training took a lot more time.</p>
+<h2>Training data</h2>
+<p>There wasn't a lot of training data available — didn't have time to create a lot of examples.</p>
+<p>Alex used LLMs to generate examples; ask for Strudel, see what it does.</p>
+<p>Some things didn't actually exist — <strong>confident nonsense.</strong></p>
+<ul>
+<li>Added validation step — run it through Strudel, throw it out if it doesn't parse.</li>
+<li>Then scale — <strong>DON'T scale the hallucinations.</strong></li>
+</ul>
+<p>Added grounding to what the LLM is being asked to do; don't freestyle, be concise — what is Strudel.</p>
+<p>Cross-domain reasoning.</p>
+<h2>The ongoing loop</h2>
+<p>The work gets focused but doesn't stop; identify gap -&gt; generate -&gt; validate -&gt; retrain.</p>
+<pre><code>identify gap -&gt; generate -&gt; validate -&gt; retrain
 </code></pre>
-<p>The work gets focused but never stops; each loop makes the tool more like something Alex actually wants to play with. Finally, fit it into a browser tab via <strong>quantization</strong> — shrink by reducing precision. Runtime is a few lines: import, await the pipeline, initialize. The questions to keep asking: what's the model task? where's the AI/code boundary? where does the training data come from? does it need to be local?</p>
+<p>Each loop makes the tool better — to become something Alex wants to work with.</p>
+<h2>Shrink it to fit</h2>
+<p>Make something small enough to fit in a browser tab — <strong>shrink it small, ship it small.</strong></p>
+<p><strong>Quantization!</strong></p>
+<ul>
+<li>Shrink down by reducing precision.</li>
+<li>Runtime in a few lines — import, await pipeline, initialize.</li>
+</ul>
+<p><strong>Ideas are endless.</strong></p>
+<h2>Questions to ask</h2>
+<ul>
+<li>Model task?</li>
+<li>AI/code boundary?</li>
+<li>Training data?</li>
+<li>Does it need to be local?</li>
+</ul>
 
   </div>
 

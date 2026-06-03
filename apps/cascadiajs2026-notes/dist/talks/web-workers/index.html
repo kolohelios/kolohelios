@@ -21,43 +21,54 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Courtney Yatteau · Esri · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>UX responsiveness is a workload problem. <strong>Jank is a workload problem.</strong> When
-the main thread is busy, the UI freezes — so move the heavy work off it.</p>
-<h2>The mental model</h2>
-<p>The main thread is the <strong>front desk</strong>: clicks, paints, UI updates — and any
-heavy JS blocks the line. A worker is <strong>not</strong> a second UI; the main thread
-still owns the user experience. A worker thread is for plain data calculation:
-the main thread requests work, the worker returns a result.</p>
-<h2>THREAD — the method</h2>
-<ol>
-<li><strong>Trigger</strong> the stutter — reproduce the freeze.</li>
-<li><strong>Hunt</strong> for the blocker — dev tools, code review, performance recording.</li>
-<li><strong>Relocate</strong> the blocker — move it out of the UI thread.</li>
-<li><strong>Establish</strong> the protocol for handing work to/from the worker.</li>
-<li><strong>Add</strong> guardrails — progress, debounce, cancellation.</li>
-<li><strong>Decide</strong> where the work belongs.</li>
-</ol>
-<h2>Trigger / hunt</h2>
-<p>The demo: a heartbeat UI that freezes when a click kicks off an expensive task
-(sin/cos math over state data). Do a performance recording and you can see the
-JS work blocking the main thread.</p>
-<h2>Relocate</h2>
-<p>Offload the CPU-heavy work to a worker and the main thread is no longer
-UI-blocked.</p>
-<h2>Establish / guardrails</h2>
+<p>Keep the Main Thread Free with Web Workers</p>
+<p>UX responsiveness</p>
 <ul>
-<li><strong>Make worker messages boring.</strong> Boring is good when two threads talk — e.g.
-<code>{ type, requestId, payload }</code>.</li>
-<li><strong>Make requests cancellable.</strong> A request can become stale; preempt when a new
-message arrives by treating the latest message's <code>requestId</code> as the live one.</li>
-<li>Add the usual usability guardrails: <strong>debounce</strong> (wait), <strong>progress</strong>
-(inform), <strong>cancel</strong> (stop). For fast filters, ask whether the worker <em>can</em>
-do the work — and whether it can do <em>only enough</em> of it.</li>
+<li><code>github.com/cyatteau</code></li>
+<li><code>cascadiajs-2026-web-workers</code></li>
 </ul>
+<p><strong>Feel the freeze, prove the blocker, move the work, add guardrails, use the pattern.</strong></p>
+<p><strong>Jank is a workload problem.</strong></p>
+<h2>Thread</h2>
+<ul>
+<li>Trigger the stutter</li>
+<li>Hunt for the blocker (dev tools, code review)</li>
+<li>Relocate the blocker to move it out of the UI</li>
+<li>Establish the protocol for handling the blocker</li>
+<li>Add progress / debounce / cancellation</li>
+<li>Decide where the process belongs</li>
+</ul>
+<h2>Trigger / Hunt</h2>
+<p>Heartbeat freezes — click causes expensive task (sin/cos maths on state data).</p>
+<p>CPU-heavy process in any case.</p>
+<p>Synthetic UI.</p>
+<p>Do a performance recording — see what's going on.</p>
+<p>JS work blocking main thread.</p>
+<p><strong>Mental model: the main thread is the front desk experience</strong> — clicks, paints, UI updates, and <strong>HEAVY JS</strong> blocks the line at the front desk.</p>
+<p>A worker is <strong>NOT a second UI</strong> — main thread still owns the user experience.</p>
+<p>Worker thread is for plain data calculation.</p>
+<pre><code>main thread -&gt; requests -&gt; worker -&gt; returns result
+</code></pre>
+<h2>Relocate</h2>
+<p>Move the work to a different thread.</p>
+<p>Main thread blocked — offload to worker, and <strong>no longer UI-blocked!</strong></p>
+<h2>Establish / Add Guardrails</h2>
+<p>Make worker messages boring — <strong>boring is good when two threads talk.</strong></p>
+<ul>
+<li>e.g. <code>type</code>, <code>requestId</code>, <code>payload</code></li>
+</ul>
+<p>Make cancellable — request becomes stale.</p>
+<p>Preemptive if there's a new message — take the latest message as the <code>requestId</code>.</p>
+<p><strong>Guardrails</strong> — make this even more usable:</p>
+<ul>
+<li>debouncing — wait</li>
+<li>progress — inform</li>
+<li>cancel — stop state</li>
+</ul>
+<p>Fast filters — worker filter flow. Can the worker do the work? Yes — and can it only do <em>enough</em> work.</p>
 <h2>Decide</h2>
-<p>Workers add complexity, so they're worth it for genuinely heavy computation —
-but <strong>too heavy-handed for ordinary UI work.</strong> Use the pattern where it earns
-its keep.</p>
+<p>Workers are more expensive in complexity.</p>
+<p>Too heavy for UI work.</p>
 
   </div>
 

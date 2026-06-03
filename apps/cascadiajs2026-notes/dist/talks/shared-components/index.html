@@ -21,40 +21,37 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Jonathan Keslin · Atlassian · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>Shared components that live <em>beyond</em> the design system. The design system is
-UX foundations and atomicity; above it sits navigation, higher-level UX,
-team-specific components, and design-system candidates.</p>
-<h2>Before you build</h2>
+<p><strong>Shared Components Beyond the Design System</strong></p>
+<p><code>DS</code> == UX foundations, atomicity.</p>
+<p>nav / higher-level UX, team-specific, or design system candidates.</p>
+<h2>Who are you building for?</h2>
+<p>Anchor consumer, then add a second consumer to keep implementation from getting coupled to the anchor consumer's use case.</p>
+<h2>Where are you building it?</h2>
+<p>Keep it separate from the app so it can evolve independently.</p>
+<p>Publish artifacts to avoid bad habits (copy-pasta).</p>
+<h2>Build it thoughtfully</h2>
+<p>Use a higher standard than app code.</p>
+<p>Make API consistent.</p>
+<p><strong>Common case</strong> — little to no effort; the most custom case will require the most effort (layer 1, 2, 3 with progressive complexity).</p>
+<p>Prioritize common use-cases, and don't forget complex but frequent things.</p>
+<p>Hard mode can be hard — that's okay.</p>
+<h2>Principles</h2>
 <ul>
-<li><strong>Who are you building for?</strong> Anchor on one consumer, then add a <em>second</em>
-consumer early so the implementation doesn't get coupled to the anchor's use
-case.</li>
-<li><strong>Where are you building it?</strong> Keep it separate from the app so it can evolve
-independently, and publish artifacts to avoid copy-paste habits.</li>
-<li><strong>Build it thoughtfully</strong> — hold it to a higher standard than app code, and
-keep the API consistent. The common case should take little to no effort; the
-most custom case will take the most effort. Layer the complexity (1 → 2 → 3),
-prioritize common use cases, and don't forget the complex-but-frequent ones.
-Hard mode is allowed to be hard.</li>
+<li><strong>Principle 1:</strong> build UP from the design system</li>
+<li><strong>Principle 2:</strong> design with layered extensibility — <strong>make the right way the easy way</strong> (example: button with icon)</li>
+<li><strong>Principle 3:</strong> don't build a Homer car</li>
+<li><strong>Principle 4:</strong> it's okay to be opinionated</li>
+<li><strong>Principle 5:</strong> consider including batteries — reduce boilerplate, handle data fetching if you can (like <code>Relay</code>'s fragments), keep an escape hatch — don't do everything for consumers in case they need to do something themselves</li>
+<li><strong>Principle 6:</strong> make it maintainable — write thorough tests, document liberally, keep a changelog — what changed and do they need to do anything about it</li>
 </ul>
-<h2>Six principles</h2>
-<ol>
-<li><strong>Build up</strong> from the design system.</li>
-<li><strong>Design with layered extensibility</strong> — make the right way the easy way (e.g.
-a button with an icon).</li>
-<li><strong>Don't build a Homer car</strong> — don't cram in every feature.</li>
-<li><strong>It's okay to be opinionated.</strong></li>
-<li><strong>Consider including batteries</strong> — reduce boilerplate, handle data fetching
-where you can (like Relay's fragments), but keep an escape hatch so consumers
-can do it themselves when needed.</li>
-<li><strong>Make it maintainable</strong> — thorough tests, liberal docs, and a changelog
-that says what changed and whether consumers need to act.</li>
-</ol>
-<h2>Ecosystem and governance</h2>
-<p>Shared components are valuable, so invest in <strong>discoverability</strong> — a docs site
-or marketplace; good docs matter more than ever. Provide <strong>governance</strong>: define
-patterns and practices, use a quality scale (Home Assistant's bronze / silver /
-gold is a nice model), and <strong>recognize authors</strong> for their contributions.</p>
+<h2>Foster an ecosystem</h2>
+<p>Shared components are super valuable.</p>
+<p>Discoverability — doc site / marketplace.</p>
+<p><strong>Good docs matter more than ever.</strong></p>
+<h2>Provide governance</h2>
+<p>Define patterns and practices.</p>
+<p><code>Home Assistant</code> — Quality Scale — bronze / silver / gold.</p>
+<p>Recognize authors for their contributions.</p>
 
   </div>
 

@@ -21,49 +21,62 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Matt Biilman · Netlify · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>The progression is real: co-pilot → AI agent → AI assistance. We're moving
-from autocomplete toward genuine autonomy, and it changes the economics of
-building software.</p>
-<p><strong>Build vs. buy has flipped.</strong> Things that weren't viable to build before are
-now in reach — even whole HR systems. The SaaS budget is being replaced with a
-dev budget. Autonomous coding agents (e.g. <strong>openclaw.ai</strong>) are still early;
-one fun pattern is repurposing an old laptop as the host for one.</p>
-<p>The analogy that stuck: autonomous cars made us rethink cities; autonomous
-agents make us rethink programming and systems. <strong>Software is now read/write
-for everyone.</strong></p>
-<h2>Chapter II: AX (Agent Experience)</h2>
-<p>Build tools for the people that build tools.</p>
+<p><strong>AI autonomy:</strong></p>
+<pre><code>co-pilot -&gt; AI agent -&gt; AI assistance -&gt;
+</code></pre>
+<p><strong>Build vs. buy has changed</strong> — things that weren't viable before now are. Even whole HR systems.</p>
+<p>The SaaS budget is replaced with a dev budget.</p>
 <ul>
-<li><strong>UX</strong> differentiates products from competitors.</li>
-<li><strong>DX</strong> differentiates platforms.</li>
-<li><strong>AX</strong> differentiates platforms <em>and</em> products.</li>
+<li><code>openclaw.ai</code> — autonomous coding agents, still early.</li>
+<li>Repurpose an old laptop as the host for it.</li>
 </ul>
-<p>The question: what experience do agents have with your tools and products? AX
-is <strong>not</strong> a single feature or protocol — and it's definitely not "just MCP."</p>
-<h2>The four pillars</h2>
-<p><strong>Access</strong> — can agents reach the product at all? <code>netlify.ai</code> is built for
-humans <em>and</em> agents; the database is "batteries included" and available to
-agents directly. Emerging standards matter here too — e.g. WorkOS exploring
-self-authenticating identity for AI agents.</p>
-<p><strong>Context</strong> — does the agent understand the product? Optimize for agent
-consumption: prefer plain text / markdown, negotiate content types. <strong>MCP is UI
-for LLMs</strong> — context is the most important piece. Expose what the agent can act
-on, and steer it.</p>
-<p><strong>Tools</strong> — agents will use your product <em>even if you provide no tools</em>. Every
-product <strong>already has an agent experience</strong> — the only question is whether it's
-good or bad. A CLI is often great DX but bad AX (interactive prompts are
-terrible for agents). API vs. MCP is the same product, different surfaces —
-naively shifting an entire API to MCP overwhelms the context window, so limit
-to a handful of tools. Provide <strong>prompt escape hatches</strong>.</p>
-<p><strong>Orchestration</strong> — can agents do real work? Linear and Notion let you kick off
-longer-running tasks. Nobody wants another chat bot; orchestration lets people
-use tools they're <em>already</em> comfortable with. Agent runners execute in a
-sandbox so they can <strong>actually do the thing</strong> — async agents. The goal: make the
-whole team <strong>builders</strong>.</p>
-<h2>Measuring it</h2>
-<p><strong>Evals</strong> are how you measure agent experience — <code>axis.run</code> actually tries to
-onboard against your product and measure the AX. As this gets more abstract, it
-also gets more required.</p>
+<p>Autonomous cars make us rethink cities; autonomous agents make us rethink programming and systems.</p>
+<p><strong>Software is now read/write for everyone.</strong></p>
+<h2>Chapter II: AX (Agent Experience)</h2>
+<p>Build tools for people that build tools.</p>
+<ul>
+<li><strong>UX</strong> — differentiates products from competitors</li>
+<li><strong>DX</strong> — differentiates platforms</li>
+<li><strong>AX</strong> — differentiates platforms <em>and</em> products</li>
+</ul>
+<p>What experience do agents have with tools and products?</p>
+<p>So… how do we do it?</p>
+<p>Not a feature or a protocol, and definitely not just <code>MCP</code>.</p>
+<p><strong>AX in practice:</strong></p>
+<ul>
+<li><strong>Access</strong> — can they access the product?</li>
+<li><strong>Context</strong> — does it know about it and understand?</li>
+<li><strong>Tools</strong> — work with it?</li>
+<li><strong>Orchestration</strong> — can agents do work with the product?</li>
+</ul>
+<h2>Pillar: Access</h2>
+<p><code>netlify.ai</code> — for humans and agents.</p>
+<ul>
+<li>Launch partners — payments, things to do with the thing.</li>
+<li>Netlify database — available to agents as batteries included.</li>
+</ul>
+<p>Emerging standards — <code>workos</code> — self-authenticating UUID for AI agents.</p>
+<h2>Pillar: Context</h2>
+<p>Optimize for agent optimization.</p>
+<p>Prefer plain text? Markdown? Negotiations about the content type.</p>
+<p><code>MCP</code> is UI for LLMs — context is the most important piece; expose what the agent can do now. Steering context.</p>
+<p><strong>API vs. MCP</strong> — same product, different surfaces.</p>
+<p>Just shifting from API to MCP will overwhelm context — limit to a handful of tools.</p>
+<h2>Pillar: Tools</h2>
+<p>Agents will still use your product even if you don't provide tools.</p>
+<p><strong>Every product ALREADY has an agent experience</strong> — is it GOOD or BAD?</p>
+<p>A CLI is often a great DX, but a bad AX — like, interactive stuff sucks for AX.</p>
+<p><strong>Churn churn churn.</strong></p>
+<p>Provide prompt escape hatches for AX.</p>
+<h2>Pillar: Orchestration</h2>
+<p><code>Linear</code>, <code>Notion</code> — kick off longer-running tasks.</p>
+<p>Chat bot — no one wants to use it; but orchestration lets people use the tools they are already familiar and comfortable with.</p>
+<p>Agent runners — run in sandbox.</p>
+<p><strong>Actually do the thing — async agents!!</strong></p>
+<p><strong>Make the whole team BUILDERS</strong> — our teammates across the business need to be able to build.</p>
+<p>More abstract, and more required.</p>
+<h2>Evals — measuring agent experience</h2>
+<p><code>axis.run</code> — actually measure the AX — try to onboard.</p>
 
   </div>
 

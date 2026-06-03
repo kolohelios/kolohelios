@@ -1,46 +1,67 @@
-Specs are the **primary contract** for code generation. (Context: AWS's Kiro,
-which started life as a VS Code fork — Alexa lineage at AWS.)
+Specs are the primary contract for generation of code.
 
-## Why specs?
+Why?
 
-Treat the AI like an intern: one small deviation can produce wildly different
-results. So get planning and product involved, and write the contract down.
+**AI as intern** — one small deviation can result in very different results. Get planning and product involved.
 
-Can't the latest frontier models just do everything? A few things to keep in
-mind:
+Can't the latest frontier models do everything??
 
-- **Too much context** confuses models. Keep `AGENTS.md` / steering files
-  targeted. Use skills to create specs and implement them; agents can help with
-  the implementation plan.
-- **Too much trust** is a trap. Are we code reviewing? We're the human in the
-  loop — that matters. Set up AI code reviews as a second pass too.
-- Watch for **outcome divergence** (drifting off the intended target) and
-  **speed over maintainability** (what patterns are we creating?).
+Let's keep a few things in mind:
 
-## Doing it without Kiro
+- **Too much context!!** Models get confused.
+- `AGENTS.md` / steering — keep it targeted.
+- Use skills — create specs and implement, and agents can help with the implementation plan.
+- **Too much trust!!** Are we code reviewing? We are the human in the loop, it's important.
+- Set up AI code reviews as well / task rabbit etc.
 
-Tell the AI IDE what to produce, in order:
+Don't get off the intended target — **outcome divergence**.
 
-1. **User requirements**
-2. A **design document** derived from them
-3. **Implementation details** derived from both
+Speed over maintainability — what patterns are being created?
 
-Tools in this space: Spec-Kit, OpenSpec, BMad. Kiro's spec mode also works in a
-**brownfield** app. Use **EARS** (Easy Approach to Requirements Syntax) to go
-from requirements → design phase. Review the markdown, approve, then move to
-implementation — which can happen out of order. Create an MVP from the steps by
-taking a **vertical slice**, pedantically; keep it short and tight, and keep
-reviewing.
+History lesson — Alexa at AWS, Kiro, first as VS Code fork.
 
-## MCP and spec-driven development
+## Iterating on spec-driven development
 
-Isn't MCP dead? It's less hyped now — switching to CLIs is common — but it may
-still be valuable *for spec-driven development*:
+How do you do this stuff WITHOUT Kiro?
 
-- Specs can be **pulled from a project-management service**.
-- You can take an existing app/PoC and **reverse-engineer** a spec from it.
-- It will follow the rules set in your steering files.
+Tell the AI IDE what it should do:
 
-Close the loop with **property-based tests** that run as regression tests
-against the requirements: "take all these steps and create the few checks I can
-use to prove this works." Conceptually — does it work the way I expect?
+- include the following
+    - user requirements
+    - design document from that
+    - take both of those and create implementation details
+    - `Spec-kit` / `Open Spec` / `BMad`
+
+Can use Kiro spec mode in a brownfield application.
+
+**EARS** — Easy Approach to Requirements Syntax.
+
+```
+requirements -> design phase
+```
+
+Review the markdown, approve, move to implementation. Implementation phase can be out of order.
+
+Create an MVP from the steps — take a vertical slice, pedantically.
+
+- Keep it short and tight, continue to review.
+
+## MCP
+
+Isn't `MCP` dead? It's not as popular now… maybe still valuable for spec-driven development?
+
+Switching to CLIs is pretty common.
+
+```
+MCP <-> Spec Driven Development
+```
+
+- specs can be pulled from project management service
+- pulled from PM — take app/PoC and reverse-engineer it
+- will follow rules set forth in your steering files
+
+**Property-based tests** — testing to run regression tests against the requirements.
+
+"Take all these steps and create the four that I can use to prove that this works."
+
+Conceptually, does it work as I expect?

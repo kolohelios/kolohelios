@@ -1,15 +1,71 @@
-You fetch from two API endpoints, loop and merge by `id` — and it breaks because the `id`s don't match. A connection you wired by hand, mismatched. Now agents are making decisions about **people**, and if the guess is wrong we find out later, in a war room or a post-mortem.
+Fetching from two API endpoints, loop and merge by id — but it breaks because the ids don't match.
 
-## The implicit connection
+The connection we wired by hand — and mismatched.
 
-The worked example: Jessica works at Apex Global, which sits on the sanctions watchlist. She requests a $25k credit-line increase, and the agent **approves** it. Every fact was present — but the answer is still wrong, because the connection was *implicit*, not explicit. MIT reports **95% of organizations** see no measurable return from AI: there's no place to keep the context, no proof of work, the connection piece is missed.
+Now agents are making decisions about people. If the guess is wrong, we find out later in a warroom / post-mortem.
 
-## Knowledge graphs
+Jessica works at Apex Global — on the sanctions watchlist.
 
-To beat AI's black-box problem, knowledge has to be transparent. Picture three views of an apple — visual, vector, and knowledge-graph. Only the knowledge-graph view is legible to **both** humans and AI: you see the connections and can ask *one hop, or more than one?*
+- Jessica requests a $25k credit line increase.
+- The agent **APPROVES!**
 
-A **knowledge graph** is an organized, visual representation of relationships between entities — a property graph of nodes, relationships, and properties. Compare a 4-hop compliance check in `Cypher` to the `SQL` equivalent and the difference is stark. Text similarity finds documents with similar *meaning*; **structural** similarity finds entities with similar *connections* — and almost nobody is building the second one.
+Every fact was there, but the answer is still wrong. The connection was **IMPLICIT, not EXPLICIT.**
 
-## Context graphs record *why*
+**MIT** — 95% of organizations report no measurable return.
 
-The newer idea (Dec 2025): the **context graph**, or `graph RAG` — it traces the decision that was made. Both surface the decision **path**; the context graph supplies the missing "why" plain memory lacks. An audit log records *what*; a context graph records *why*. The pitch: cut down hallucinations and force agents to show their work by walking a causal chain — from "I have no idea" to full visibility. Learn more at Neo4j GraphAcademy.
+- No place to keep the context.
+- No proof of work.
+- Miss the connection piece.
+
+To overcome AI's black box problem, we need knowledge to be transparent.
+
+Visual view of apple, vector view of apple, knowledge graph of an apple.
+
+Knowledge graph view can be understood by human and AI.
+
+- Find the connections.
+- One hop? Or more than one hop?
+
+## Knowledge Graphs
+
+Organized / visual representation of relationships between entities.
+
+**Property graph** — nodes, relationships, properties.
+
+Example `Cypher` query for a 4-hop compliance check vs. the `SQL` example.
+
+## Similarity
+
+- **Text similarity** — documents with similar meaning.
+- **Structural similarity** — finds entities with similar connections.
+
+Almost nobody is building the second one.
+
+## Context Graph
+
+**Context graph** — graph RAG.
+
+Relatively new (Dec 2025).
+
+Contextual difference — tracing the decision that was made.
+
+Both context graph and knowledge graph find the decision path.
+
+The missing "why" — no memory.
+
+Traditional audit log vs. context graph.
+
+- Records vs. why.
+
+## Where to Learn More?
+
+- 1 — Build a system that cuts down on hallucinations.
+- 2 — Force the agents to show their work — force them to walk a causal chain.
+
+`neo4j` Graph Academy
+
+`graphacademy.neo4j.com`
+
+```
+You: "I have no idea" -> full visibility
+```
