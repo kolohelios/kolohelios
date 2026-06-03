@@ -21,55 +21,76 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Darius Cepulis · Mux · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>A war story: a component starts simple and gets out of control. What went
-wrong, and what else could we have done?</p>
-<p>Material UI is fantastic <em>when you start</em>. Then you outgrow it — the migration
-path was Material UI → Base UI (components you can compose).</p>
-<h2>Programming interfaces are user interfaces</h2>
-<p>From Mike Bostock's 2016 essay <em>What Makes Software Good?</em>:</p>
-<blockquote>
-<p>Programming interfaces are user interfaces. Programmers are people, too.</p>
-</blockquote>
-<ul>
-<li><strong>Form must communicate function.</strong></li>
-<li>Functions that take many arguments are not good functions.</li>
-<li><code>chart.js</code> vs. D3 is a <strong>vending machine vs. a kitchen</strong>.</li>
-</ul>
-<h2>Configuration vs. composition</h2>
-<p>The "right" abstraction question is really config-type APIs vs. composable
-APIs. <strong>Composable APIs are independent and stackable:</strong></p>
-<ul>
-<li><strong>Independent</strong> — each part does one thing well (select, find, extend; read,
-filter, count). Lego blocks.</li>
-<li><strong>Stackable</strong> — the type of the input equals the type of the output, so they
-stack. (cf. Fernando Rojo's <em>Composition Is All You Need</em>, React Universe
-Conf 2025.)</li>
-</ul>
-<p>But composable APIs <strong>aren't free.</strong> Configuration cost is linear; composition
-is log(n) — and someone asks "isn't this a bit complex?" So <strong>lower the cost of
-composition</strong>: good docs, good idioms, sensible defaults, errors that teach,
-types, consistency, discoverability, examples.</p>
-<h2>The abstraction ladder</h2>
-<p>Don't make developers spend all their time learning the Lego blocks. Provide a
-ladder:</p>
-<ul>
-<li><strong>Lowest rung</strong> — low-level code for constructing views.</li>
-<li><strong>Higher rung</strong> — a visual editor.</li>
-</ul>
-<p>You should be able to ascend or descend <strong>without starting over</strong>:</p>
-<pre><code class="language-js">const chart = Plot.plot()
-d3(chart) // descend the ladder to the lower-level primitive
+<p><strong>Choosing the Wrong Abstraction (And What It Cost Us)</strong></p>
+<p>A component that starts simple — and it gets out of control!</p>
+<p>What went wrong? What else could have been done?</p>
+<p><code>Material UI</code> — when you start, it's fantastic!</p>
+<pre><code>Material UI -&gt; Base UI
 </code></pre>
-<p>Examples: D3 ↔ Plot, chart.js ↔ Observable Plot, shadcn → Base UI → HTML/CSS,
-Video.js (eject the skin to get the primitives). <strong>Escape hatches are a config
-trap</strong> — design the ladder instead.</p>
-<h2>"Can't we just vibe-code this?"</h2>
-<p>Per <em>Coding After Coders</em> (NYT Magazine): the Google CEO said devs are only ~10%
-faster, while a startup claimed 20×. The difference is <strong>brownfield vs.
-greenfield.</strong> Make code <strong>AI-ready</strong> — open for LLMs to read, understand, and
-improve. <code>decepulis/ax-bench</code> did better with a composable API. <strong>Good DX is
-usually good AX.</strong> And the right abstraction leads to smaller bundles (with
-tree-shaking, at least).</p>
+<p>Components that can be composed.</p>
+<p>2016 essay — Mike Bostock — <em>What Makes Software Good?</em></p>
+<p><strong>Programming interfaces are user interfaces. Programmers are people, too.</strong></p>
+<p>Form must communicate function.</p>
+<p>Functions that take many arguments are not good functions.</p>
+<p><code>chart.js</code> vs <code>D3</code></p>
+<pre><code>vending machine vs kitchen
+</code></pre>
+<h2>What IS the "right" abstraction?</h2>
+<p>Configuration-type APIs vs composable APIs.</p>
+<p><strong>Composable APIs are INDEPENDENT and STACKABLE.</strong></p>
+<ul>
+<li><strong>Independent</strong> — each part does one thing well; <code>select</code>, <code>find</code>, <code>extend</code>; <code>read</code>, <code>filter</code>, <code>count</code>. Lego blocks.</li>
+<li><strong>Stackable</strong> — the type of the input == the type of the output — stackkkkkkk!!!</li>
+</ul>
+<p><em>Composition is All You Need</em> — Fernando Rojo — 2025 React Universe Conf.</p>
+<p>"isn't this a bit complex?"</p>
+<p><strong>Composable APIs AREN'T FREE.</strong></p>
+<p>Configuration is linear, but composition is log(n).</p>
+<p><strong>Lower the cost of composition!</strong></p>
+<p>Why do we have the developers spend all their time learning the lego blocks?</p>
+<p>Lower the cost:</p>
+<ul>
+<li>good docs</li>
+<li>good idioms</li>
+<li>defaults</li>
+<li>errors that teach</li>
+<li>types</li>
+<li>consistency</li>
+<li>discoverability</li>
+<li>examples</li>
+</ul>
+<h2>Provide an abstraction ladder</h2>
+<ul>
+<li>lowest rung — low-level code for constructing views</li>
+<li>higher rung — visual editor</li>
+</ul>
+<p>Gives a tradeoff of getting started quickly and getting more power.</p>
+<p><code>D3</code> vs <code>Plot</code></p>
+<p><code>chart.js</code> vs <code>Observable Plot</code></p>
+<p>You should be able to descend or ascend the ladder without having to start all over.</p>
+<pre><code>const chart = Plot.plot()
+d3(chart)   // now descending the ladder
+</code></pre>
+<pre><code>shadcn -&gt; BaseUI -&gt; HTML/CSS
+</code></pre>
+<h2>Can't we just vibe code this?</h2>
+<p><em>Coding After Coders</em> — NYT magazine.</p>
+<p>CEO of Google said devs only working 10% faster; startup is 20x?? Brownfield vs greenfield is the reason.</p>
+<p><strong>AI-ready</strong> — open code for LLMs to read, understand, and improve.</p>
+<p><code>decepulis/ax-bench</code> — did better with a composable API.</p>
+<p><strong>Good DX is USUALLY good AX.</strong></p>
+<pre><code>|—————————————-|
+CONFIG          COMPOSE
+defaults        options
+</code></pre>
+<p>Add ladder.</p>
+<p>Escape hatches are a config trap.</p>
+<p><code>VideoJS</code></p>
+<ul>
+<li>swapping lego blocks</li>
+<li>eject skin to get primitives</li>
+</ul>
+<p>The right abstraction leads to smaller bundles (for JS, with tree-shaking at least).</p>
 
   </div>
 

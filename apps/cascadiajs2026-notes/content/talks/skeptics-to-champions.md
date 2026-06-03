@@ -1,22 +1,37 @@
-How to make AI *real* inside an org and turn skeptics into champions — a
-"startup inside a startup," built on a decade of infra.
+**Make AI real.**
 
-## The first attempt missed
+Stripe Minion? A decade of infra.
 
-We built the impressive-sounding stuff — a skills/repo marketplace, sandboxes,
-guardrails, an AI bug diagnoser — but **didn't ask whether anyone actually
-needed it.** Nobody has time to do the AI's homework. The result: a **16% merge
-rate**, with no comments and no feedback.
+A startup in a startup.
 
-## What actually worked
+- Skills repo marketplace
+- Sandboxes
+- Guardrails
 
-- **Undeniable beats impressive.** Target tiny, annoying fixes. A sandbox makes
-  sense when it *eases the pain*; curate skills, on by default.
-- Don't ask people to build a knowledge graph or chase metrics before there's
-  value. **Create a feedback loop.**
-- The homework was **already done** — 1,000 fixes from the last year were
-  already in the repo. So **replay the agent** against them.
+Didn't ask if anyone actually needed any of this.
 
-That replay pushed clean fixes from 16% to **36%**.
+## AI Bug Diagnoser
 
-The mantra: **try it, measure it, delete what doesn't work.**
+Nobody has time to do the AI's homework.
+
+- Tiny, annoying fixes
+- Sandbox makes sense when it eases the pain
+- Curated skills, by default
+
+Build a knowledge graph? Show metrics before we take this on?
+
+**Undeniable beats impressive!**
+
+Create a feedback loop.
+
+16% merge rate — no comments or feedback.
+
+## The Homework Was Already Done
+
+1000 fixes from the last year — already in the repo.
+
+Replay the agent.
+
+**Improved to 36% clean fixes!**
+
+**Try it, measure it, delete what doesn't work.**

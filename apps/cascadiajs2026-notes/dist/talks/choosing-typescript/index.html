@@ -21,17 +21,77 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Filip Sodić · Wasp · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>Keep choosing TypeScript — it matters more than ever. LLM output is <strong>not</strong> "the new machine code"; you should still learn a language well, and <code>TypeScript</code> is the perfect choice.</p>
-<h2>Why the language layer still matters</h2>
-<p>Look at the world we built for agents: a tower of abstractions. <code>0/1</code> at the bottom, then <code>ASM</code>, then compilers down to <code>C</code>, then <code>TS</code>/<code>Go</code>/<code>Python</code>, then frameworks, then applications. We've spent most of our time in the language layer. People who dabble in predictions imagine squashing the lower languages — even the high-level ones. The truth sits in the middle, between "languages become irrelevant" and "English is a programming language." <strong>English is not a good programming language</strong> (per Paul Graham). If the prediction held, we'd be committing prompts instead of code — and we're not, yet.</p>
-<h2>Why TypeScript specifically</h2>
-<p>Software engineering is <strong>compression</strong> — the time spent compressing personal context. Picture nested, overlapping concepts where <code>MEMORY</code> is the outsized layer:</p>
+<p><strong>Keep choosing TypeScript</strong> — it matters more than ever.</p>
+<p><strong>LLM output is not "new machine code."</strong>
+You should learn a language well, and TS is the perfect choice.</p>
+<h2>Why should we care about the language?</h2>
+<p>Consider the world we have built for the agents: a tower of abstractions, <code>0</code>/<code>1</code> at the bottom, climb the tower —</p>
+<pre><code>ASM, compilers -&gt; C, TS/Go/Python -&gt; frameworks -&gt; applications
+</code></pre>
+<p>We spent most of our time in the language layer in years past.</p>
+<p>People who dabble in predictions — where will they land? Squash lower lower languages, including high-level languages.</p>
+<p>The truth is in the middle: between irrelevancy and English being a programming language.</p>
+<p><strong>English is not a good programming language.</strong></p>
+<p>Paul Graham — "… writing in a language…"</p>
+<p>We wouldn't be committing code, we would be committing prompts (and we're not, yet).</p>
+<ul>
+<li><code>WASP</code> — framework</li>
+</ul>
+<h2>Why TypeScript?</h2>
+<p><strong>Software engineering is compression</strong> — time to compress personal context.</p>
 <pre><code>types -&gt; code -&gt; docs -&gt; memory
 </code></pre>
-<p>Shoot first, ask questions later — code is cheap, right? Imagine there's no TypeScript. <strong>Plan A: documentation.</strong> But docs aren't the harness — non-deterministic, no guarantee they match reality; you've just moved memory into docs. <strong>Plan B: tests.</strong> You move some memory into code via coverage and case exhaustion plus the happy path — but you reduce entropy by adding <em>more</em> code, and tests still expect you and the agent to generalize. Pile on tests if you want to throw off 100k lines a day.</p>
-<h2>Start with the types</h2>
-<p><strong>Then: types.</strong> Move context out of memory and code and into types — if <em>you</em> know something, the types should know it too. A prompt is just a specification written in English; step back and define the type <strong>manually</strong>. That's more precise. Fred Brooks: <em>"Show me your flowcharts and conceal your tables…"</em> Reach for the right type and you compress memory <em>and</em> preserve context — discover the domain <em>while</em> you build the model. (<code>GrillMe</code> is a skill for refining domain modeling.)</p>
-<p>He considered branded types, result types, exhaustiveness, smart constructors, edge type safety — and kept it simpler. <code>Rust</code> can do all this and more — maybe more than we need. Meanwhile <code>TS</code> keeps evolving: rewritten in <code>Go</code>, better errors, legacy baggage shed, still the most popular language.</p>
+<p>(overlapping nested concepts)</p>
+<p><strong>MEMORY is outsized in space.</strong></p>
+<p>Shoot first, ask questions later?
+Code is cheap? Right?</p>
+<p>Imagine there is no TypeScript; what's reasonable as far as compressing complexity?</p>
+<p>Did we answer our domain questions? <strong>NO!</strong> Where are the limits, and so on.
+So we didn't compress memory into types.</p>
+<p>So, hey! Let's add documentation!
+We just moved some of our memory to docs.</p>
+<p><strong>Docs are not the harness.</strong>
+Docs are not deterministic, and there is no guarantee that docs match reality.</p>
+<h2>Plan B: Tests</h2>
+<p>We can move some memory into code with test coverage and case exhaustion, and add happy path.</p>
+<p>Just use JS, not TS, and add a bunch of tests if you want to throw off 100k lines of code a day 🤑</p>
+<ul>
+<li>Reduce entropy by adding extra code.</li>
+<li>Tests expect us <em>and</em> the agent to generalize.</li>
+</ul>
+<h2>Types</h2>
+<p><strong>Move context from memory and code to Types.</strong>
+Encode information into the type.</p>
+<p>In the naive case, we still don't answer constraint-related questions.</p>
+<p><strong>If you know something, the types should know it as well!</strong></p>
+<h2>What if we start with the questions? With the Types?</h2>
+<p>Fred Brooks: "Show me your flowcharts and conceal your tables, and I shall continue to be mystified. Show me your tables, and I won't usually need your flowcharts; they'll be obvious."</p>
+<p>We could define what we want in a prompt, which is basically a specification.</p>
+<p>We should instead take a step back and define our type <strong>MANUALLY</strong>. That's better than using English; it's more precise.</p>
+<ul>
+<li>
+<p>We can compress our memory AND preserve context by reaching for the right type.</p>
+</li>
+<li>
+<p>Think about the questions related to our domain, and then define the appropriate types.</p>
+</li>
+<li>
+<p>Discover the domain WHILE building the model.</p>
+</li>
+<li>
+<p><code>GrillMe</code> — skill to help refine domain modeling.</p>
+</li>
+</ul>
+<p>He thought about talking about "branded types", result types, ensuring exhaustiveness, smart constructors, edge type safety — decided to make it simpler.</p>
+<p><code>Rust</code> can do all of this, and other stuff; it may do stuff we don't need.</p>
+<h2>TypeScript continues to evolve</h2>
+<ul>
+<li>modern and safer</li>
+<li>rewritten in Go</li>
+<li>better errors</li>
+<li>most popular language</li>
+<li>removed legacy baggage</li>
+</ul>
 
   </div>
 

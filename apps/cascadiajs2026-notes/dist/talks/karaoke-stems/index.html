@@ -21,15 +21,69 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Luis Montes · Iced Dev · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>Karaoke in 2026 deserves a better file format than the 1980s gave it — and the pieces to build one are now lying around in open source. The argument: <code>.stem.mp4</code> is a worthy successor to <code>CD+G</code>.</p>
-<h2>The CD+G inheritance</h2>
-<p>The first song ever played dates to 1877, karaoke to the 1980s, and then <code>CD+G</code> — CD plus graphics — arrived backward-compatible. The split is comically lopsided: 2.27% graphics to 97.73% audio, with video squeezed into 26.5 kbit/s. The result is rough — 288x192, 16 of 4096 colors, 6x12 tiles. KJs (karaoke jockeys) still guard deep <code>CD+G</code> catalogs. We can probably do better — and we can render <code>CD+G</code> on a canvas with <code>WebGL</code>.</p>
-<h2>Stems are the DJ's dream</h2>
-<p>The DJ's dream is <strong>stems</strong> — separating a song into its parts so you can beat-match on drums or build mashups and remixes from isolated vocals. Stems were historically expensive, until AI source separation changed the math; by 2024, DJ software shipped it. <code>Demucs</code> (MIT-licensed, <code>PyTorch</code>) is good quality and breaks audio into separate files. Maybe MP4 stems are the new standard? <strong>MP4 isn't a movie file</strong> — it's just a container. And this is <em>real original audio</em>, not a MIDI recreation, so you can ride the vocal volume or mute it entirely.</p>
-<h2>Lyrics, with timing</h2>
-<p><code>Whisper</code> (OpenAI) gives transcription plus timing — feed it the isolated vocals from <code>Demucs</code> and stash the result in the MP4. <code>Whisper</code> isn't perfect: timing drifts and it mangles some lyrics (hence "Hold me closer, Tony Danza"). <strong>LLMs fix the transcription</strong> while preserving the timing, and you can hand them open-source lyrics too.</p>
-<h2>Assembling the file</h2>
-<p>The MP4 spec uses <strong>atoms</strong> — standard atoms, a stem atom, and a <code>kara</code> atom for synced lyrics. Wire it into a pipeline and add an open-source player. (<code>CREPE</code> handles musical key detection; <code>Butterchurn</code> revives the old WinAMP visualizers in <code>WebGL</code>.) See also <code>youmaynotneedelectron.com</code>.</p>
+<p>First song played — 1877.</p>
+<p>Karaoke — 1980s.</p>
+<h2>CD+G (CD + Graphics)</h2>
+<p>Backward compatible.</p>
+<ul>
+<li>2.27% graphics, 97.73% audio</li>
+<li>26.5 kbit/s for video</li>
+</ul>
+<p><strong>It's rough!</strong></p>
+<ul>
+<li>288 x 192 — 16 of 4096 colors</li>
+<li>6x12 tiles</li>
+</ul>
+<p>KJs have a deep catalog of CD+G.</p>
+<p>We could probably do better…</p>
+<p>We can render CD+G in canvas, with <code>WebGL</code>!</p>
+<h2>And now the AI stuff</h2>
+<p><strong>The DJ's Dream (Stems)</strong></p>
+<ul>
+<li>mix two songs together</li>
+<li>have music separated out — drums for beat matching, vocals for mashups and remixes</li>
+</ul>
+<p>It's been expensive to get stems before.</p>
+<h2>AI Source Separation</h2>
+<p>2024 — DJ software includes it.</p>
+<ul>
+<li><code>Demucs</code> — MIT license</li>
+<li>good quality, <code>PyTorch</code></li>
+<li>breaks out files</li>
+</ul>
+<p><strong>MP4 Stems? The new standard?</strong></p>
+<p><code>MP4</code> isn't a movie file, it's just a container.</p>
+<p>Real original audio, <strong>NOT</strong> MIDI recreation!</p>
+<p>Control vocal volume (or mute entirely).</p>
+<h2>Lyrics</h2>
+<p>Okay, so we separated the tracks. What about the lyrics?</p>
+<p><code>Whisper</code> from OpenAI —</p>
+<ul>
+<li>we get transcription and timing</li>
+<li>feed it isolated vocals from <code>Demucs</code></li>
+<li>put it in an <code>MP4</code> file</li>
+</ul>
+<p><code>Whisper</code> isn't perfect; timing can be slightly off. Struggles with some lyrics.</p>
+<p><strong>LLMs for lyrics</strong> — fix the transcription errors but keep the timing right.</p>
+<p>Can also pass along open source lyrics to it.</p>
+<p>"Hold me closer, Tony Danza" 🤣</p>
+<h2>Putting it together</h2>
+<p>Corrected lyrics — we still want a file.</p>
+<p><code>MP4</code> spec — atoms:</p>
+<ul>
+<li>standard atoms</li>
+<li>stem atom</li>
+<li>kara atom — synced lyrics for karaoke</li>
+</ul>
+<p>Putting it all together — a pipeline.</p>
+<p>Also need an open source player.</p>
+<ul>
+<li><code>CREPE</code> can be used for musical key detection.</li>
+<li><code>Butterchurn</code> library — took WinAMP stuff encoded in <code>WebGL</code>.</li>
+</ul>
+<h2>Karaoke in 2026!</h2>
+<p><strong><code>.stem.mp4</code> is a worthy successor to CD+G!</strong></p>
+<p><code>youmaynotneedelectron.com</code> mentioned.</p>
 
   </div>
 

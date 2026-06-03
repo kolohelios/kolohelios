@@ -1,11 +1,25 @@
-Ancient times — 2022 — `DALL-E mini`. "AGI" was never a useful term anyway. The phrase that actually sticks is from the OpenAI charter: **"economically valuable work."** And the flip side of optimizing for it is the flattening of culture that follows.
+Ancient times: 2022.
 
-So the mischievous question: what would happen if we made language models **bad**?
+**Dall-E mini!**
 
-## Training something useless on purpose
+**AGI** not a useful term.
 
-**`LoRA`** — Low-Rank Adaptation — lets you keep the base model frozen and train a little something on top. The v2 recipe: feed in a big text file of inspirational quotes and slogans.
+"economically valuable work" — from the OpenAI charter.
 
-Is the result better than a programmatic randomizer? **Yes.** Is it useful for creative purposes? **No.**
+Flattening culture.
 
-The point lands anyway: **protect your joy.** Make bad things!
+What would happen if we made language models **BAD**?
+
+`LoRA` — Low-Rank Adaptation — keep the base frozen and train on top of it.
+
+v2 — add a big text file of inspirational quotes and slogans.
+
+Better than a programmatic randomizer?
+
+- yes
+
+Useful for creative purposes?
+
+- no
+
+**Protect your joy. Make bad things!**

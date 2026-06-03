@@ -1,23 +1,118 @@
-JavaScript winning the web isn't controversial — default for front-ends, huge ecosystem, fast iteration, the thing most web teams already know. The interesting frontier is the **critical path**: product work where performance, latency, memory pressure, and runtime predictability dominate.
+**JavaScript winning the web is not controversial** — it's the default choice for front-ends, has a huge ecosystem, fast iteration, and most web teams already know it.
 
-## "Is Rust ready for web development?" is a useless, dumb question
+Web only as product work, performance, latency, memory pressure, runtime predictability => **this is the critical path.**
 
-Ready for *what*? "Web development" could mean landing pages, proxies, or `WASM` — each optimizing for something different. For product-heavy UI work, no. When the constraints change, yes. The web stack is far more than the browser — frontend, edge, and a lot of layers underneath.
+## Is Rust Ready for Web Development?
 
-Rust wins when the web becomes **systems programming**: predictable, low-latency, memory-efficient, safe concurrency, fewer runtime surprises. It's not *just* fast — explicit errors, strong types, `WASM`-ready, ownership and allocation control, memory safety without a garbage collector. From the outside it looks like web dev; from the inside it behaves like a systems language. Not for everything.
+This question is useless; it's a dumb question.
 
-## One pattern, real examples
+**What does web development even mean?**
 
-Rust entering the parts that need stronger guarantees:
+- Landing pages, proxies, `WASM`, and so on.
 
-- **Cloudflare** built `Pingora`, an HTTP proxy — 1T+ requests/day on a third of the CPU and memory.
-- **Discord** rewrote Read States in Rust: GC caused latency spikes, and P99 mattered more than simplicity. A targeted hot-path swap, not an ideological rewrite.
-- **Shopify Functions** compile to `WASM` — Rust for portable business logic, fast.
+**Ready for what?**
 
-## The stack, and where to reach for it
+- Product-heavy UI work.
+- When constraints change? Yes.
 
-Frameworks `Axum` + `Actix`; foundations `Hyper` + `Tower`; data `SQLx`, `Diesel`, `SeaORM`; runtime `Tokio`; observability `OpenTelemetry`.
+The web stack is much more than the browser — frontend, edge, lots of other stuff.
 
-The `Tokio` mental model is close to Node: an `async fn` creates a lazy future, and the runtime — executor, scheduler, reactor, timers, async I/O, task spawning — runs it when ready. It's **not a thread**; it's machinery to let many futures make progress. Production engineering starts when many handlers share one runtime. `SQLx` keeps SQL explicit and moves failures earlier — verifying Rust types against the schema at compile time. Not an ORM, but with compile-time guarantees.
+Different layers optimize for different things.
 
-Rust wins at backend, auth, billing, realtime, proxies, `WASM`/tooling, queues — **realtime is the biggest win**. It loses when speed of change matters most: landing pages, blogs, classic CMS, three-day MVPs, frontend-heavy apps. It has a cost — learning curve, compile time, async complexity — so pay it when the leverage is worth it. Go is simpler but not the correctness win; Java/Kotlin for tooling and big teams; JS/TS for speed. Keep TypeScript for the frontend, reach for Rust at the constraints. **Hybrid wins.** Rust doesn't need to win the web — it should be on the critical path.
+## Where Rust Wins
+
+**Rust wins when the web becomes system programming** -> operating critical systems.
+
+- Predictable, low latency, memory efficiency, safe concurrency, fewer runtime surprises.
+
+**Rust is not JUST fast** — explicit errors, strong types, safe concurrency, `WASM`-ready, ownership and allocation control, memory safety without garbage collection.
+
+**Rust is NOT for everything.**
+
+- From the outside, looks like web development.
+- From the inside, behaves as a system language.
+
+## Real-World Patterns
+
+`Cloudflare` built `Pingora` — HTTP proxy.
+
+- 1T+ requests/day with 1/3 CPU and memory.
+- When the web becomes infrastructure, the choice becomes easy.
+
+`Discord` — Read states rewritten in Rust.
+
+- **GARBAGE COLLECTION** caused latency spikes; P99 latency mattered more than simplicity.
+- Critical path, GC spikes, hot path, targeted replacement.
+- Not an ideological rewrite, a very practical choice.
+
+`Shopify` Functions -> `WASM`.
+
+- Rust for portable business logic, fast.
+
+All three examples — recognizable pattern.
+
+**Rust is entering the parts that need stronger guarantees.**
+
+## Rust Web Stack
+
+- Web frameworks: `Axum` + `Actix`
+- Foundations: `Hyper` + `Tower`
+- Database layer: `SQLx`, `Diesel`, `SeaORM`
+- Async runtime: `Tokio`
+- Observability: `OpenTelemetry`
+
+## Tokio and Futures — Mental Model
+
+SIMILAR to `NodeJS` — `async fn` creates a future — lazy work.
+
+`Tokio` runtime — executor / scheduler / reactor / timers / async I/O / task spawning.
+
+- When ready, it runs.
+- Machinery that lets many futures make progress efficiently.
+- It is **NOT a thread.**
+
+`Axum` flow: production engineering starts when many handlers share the same runtime.
+
+## Database Access
+
+`SQLx` keeps SQL **EXPLICIT** and moves more failures earlier.
+
+- Compile time — verifies the Rust types against the schema.
+- NOT an ORM, but has compile-time guarantees.
+
+## Where Does Rust Win?
+
+- Backend, auth, billing, realtime, proxies, `WASM`/tooling, queues.
+- **Realtime is the biggest win.**
+
+## Where Does Rust NOT Win?
+
+- If speed of change is most important.
+- Landing pages, blogs, classic CMS websites.
+- Three-day MVPs, frontend-heavy apps.
+
+## Rust Has a Cost!
+
+Adoption costs:
+
+- Learning curve
+- Compile time
+- Async complexity
+
+**Pay the Rust cost when the leverage is worth it.**
+
+## Different Tools, Different Wins
+
+**Rust wins WHEN correctness, latency, safety, and predictability matter most.**
+
+- `Go` is a more simple choice, but not the correctness win.
+- `Java`/`Kotlin` for tooling / maturity / big teams.
+- `JS`/`TS` for the fastest speed of development.
+
+Keep `TypeScript` for the frontend — UI, fast iteration; use Rust for constraints.
+
+**Hybrid wins.**
+
+Reusable business logic — `WASM`, back-end, CLI.
+
+**Rust does not need to win the web, but it should be in the critical path.**

@@ -1,30 +1,37 @@
-How to successfully build a junior dev team — built on ~300 hours of
-mentorship per junior: technical and consulting, book reading groups, feedback
-practice, demos, and tech talks. What's different here is **the investment.**
+**How to Successfully Build a Junior Dev Team**
 
-## The image we have of juniors is wrong
+300 hours of mentorship — technical and consulting.
 
-The usual framing:
+Book reading groups, feedback practice, demos, tech talks.
 
-- **Cheap** — there to free up seniors.
-- **Replaceable** — no institutional knowledge.
-- **Rentals** — can't build new technical capacity.
+**What's different? The investment!**
 
-## The AI death spiral
+## What is the image of juniors?
 
-With AI we're pushing human effort into more complex and chaotic modes of
-working. The trap: AI writes more code → the dev looks more "productive" → free
-them up for higher-level work → more output → **loop**. That's a death spiral if
-you stop investing in people.
+- **Cheap** — free up seniors
+- **Replaceable** — no institutional knowledge
+- **Rentals** — can't build new technical capacity
 
-## Reframe
+What does this mean for the senior devs?
 
-- Juniors are not cheap — they're an **investment**.
-- They are **not replaceable** — they're unique and far more diverse, which
-  matters more as the work shifts.
-- They're **invaluable, not rentals** — think two years of training, five years
-  of retention.
+With AI, we're moving human effort into more complex and chaotic modes of working.
 
-So: **heavily invest in early-career mentorship, hire for fit and the future,
-and do more interesting work.** The skills have changed — but the need for
-people has not.
+## The death spiral
+
+AI writes more code, the dev is more "productive", free them up for high-level work, which leads to more productive work, and LOOP — **a death spiral.**
+
+```
+more code -> more "productive" -> freed for high-level work -> more productive -> LOOP
+```
+
+## Reframe the juniors
+
+- Think of juniors as **not cheap** — an investment.
+- **NOT replaceable** — they are very unique and much more diverse (more important as work shifts).
+- **Invaluable**, not rentals.
+
+Two years of training, 5 year retention.
+
+Heavily invest in early career mentorship, hire for fit and the future, and do more interesting work.
+
+**The skills have changed! But the need for people has not!**

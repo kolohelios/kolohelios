@@ -21,15 +21,102 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Theo · T3 Chat · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>Building software is wildly different now because of AI — the same way the cloud changed everything before it. The same movie, playing again.</p>
-<h2>The cloud already ran this play</h2>
-<p><strong>Before the cloud</strong>, building was capital-intensive: you had to predict the future, and experimentation was expensive. <strong>After</strong>, you start small and scale up, experimentation is cheap, and you don't need God-tier infra devs — Amazon-tier hardware without an Amazon-tier budget. AI is that movie again: <strong>Amazon-scale software without Amazon-scale SWE teams.</strong> The expertise required drops; the things that were rigid aren't anymore.</p>
-<h2>Rethink the assumptions we stopped questioning</h2>
-<p>Why can't we commit <code>.env</code> files? Why can't a public repo have private parts? Why can't a file be in two folders at once? Why do we need a file system to compile my app? Why do we assume our codebases still matter — our packages? Why can't we rebuild everything? <strong>Why can't we boil the ocean?</strong></p>
-<p><code>Salesforce</code> is the opposite of all this — a giant pile of features. Everyone needs a few, the Fortune 500 needs more, and there's a long tail that 1% of users touch. You have to build for every snowflake. Or do you? <strong>Breadth is now trivial to cover; depth isn't the problem</strong> — build a platform and let the client's agents handle the depth. Too broad is hard; too deep isn't good.</p>
-<h2>Boil the ocean</h2>
-<p><strong>Before</strong>: 40 hours to build, 3 hours to deploy. <strong>After</strong>: 30 minutes to build, 3 hours to deploy — now the deploy is the obnoxious part. <code>shoo.dev</code> does auth in two lines (easy, not necessarily secure or good); it didn't ship because it was built too deep in the vertical. So make all the problems go away. Theo went too far and built <code>Lakebed</code> [alpha] — <code>npx lakebed new sup-seattle</code>, then <code>npx lakebed deploy</code>, deployed in seconds; change something, redeploy in seconds. He built the language, compiler, CLI, <em>and</em> deployer. We kid ourselves that we need all the perfect things — just prompt something into existence. <code>lakebed.dev</code>.</p>
-<p><strong>Why haven't we been thinking right?</strong> We are not building big enough. Find the place where going so big makes you feel STUPID. The last 5, 10, 50 years don't matter — where will things be in five? You aren't building big enough.</p>
+<p>Building software is <strong>WAYYYY different</strong> because…</p>
+<p><strong>AI is the cloud!</strong></p>
+<h2>Life before the cloud</h2>
+<ol>
+<li>Building was more capital-intense</li>
+<li>You had to predict the future</li>
+<li>Experimentation was expensive</li>
+</ol>
+<h2>Life after the cloud</h2>
+<ol>
+<li>You can start small and scale up</li>
+<li>Experimentation is cheap</li>
+<li>You don't need to hire God-tier infra devs anymore</li>
+</ol>
+<p>Easy scaling made a lot of things possible.</p>
+<p><strong>Amazon-tier hardware without Amazon-tier budget.</strong></p>
+<p>And AI… we've been through this before…</p>
+<h2>Life before the Claude</h2>
+<ol>
+<li>Building was capital-intense</li>
+<li>You had to predict the future</li>
+<li>Experimentation was expensive</li>
+</ol>
+<p>Amazon-scale software, with Amazon-scale SWE teams.</p>
+<p><strong>Everything we believe is no longer true.</strong></p>
+<p>Expertise required is a lot less now; things that were rigid aren't true anymore.</p>
+<h2>Things we should rethink</h2>
+<p>We may be past where this stuff makes sense:</p>
+<ul>
+<li>Why can't we commit <code>.env</code> files?</li>
+<li>Why can't a public repo have private parts?</li>
+<li>Why can't a file be in two folders at once?</li>
+<li>Why do we need a file system to compile my app?</li>
+<li>Why do we assume our codebases still matter?</li>
+<li>Why do we assume our packages still matter?</li>
+<li>Why can't we rebuild everything?</li>
+<li>Why can't we boil the ocean?</li>
+</ul>
+<h2>Salesforce</h2>
+<p><code>Salesforce</code> is the opposite of everything mentioned…</p>
+<p>Salesforce has a lot of features.</p>
+<p>Everyone needs a small number, Fortune 500 needs some, and then there's the long tail of things 1% of users use.</p>
+<p>Features <code>[company]</code> needs.</p>
+<p>You have to build for every snowflake.</p>
+<p>Or do you?????</p>
+<p>What if you could cover what a company needs trivially?</p>
+<ul>
+<li><strong>breadth of features</strong> — range</li>
+<li><strong>depth of features</strong> — # of features in a given area</li>
+</ul>
+<p>Too broad? Hard. Too deep? Not good.</p>
+<p>But a broad range of things you cover — <strong>it's viable now.</strong></p>
+<p>The depth isn't a problem; build a platform and let the client deal with that with their agents.</p>
+<h2>What does this look like?</h2>
+<p><strong>Before</strong></p>
+<ul>
+<li>build — 40 hours</li>
+<li>deploy — 3 hours</li>
+</ul>
+<p><strong>After</strong></p>
+<ul>
+<li>build — 30 minutes</li>
+<li>deploy — 3 hours</li>
+</ul>
+<p>So obnoxious! Why!! The 3 hours sucks worse now.</p>
+<h2>shoo.dev</h2>
+<ul>
+<li><code>shoo.dev</code></li>
+<li>auth in 2 lines of code</li>
+<li>easy way to add auth, not secure or good necessarily</li>
+<li>didn't ship? built too deep in the vertical</li>
+</ul>
+<p><strong>BOIL THE OCEAN!!!</strong> Make all the problems go away.</p>
+<p>Theo went too far.</p>
+<h2>Lakebed [alpha]</h2>
+<p><strong>LIVE DEMO!!</strong></p>
+<pre><code>npx lakebed new sup-seattle
+</code></pre>
+<ul>
+<li>nothing special on his machine</li>
+</ul>
+<pre><code>npx lakebed deploy
+</code></pre>
+<ul>
+<li>deployed just like that, super quick</li>
+<li>changed something, deployed in seconds</li>
+</ul>
+<p>Built language, compiler, CLI, deployer.</p>
+<p>Holy crap — so simple.</p>
+<p>We kid ourselves that we need all the perfect things, just prompt something into existence.</p>
+<p><code>lakebed.dev</code></p>
+<h2>Why haven't we been thinking right</h2>
+<p><strong>WE ARE NOT BUILDING BIG ENOUGH.</strong></p>
+<p>Find the place where we feel <strong>STUPID</strong> for going so big.</p>
+<p>Where will things be in 5 years? The last 5, 10, 50 years don't matter.</p>
+<p><strong>YOU AREN'T BUILDING BIG ENOUGH.</strong></p>
 
   </div>
 

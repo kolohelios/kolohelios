@@ -1,34 +1,31 @@
-A talk about using AI to *learn*, with an honest framing about mental health and
-expectations.
+mental health
 
-## The expectation gap
+**How to use AI to learn.**
 
-We expect ~20% faster. In real tasks, one study found developers were **19%
-slower**. The boost is unevenly distributed: **less experienced devs got the
-boost; more experienced devs got the fuzzy end of the lollipop.** AI is a skill
-to be learned — treat it as risk management, and as the ultimate rubber duck.
+Expectation — productivity 20% faster; **19% slower** though in real tasks.
 
-## A learning loop
+Less experienced devs got the boost, more experienced devs got the fuzzy end of the lollipop.
 
-Apply it deliberately:
+Risk management — AI is a skill to be learned, the ultimate rubber ducky.
 
-- **Translate** from something you know to the new subject. Provide context,
-  then ask for the *differences* so you learn the delta.
-- Always ask **why** and **how** — not just what.
-- Ask Claude to create an **easily digestible diagram**.
-- Ask for an **example based on an example** you already understand.
-- **Acknowledge when AI is moving too fast** and ask clarifying questions.
-- Have it **generate quiz questions** to test your knowledge, then get help
-  filling the gaps.
-- Have a **Socratic conversation**.
-- **Simulate debugging** to practice.
-- Use the **Feynman Technique**: explain what you've learned and check whether
-  the explanation matches reality.
+## How do we apply it with the learning loop?
 
-**Develop skills as you go** — do it once, then turn it into a reusable "tutor"
-skill you can apply on demand.
+- Translate from something you know to the new subject.
+- Provide context! Get back the differences to learn.
 
-## Pair programming with AI
+**Why and how?**
 
-Ask: what can we **translate**, and what do we need to **rethink and rewrite**?
-**Refactor together**, then apply what you learned on your own.
+- Ask `Claude` to create an easily digestible diagram.
+- Ask `Claude` to provide an example based on an example.
+- Make sure you acknowledge when AI is moving too fast, ask clarifying questions.
+- Ask `Claude` to generate quiz questions to test our knowledge, and then get help to fill the gaps.
+- Have a socratic conversation.
+- Simulate debugging.
+
+**Feynman Technique** — explain what you've learned, and see if that matches reality.
+
+Develop skills as you go — do it once, and then reuse the tutor skill to apply it randomly and as required.
+
+Peer programming — what can we translate, and what do we need to rethink and rewrite?
+
+**Refactor together** — and then apply what you learn.

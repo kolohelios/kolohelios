@@ -21,31 +21,30 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Joe Duffy · Pulumi · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>Agents got really good at code, really fast — and you can represent almost any
-problem as code (one demo: <code>gc.cpp</code>, a million lines transpiled from LISP).</p>
-<p>On SWE-bench, the contamination-resistant <strong>Pro</strong> variant has moved fast:
-quality from ~33 (Aug '24) to 94, with Pro at 78 — and roughly 40 → 70 over the
-year.</p>
-<h2>The stack shifted</h2>
-<pre><code>old: programming language --compiler--&gt; machine code
-new: natural language --LLM--&gt; programming language --compiler--&gt; machine code
+<p><code>gc.cpp</code> — 1 million lines of code transpiled from LISP.</p>
+<p>Agents got really good at code, really fast.</p>
+<p>Represent any sort of problem as code.</p>
+<p><strong><code>SWE Bench</code></strong> — Pro agent is contamination-resistant; quality has moved from 33 in Aug '24 to 94; Pro is 78.</p>
+<p>40 → 70 this year.</p>
+<h2>The Stack Has Changed</h2>
+<p>The old stack:</p>
+<pre><code>programming language --compiler--&gt; machine code
 </code></pre>
-<p>The hard part <strong>isn't the code anymore</strong> — it's everything underneath it:
-ClickOps, infra, API keys, secrets. As Karpathy put it, <em>"Building a modern app
-is a bit like assembling IKEA furniture."</em></p>
-<h2>The last mile</h2>
-<p>For most of this, the last mile has always been <strong>someone else's job</strong> — a
-platform team, an SRE rotation, the person on call. And it's wildly lopsided:
-the agent only has what it was trained on, or what's in context.</p>
-<p>So <strong>put the last mile in code, too.</strong> Take action in code space; a runtime
-(IaC) reflects it back into the cloud. <strong>IaC is like <code>git diff</code> for your infra</strong>
-— you see what it's going to do before it does it. Vibe infra like apps: ask for
-code you can review, approve, and merge.</p>
-<p>This isn't just ergonomics. Per <em>CodeAct (Executable Code Actions Elicit Better
-LLM Agents)</em>, agents do <strong>~20% better</strong> when they act by <strong>writing code</strong> rather
-than emitting config. The shift is already underway: agents now drive <strong>28% of
-deployments</strong>, up from 4% late last year. <strong>Shipping isn't a separate team's job
-anymore.</strong></p>
+<p>The new stack:</p>
+<pre><code>natural language --LLM--&gt; programming language --compiler--&gt; machine code
+</code></pre>
+<p><strong>The hard part isn't the code anymore</strong> — it's everything underneath it: ClickOps, infra, API keys/secrets.</p>
+<p>Andrej Karpathy — <em>"Building a modern app is a bit like assembling IKEA furniture."</em></p>
+<h2>The Last Mile</h2>
+<p>For most of this, this part has always been someone else's job (a platform team, an SRE rotation, the person on call).</p>
+<p>It's wildly lopsided: agents have either what it was trained on, or it's in context.</p>
+<p><strong>Put the last mile in code, too.</strong></p>
+<p>Take action in code space; a runtime (IaC) reflects it back into the cloud.</p>
+<p><code>IaC</code> is like <code>git diff</code>, but for your infra — see what it's going to do before it does it.</p>
+<p>Vibe infra like apps, by asking — code we can review, approve, and merge in code.</p>
+<p><strong>+20%</strong> — agents do better when they act by writing code, not by emitting config (from <em>CodeAct — Executable Code Actions Elicit Better LLM Agents</em>).</p>
+<p>Agents now drive <strong>28% of deployments</strong>, up from 4% late last year.</p>
+<p><strong>Shipping isn't a separate team's job anymore.</strong></p>
 
   </div>
 

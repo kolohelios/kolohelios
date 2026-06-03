@@ -21,46 +21,60 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Joel Hooks · Badass Courses · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>Capability is going exponential with Opus 4.5+, and the leverage point is no
-longer the model — it's the <strong>harness</strong>.</p>
+<p><strong>Agent swarms.</strong></p>
+<p>Going exponentially with Opus 4.5+.</p>
+<p><strong>Harness engineering is the state of the art.</strong></p>
 <pre><code>model | harness | context
 </code></pre>
-<p><strong>Harness engineering is the state of the art.</strong> The Claude Code architecture
-diagram is wild once you see everything it bundles: prompts, skills,
-directives, subagents, tools, bundled infra, orchestration logic, hooks,
-middleware, and observability (logs!).</p>
-<p>The takeaway in three words: <strong>own the tools.</strong> <code>opencode</code> gave us the
-opportunity to build our own.</p>
-<h2>Swarms</h2>
-<p>A swarm is <strong>multi-agent coordination to survive context death</strong> — when one
-agent's context fills up, the work survives across the swarm. Useful pattern:
-use the Socratic method to align intent and outcomes, plan, then fan out
-parallel agents.</p>
-<h2>Build a harness that makes you smile</h2>
+<p>The Claude Code arch diagram is wild.</p>
+<p>Harness includes:</p>
 <ul>
-<li><code>SOUL.md</code> — give the agent a personality and an icon. Your harness should
-make you smile.</li>
-<li>There's another harness called <strong>Pi</strong> whose workflow implementation is much
-better than the default. Pi <strong>updates itself</strong> — it reads its own source code
-to add capabilities. Out of the box it's intentionally not featureful.</li>
-<li>Pi subagents run in parallel and chains — a great extension for swarm-style
-work.</li>
-<li><code>pi-cmux</code> — a terminal replacement built on Ghostty, managed by a Pi
-extension.</li>
-<li><code>pi-notes</code> — HTML is <em>not</em> better than markdown; notes should be human
-readable but also agent readable. (<code>mdsvex</code> is the Svelte take on MDX.)</li>
-<li><code>pi-feedback</code> — a support inbox: the last turn of a session sends a diff to
-process feedback. With a lot of users you get a lot of support tickets, so a
-feedback tool that improves the automated support over many turns pays off.</li>
+<li>prompts, skills, directives, subagent</li>
+<li>tools, bundled infra, orchestration logic</li>
+<li>hooks, middleware, observability — logs!</li>
 </ul>
-<p>A recurring theme: <strong>slow down.</strong> Don't do everything, and don't do it quickly
-(cf. <em>Slow Productivity</em>).</p>
-<h2>Worth following</h2>
-<p>Cloudflare Durable Objects for state. Sunil Pai (something called "Think").
-Dillon Mulroy on artifacts, memory, and primitives. Addy Osmani's <strong>"The
-Orchestration Tax"</strong> — cognitive bandwidth is <em>not</em> parallelizable. Agent swarms
-are genuinely hard; the real skill is building systems that can pull any and
-all threads through the context limit.</p>
+<p><strong>Own the tools.</strong></p>
+<p><code>opencode</code> — gave us the opportunity to build.</p>
+<p><strong>Swarm</strong> — multi-agent coordination to survive context death.</p>
+<ul>
+<li>Socratic method to align intent/outcomes</li>
+<li>plan</li>
+<li>parallel agent</li>
+</ul>
+<p>Anthropic nerfed <code>opencode</code>.</p>
+<p>AI Skills — Matt Pocock — <code>mattpocock/skills</code></p>
+<p><strong>OpenClaw!</strong></p>
+<p><code>SOUL.md</code> — give the agent personality, an icon.</p>
+<p>Your harness should make you smile.</p>
+<h2>Pi</h2>
+<p>Other thing: agent harness called <code>Pi</code>.</p>
+<p>Workflow in <code>Pi</code> is better than Claude Code's garbage implementation.</p>
+<p>Follow Mario on X.</p>
+<p><strong>Slow the F</strong>* Down** — don't do everything, and don't do it quickly. (<em>Slow Productivity</em>)</p>
+<p><code>Pi</code> will update itself; it will read its own source code to add stuff. Out of the box is not featureful.</p>
+<p>Nico Bailon — <code>Pi</code> stuff — <code>Pi</code> subagents.</p>
+<ul>
+<li>run parallel and chains — great extension to get swarm</li>
+</ul>
+<p><code>pi-cmux</code> — replacement for Terminal/Ghostty, but built on Ghostty. <code>Pi</code> extension to manage it.</p>
+<p><code>Pi</code> — modify yourself to be better.</p>
+<p><code>pi-notes</code> — Thariq — HTML is not better than markdown.</p>
+<p><code>mdsvx</code> — Svelte version of MDX (which is what?).</p>
+<p>Human readable, but the agent can read it as well.</p>
+<p><code>wzzrd.sh</code> — notes to share with the team.</p>
+<p><strong>Second brain</strong> — better notes.</p>
+<p><code>pi-feedback</code> — support inbox, last turn of the session, sends diff to process the feedback for the session.</p>
+<p><strong>Key metrics</strong> — having a lot of users will lead to a lot of support tickets.</p>
+<p>Feedback tool to improve the automated support, lots of turns.</p>
+<h2>Swarms in the wild</h2>
+<p><code>agentdungeon.ai</code> — agents playing DnD, one is the DM, and the other agents work and collaborate.</p>
+<p>Cloudflare — Durable Objects — state.</p>
+<p>Sunil Pai — follow recommendation. Something called Think.</p>
+<p>Dillon Mulroy — artifacts — memory, primitives.</p>
+<p><strong>Agent swarms are hard, it's true.</strong></p>
+<p>Addy Osmani — The Orchestration Tax.</p>
+<p><strong>Cognitive bandwidth is not parallelizable.</strong></p>
+<p>The real skill is building the systems that can pull any and all of the threads of the system and context limit.</p>
 
   </div>
 

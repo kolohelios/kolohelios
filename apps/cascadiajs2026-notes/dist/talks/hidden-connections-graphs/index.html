@@ -21,14 +21,57 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Nyah Macklin · Neo4j · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>You fetch from two API endpoints, loop and merge by <code>id</code> — and it breaks because the <code>id</code>s don't match. A connection you wired by hand, mismatched. Now agents are making decisions about <strong>people</strong>, and if the guess is wrong we find out later, in a war room or a post-mortem.</p>
-<h2>The implicit connection</h2>
-<p>The worked example: Jessica works at Apex Global, which sits on the sanctions watchlist. She requests a $25k credit-line increase, and the agent <strong>approves</strong> it. Every fact was present — but the answer is still wrong, because the connection was <em>implicit</em>, not explicit. MIT reports <strong>95% of organizations</strong> see no measurable return from AI: there's no place to keep the context, no proof of work, the connection piece is missed.</p>
-<h2>Knowledge graphs</h2>
-<p>To beat AI's black-box problem, knowledge has to be transparent. Picture three views of an apple — visual, vector, and knowledge-graph. Only the knowledge-graph view is legible to <strong>both</strong> humans and AI: you see the connections and can ask <em>one hop, or more than one?</em></p>
-<p>A <strong>knowledge graph</strong> is an organized, visual representation of relationships between entities — a property graph of nodes, relationships, and properties. Compare a 4-hop compliance check in <code>Cypher</code> to the <code>SQL</code> equivalent and the difference is stark. Text similarity finds documents with similar <em>meaning</em>; <strong>structural</strong> similarity finds entities with similar <em>connections</em> — and almost nobody is building the second one.</p>
-<h2>Context graphs record <em>why</em></h2>
-<p>The newer idea (Dec 2025): the <strong>context graph</strong>, or <code>graph RAG</code> — it traces the decision that was made. Both surface the decision <strong>path</strong>; the context graph supplies the missing "why" plain memory lacks. An audit log records <em>what</em>; a context graph records <em>why</em>. The pitch: cut down hallucinations and force agents to show their work by walking a causal chain — from "I have no idea" to full visibility. Learn more at Neo4j GraphAcademy.</p>
+<p>Fetching from two API endpoints, loop and merge by id — but it breaks because the ids don't match.</p>
+<p>The connection we wired by hand — and mismatched.</p>
+<p>Now agents are making decisions about people. If the guess is wrong, we find out later in a warroom / post-mortem.</p>
+<p>Jessica works at Apex Global — on the sanctions watchlist.</p>
+<ul>
+<li>Jessica requests a $25k credit line increase.</li>
+<li>The agent <strong>APPROVES!</strong></li>
+</ul>
+<p>Every fact was there, but the answer is still wrong. The connection was <strong>IMPLICIT, not EXPLICIT.</strong></p>
+<p><strong>MIT</strong> — 95% of organizations report no measurable return.</p>
+<ul>
+<li>No place to keep the context.</li>
+<li>No proof of work.</li>
+<li>Miss the connection piece.</li>
+</ul>
+<p>To overcome AI's black box problem, we need knowledge to be transparent.</p>
+<p>Visual view of apple, vector view of apple, knowledge graph of an apple.</p>
+<p>Knowledge graph view can be understood by human and AI.</p>
+<ul>
+<li>Find the connections.</li>
+<li>One hop? Or more than one hop?</li>
+</ul>
+<h2>Knowledge Graphs</h2>
+<p>Organized / visual representation of relationships between entities.</p>
+<p><strong>Property graph</strong> — nodes, relationships, properties.</p>
+<p>Example <code>Cypher</code> query for a 4-hop compliance check vs. the <code>SQL</code> example.</p>
+<h2>Similarity</h2>
+<ul>
+<li><strong>Text similarity</strong> — documents with similar meaning.</li>
+<li><strong>Structural similarity</strong> — finds entities with similar connections.</li>
+</ul>
+<p>Almost nobody is building the second one.</p>
+<h2>Context Graph</h2>
+<p><strong>Context graph</strong> — graph RAG.</p>
+<p>Relatively new (Dec 2025).</p>
+<p>Contextual difference — tracing the decision that was made.</p>
+<p>Both context graph and knowledge graph find the decision path.</p>
+<p>The missing "why" — no memory.</p>
+<p>Traditional audit log vs. context graph.</p>
+<ul>
+<li>Records vs. why.</li>
+</ul>
+<h2>Where to Learn More?</h2>
+<ul>
+<li>1 — Build a system that cuts down on hallucinations.</li>
+<li>2 — Force the agents to show their work — force them to walk a causal chain.</li>
+</ul>
+<p><code>neo4j</code> Graph Academy</p>
+<p><code>graphacademy.neo4j.com</code></p>
+<pre><code>You: "I have no idea" -&gt; full visibility
+</code></pre>
 
   </div>
 

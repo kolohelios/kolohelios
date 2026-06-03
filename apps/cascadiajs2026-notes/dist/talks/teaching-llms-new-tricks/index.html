@@ -21,15 +21,52 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Marty Nelson · Works Real Estate · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p><code>Azoth</code> is an open-source library Marty built in winter 2023-24, shelved when AI hit, then revived in Nov 2025 — the AI era changed the math and brought it back. The lesson it taught him: you don't onboard an LLM to a new framework, you <strong>subtract abstractions</strong> until the model already knows the problem.</p>
-<h2>The setup</h2>
-<p>Building a dashboard for a real estate brokerage on <code>Google Looker</code>, Marty needed a visually intensive component that wasn't in the "vending machine." Why not just write HTML and CSS? Because <code>JSX</code> is everywhere and the AI defaults to <code>React</code> — <strong>same syntax, wrong semantics</strong>. <code>Azoth</code> has no virtual DOM and controls rendering: <code>&lt;p&gt;Hello&lt;/p&gt;</code> just returns a real <code>p</code> element.</p>
-<h2>The wrong move</h2>
-<p>The first instinct was to treat the new framework like a new framework — borrow an adjacent concept, "just use it a bit." It backfired: leaning on the incumbent's language confuses the LLM. So Marty wrote a "Don't say… / Say instead" map. But <strong>describing your thing in the negative space of someone else's thing is still the wrong move</strong> — <em>don't think about a pink elephant.</em></p>
-<h2>The unlock: subtract</h2>
-<p>The real unlock is a shared mental model — a system metaphor you both hold, so you can talk about the thing AS IT IS. Don't onboard the LLM; <strong>hire it as the new senior maintainer</strong>, and they're curious about your tech. <code>Azoth</code>'s <code>JSX</code> is real DOM: it compiles HTML to a template, the JS creates no DOM, no factory function builds it — you add small, deduplicated binding helpers. What you opt INTO with <code>React</code>, you opt OUT of with <code>Azoth</code>. It accepts everything <code>JSX</code> already has — no proprietary primitives, just JS.</p>
-<p>Notice the shape: <strong>remove the abstraction.</strong> Don't replace the vDOM; subtract it. Reduce everything to a DOM problem — a component is, literally, a constructor — and the LLM reaches for a tool that fits.</p>
-<p>So prompts aren't engineering instructions; they're navigation. Push AWAY from what you're subtracting, pull TOWARD what you've unlocked. Two budgets matter now: <strong>Context</strong> (what you carry in) and <strong>Corpus</strong> (what's already in the model — spend it wisely). Subtract your abstractions, unlock the corpus.</p>
+<p><code>Azoth</code> — open source library.</p>
+<ul>
+<li>Winter 2023–24: built it.</li>
+<li>When AI hit: shelved it.</li>
+<li>Nov 2025: AI changed the math, and brought back <code>Azoth</code>!</li>
+</ul>
+<p>Creating a dashboard for a real estate brokerage — Google Looker — couldn't find the right thing in the "vending machine."</p>
+<p>Visually intensive components — just write HTML and CSS?</p>
+<p>Combining a brokerage with a property developer.</p>
+<p>Added integration analysis — high user touch.</p>
+<p><code>JSX</code> everywhere; the AI defaults to <code>React</code> — <strong>same syntax, wrong semantics.</strong></p>
+<p><code>Azoth</code> — without vDOM, controlling renderer, no JS creating the DOM — <code>&lt;p&gt;Hello&lt;/p&gt;</code> just returns a <code>p</code> tag!</p>
+<p>First instinct: treat the new framework like a new framework (take an adjacent concept); just use it a bit.</p>
+<p><strong>This backfired!</strong> Use the language, then it confuses the LLM.</p>
+<h2>"Don't Say…, Say Instead" Map</h2>
+<p>Don't confuse our innovation with the incumbent's.</p>
+<p><strong>Don't onboard the LLM: hire it as the new senior maintainer.</strong></p>
+<p>AND… they're curious about your tech!</p>
+<p>Shared mental model: a system metaphor that is shared; start a conversation.</p>
+<p>Don't describe in negative space against something else — talk about the thing as it is.</p>
+<h2>Azoth JSX is real DOM</h2>
+<ul>
+<li>What does it compile to? Doesn't interfere with JavaScript.</li>
+<li>Takes the HTML and makes a template (the JS creates no DOM).</li>
+<li>Doesn't use a factory function to make the DOM.</li>
+<li>Add how to bind, small helper functions — deduplicated.</li>
+</ul>
+<p>Like the opposite of <code>React</code> — what you opt <em>into</em> with <code>React</code> you opt <em>out of</em> with <code>Azoth</code>.</p>
+<h2>Subtraction, not replacement</h2>
+<p>Don't replace the vDOM, <strong>subtract it.</strong></p>
+<p>The leap: closures and DOM — reduce to a DOM problem.</p>
+<p><code>component = constructor</code>, literally.</p>
+<p>LLM, hey, <strong>THIS IS DOM!</strong> Reach for a tool that makes sense for the problem.</p>
+<p><code>Azoth</code> basically accepts everything that <code>JSX</code> already has. No proprietary primitives, just JS.</p>
+<p><strong>Notice the shape</strong> — this was the unlock. <strong>REMOVE the abstraction.</strong></p>
+<p>New mapping is <strong>SUBTRACT and unlock</strong>, not "don't say, say this instead."</p>
+<h2>Prompts as Navigation</h2>
+<p>Prompts aren't engineering instructions. <strong>They're navigation.</strong></p>
+<p>Push away from what is being subtracted, and pull towards what's unlocked.</p>
+<p>Avoid NEGATION, like "Don't think about a pink elephant."</p>
+<h2>Law of AI Era Innovation</h2>
+<ul>
+<li><strong>Context</strong> — what you carry into the conversation.</li>
+<li><strong>Corpus</strong> — what's already in the model — your budget! Be smart about this!</li>
+</ul>
+<p><strong>Subtract your abstractions, unlock the corpus.</strong></p>
 
   </div>
 

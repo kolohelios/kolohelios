@@ -1,36 +1,48 @@
-When agents write the code, **where does the intent live?** We still need
-durable intent.
+When agents write code, where does the intent live?
 
-## The problem with harness memory
+**We still need durable intent.**
 
-Agent harnesses have memory, but it's **tightly coupled** to the harness and
-brings lock-in. Markdown files, by contrast, are **portable**. So use markdown
-to hold the "memory."
+Agent harnesses have memory, but it's tightly coupled — and we have lock-in.
 
-## Linked Literate Programming (LLP)
+Markdown files, on the other hand, are portable.
 
-LLP = **markdown specs + references from code**. Code links back to the spec
-with a comment:
+Use markdown to create "memory."
+
+**LLP** — markdown specs + references from code.
 
 ```
 // @ref LLP 0000mediastream-constructor
 ```
 
-```markdown
+```
 # Constructors [mediastream-constructor]
 ```
 
-The links matter for three things:
+## Why links matter
 
-- **Coverage** — you can see whether each part of the spec was implemented.
+Links matter for coverage, accuracy, and intent.
+
+- **Coverage** — we can see if we implemented each part of the spec.
 - **Accuracy** — does the spec actually match the code?
 - **Intent** — are decisions visible *above* the code level?
 
-## Web specs are great LLP inputs
+## Web specs as inputs
 
-Web specs already have the edge cases considered and the APIs designed. Agents
-import the spec, then leave linking comments back to it. The same spec can drive
-**both web and native** implementations. Pair it with **WPT** (Web Platform
-Tests) to close the loop: set up LLP, pull in the relevant parts of a spec, and
-test coverage against it. LLP + web specs makes the whole thing more
-programmatic.
+Web specs are good inputs for LLP:
+
+- edge cases already considered
+- designed APIs
+
+Agents import the spec, then use linking comments back to the spec.
+
+**LLP pattern** — implementation for web and native apps using the same spec??
+
+## Workflow
+
+Set up LLP, get the relevant parts of a spec, test coverage.
+
+`WPT` — Web Platform Tests.
+
+Make a feedback loop with LLP.
+
+**LLP + web specs** — more programmatic.

@@ -21,16 +21,41 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Kaelig Deloumeau-Prigent · Design Tokens W3C CG · Day 2</p>
   </header>
   <div class="notes mt-8">
-<p>Design is not what ends up getting built. You've got <code>default</code>, <code>primary</code>, <code>special</code> — add <code>primary</code>/<code>muted</code> — and then you tell the agent "use the design system, don't make mistakes." Easier said than done.</p>
-<h2>Not everything belongs in a design system</h2>
-<p>Bind some complicated one-off edge case to every implementation and you've made a mess — too many decisions packed into each component. And every target needs a different language to consume the design system. So: <strong>give the decisions names, give the names values, and give them instructions.</strong> That's a single source of truth for branded targets — design tokens.</p>
-<p>The <strong>Design Tokens Format Module</strong> captures each design decision as a token in JSON, then defines relationships so you can swap values when you want. Lots of tooling already supports the spec — <code>Figma</code>, <code>Sketch</code>, <code>Penpot</code>, and more — coordinated by the <strong>Design Tokens Community Group</strong>.</p>
-<h2>Teaching agents to follow them</h2>
-<p>But how do we teach <em>agents</em> to follow them? Create skills, MCPs, hooks, plugins, CLIs; train a model on your design system and tokens. The loop:</p>
-<pre><code>find tokens (PLAN) --&gt; code (VERIFY, e.g. lint) --&gt; validate the suggestion
+<p><strong>Design.. not what ends up getting built!</strong></p>
+<ul>
+<li><code>default</code>, <code>primary</code>, <code>special</code></li>
+<li>add <code>primary</code> / <code>muted</code></li>
+</ul>
+<blockquote>
+<p>Hey agent! Use the design system, don't make mistakes</p>
+</blockquote>
+<p>Not everything needs to be in a design system though — some complicated thing that's a one-off, we've just bound an extreme edge case to every implementation.</p>
+<p><strong>Too many decisions in each component!</strong></p>
+<p>All of the different targets need a different language to use the design system.</p>
+<ul>
+<li>give them names</li>
+<li>then give them values</li>
+<li>and give them instructions</li>
+</ul>
+<p><strong>Single source-of-truth</strong> for getting branded targets.</p>
+<h2>Design Tokens</h2>
+<ul>
+<li>Design Tokens Form Module — capture design decision in the design token, in JSON files</li>
+<li>then define relationships, swap them when we want</li>
+</ul>
+<p>Lots of tooling that supports the spec, including <code>Figma</code>, <code>Sketch</code>, <code>penpot</code>, and so on.</p>
+<p>Design Tokens Community Group</p>
+<h2>Teaching Agents</h2>
+<p>How do we teach agents to follow these though?</p>
+<p>Create skills! <code>MCP</code>s! hooks! plugins! <code>CLI</code>s! train a model on your design system and tokens.</p>
+<pre><code>find tokens - PLAN
+code       - VERIFY (lint)
+validate suggestion
 </code></pre>
-<p>A lot of teams are investing in getting agents to follow design tokens — and there's little-to-no design-token tooling aimed at AIs yet.</p>
-<p>Join the fight against UI slop. <code>designtokens.org</code>.</p>
+<p>A lot of teams are investing time in getting agents to follow design tokens.</p>
+<p>No to little design-token tooling for AIs.</p>
+<p><strong>Join the fight against UI slop!!</strong></p>
+<p><code>designtokens.org</code></p>
 
   </div>
 

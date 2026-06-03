@@ -1,23 +1,95 @@
-AI plus `Strudel` — a web-based, code-driven music tool where you make music with code. The goal is to **extend creativity, not replace it**: use AI for the technical bits, not to hand the whole thing over. A small model under the hood adds structural awareness.
+**AI and Strudel** — web-based music production tool.
 
-The kicker: it all runs in your browser tab. **No API, no cloud — all local.** Why local? Keep cost down (free), reduce latency (no round-trip), and preserve privacy (input never leaves the browser).
+**Make music with code!**
 
-## Picking the model
+Extend creativity, not replace it — using AI to get help, not handing something to AI to do.
 
-How do you make a small model good at a niche domain? First pick the *type*. Is the problem translation? Audio classification? Text generation? Each lives in a different model family — text generation made the most sense. `transformers.js` runs Hugging Face models in the browser.
+**Structural awareness** — a small model under the hood helping with the technical bits.
 
-## Shaping the I/O
+**In your browser tab!** No API, no cloud — all local.
 
-AI is good at ambiguity, inference, unstructured input; code is good at precision, rules, structured output. The right answer sits on a continuum between them, with tradeoffs. Off-the-shelf "just ask for code" looks plausible but won't run. "Intent JSON → deterministic engine" turns intent into pseudo-code, but bigger schemas and prompts add latency and stop feeling fluid. A **fine-tuned model** gives structural context: small input, sanitized and parsed output. Optimize further and you drop the deterministic guarantee for a tighter surface — just the right number of tokens.
+## Why local
 
-## Training data, validated
+Alex wants to:
 
-The model didn't know `Strudel`, and there wasn't much training data. So Alex used LLMs to generate examples — some of it confident nonsense referencing things that don't exist. The fix: **validate, then scale.** Run each example through `Strudel`; if it doesn't parse, throw it out. Don't scale the hallucinations. Add grounding so the model doesn't freestyle, and reward cross-domain reasoning.
+- **keep cost down** — free!
+- **reduce latency** — beats having a round-trip
+- **privacy** — input never leaves the browser
 
-The ongoing loop:
+So that's why local.
+
+## Getting a small model good at a niche domain
+
+How do you get a small model to be good at a niche domain?
+
+Pick a model — but first pick *which type* of model?
+
+- `transformers.js` — HuggingFace models to run in the browser.
+
+Is this problem translation? Is it audio classification? Each one is in a different model family.
+
+Text generation made the most sense; what does the interface look like?
+
+Shaping the model's I/O —
+
+- **AI** good at ambiguity, inference, unstructured input
+- **Code** good at precision, rules, and structured output
+
+The right answer depends on the need.
+
+## Finding the AI/code boundary
+
+- **Off-the-shelf model: ask for code** — NOT right! Looks plausible, but won't run.
+- **Try intent JSON** — deterministic engine; take intent and make pseudo code.
+
+A continuum of AI `<——>` code boundary, with tradeoffs between them.
+
+Latency to get a structured output; bigger schema, bigger prompt — doesn't feel fluid anymore.
+
+- **Try fine-tuned** -> structural context. Keep input context small; model output is sanitized and parsed.
+- **Optimized** — remove the deterministic guarantee for tighter and smaller surface area, just the right amount of tokens.
+
+But the model didn't know Strudel! Training took a lot more time.
+
+## Training data
+
+There wasn't a lot of training data available — didn't have time to create a lot of examples.
+
+Alex used LLMs to generate examples; ask for Strudel, see what it does.
+
+Some things didn't actually exist — **confident nonsense.**
+
+- Added validation step — run it through Strudel, throw it out if it doesn't parse.
+- Then scale — **DON'T scale the hallucinations.**
+
+Added grounding to what the LLM is being asked to do; don't freestyle, be concise — what is Strudel.
+
+Cross-domain reasoning.
+
+## The ongoing loop
+
+The work gets focused but doesn't stop; identify gap -> generate -> validate -> retrain.
 
 ```
-identify gap --> generate --> validate --> retrain
+identify gap -> generate -> validate -> retrain
 ```
 
-The work gets focused but never stops; each loop makes the tool more like something Alex actually wants to play with. Finally, fit it into a browser tab via **quantization** — shrink by reducing precision. Runtime is a few lines: import, await the pipeline, initialize. The questions to keep asking: what's the model task? where's the AI/code boundary? where does the training data come from? does it need to be local?
+Each loop makes the tool better — to become something Alex wants to work with.
+
+## Shrink it to fit
+
+Make something small enough to fit in a browser tab — **shrink it small, ship it small.**
+
+**Quantization!**
+
+- Shrink down by reducing precision.
+- Runtime in a few lines — import, await pipeline, initialize.
+
+**Ideas are endless.**
+
+## Questions to ask
+
+- Model task?
+- AI/code boundary?
+- Training data?
+- Does it need to be local?

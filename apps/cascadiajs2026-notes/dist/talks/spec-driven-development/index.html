@@ -21,46 +21,56 @@
     <p class="mt-2 text-[color:var(--fg-muted)]">Erik Hanchett · AWS · Day 1</p>
   </header>
   <div class="notes mt-8">
-<p>Specs are the <strong>primary contract</strong> for code generation. (Context: AWS's Kiro,
-which started life as a VS Code fork — Alexa lineage at AWS.)</p>
-<h2>Why specs?</h2>
-<p>Treat the AI like an intern: one small deviation can produce wildly different
-results. So get planning and product involved, and write the contract down.</p>
-<p>Can't the latest frontier models just do everything? A few things to keep in
-mind:</p>
+<p>Specs are the primary contract for generation of code.</p>
+<p>Why?</p>
+<p><strong>AI as intern</strong> — one small deviation can result in very different results. Get planning and product involved.</p>
+<p>Can't the latest frontier models do everything??</p>
+<p>Let's keep a few things in mind:</p>
 <ul>
-<li><strong>Too much context</strong> confuses models. Keep <code>AGENTS.md</code> / steering files
-targeted. Use skills to create specs and implement them; agents can help with
-the implementation plan.</li>
-<li><strong>Too much trust</strong> is a trap. Are we code reviewing? We're the human in the
-loop — that matters. Set up AI code reviews as a second pass too.</li>
-<li>Watch for <strong>outcome divergence</strong> (drifting off the intended target) and
-<strong>speed over maintainability</strong> (what patterns are we creating?).</li>
+<li><strong>Too much context!!</strong> Models get confused.</li>
+<li><code>AGENTS.md</code> / steering — keep it targeted.</li>
+<li>Use skills — create specs and implement, and agents can help with the implementation plan.</li>
+<li><strong>Too much trust!!</strong> Are we code reviewing? We are the human in the loop, it's important.</li>
+<li>Set up AI code reviews as well / task rabbit etc.</li>
 </ul>
-<h2>Doing it without Kiro</h2>
-<p>Tell the AI IDE what to produce, in order:</p>
-<ol>
-<li><strong>User requirements</strong></li>
-<li>A <strong>design document</strong> derived from them</li>
-<li><strong>Implementation details</strong> derived from both</li>
-</ol>
-<p>Tools in this space: Spec-Kit, OpenSpec, BMad. Kiro's spec mode also works in a
-<strong>brownfield</strong> app. Use <strong>EARS</strong> (Easy Approach to Requirements Syntax) to go
-from requirements → design phase. Review the markdown, approve, then move to
-implementation — which can happen out of order. Create an MVP from the steps by
-taking a <strong>vertical slice</strong>, pedantically; keep it short and tight, and keep
-reviewing.</p>
-<h2>MCP and spec-driven development</h2>
-<p>Isn't MCP dead? It's less hyped now — switching to CLIs is common — but it may
-still be valuable <em>for spec-driven development</em>:</p>
+<p>Don't get off the intended target — <strong>outcome divergence</strong>.</p>
+<p>Speed over maintainability — what patterns are being created?</p>
+<p>History lesson — Alexa at AWS, Kiro, first as VS Code fork.</p>
+<h2>Iterating on spec-driven development</h2>
+<p>How do you do this stuff WITHOUT Kiro?</p>
+<p>Tell the AI IDE what it should do:</p>
 <ul>
-<li>Specs can be <strong>pulled from a project-management service</strong>.</li>
-<li>You can take an existing app/PoC and <strong>reverse-engineer</strong> a spec from it.</li>
-<li>It will follow the rules set in your steering files.</li>
+<li>include the following
+<ul>
+<li>user requirements</li>
+<li>design document from that</li>
+<li>take both of those and create implementation details</li>
+<li><code>Spec-kit</code> / <code>Open Spec</code> / <code>BMad</code></li>
 </ul>
-<p>Close the loop with <strong>property-based tests</strong> that run as regression tests
-against the requirements: "take all these steps and create the few checks I can
-use to prove this works." Conceptually — does it work the way I expect?</p>
+</li>
+</ul>
+<p>Can use Kiro spec mode in a brownfield application.</p>
+<p><strong>EARS</strong> — Easy Approach to Requirements Syntax.</p>
+<pre><code>requirements -&gt; design phase
+</code></pre>
+<p>Review the markdown, approve, move to implementation. Implementation phase can be out of order.</p>
+<p>Create an MVP from the steps — take a vertical slice, pedantically.</p>
+<ul>
+<li>Keep it short and tight, continue to review.</li>
+</ul>
+<h2>MCP</h2>
+<p>Isn't <code>MCP</code> dead? It's not as popular now… maybe still valuable for spec-driven development?</p>
+<p>Switching to CLIs is pretty common.</p>
+<pre><code>MCP &lt;-&gt; Spec Driven Development
+</code></pre>
+<ul>
+<li>specs can be pulled from project management service</li>
+<li>pulled from PM — take app/PoC and reverse-engineer it</li>
+<li>will follow rules set forth in your steering files</li>
+</ul>
+<p><strong>Property-based tests</strong> — testing to run regression tests against the requirements.</p>
+<p>"Take all these steps and create the four that I can use to prove that this works."</p>
+<p>Conceptually, does it work as I expect?</p>
 
   </div>
 

@@ -1,17 +1,23 @@
-How do we get safety from agents? Put a human in the loop — because agents aren't just answering questions anymore, they're taking actions. Three patterns, ordered by stakes.
+How do we get safety from agents? **Put a human in the loop.**
+
+Agents aren't just answering questions anymore.
 
 ## Pattern 1: Interrupt
 
-A mid-task pause — the agent asks, the human answers, the agent continues. Low stakes, synchronous, **one function call**.
+- Mid-task pause — agent asks, human answers, agent continues.
+- Low stakes, sync, one function call.
 
 ## Pattern 2: Token Vault
 
-The agent hits a wall, you authorize it, and it succeeds on retry. The demo runs both patterns in one flow: hand out a **short-lived token scoped ONLY to what's needed**.
+- Agent hits a wall, you auth it, agent succeeds on retry.
+
+**DEMO:** both patterns in one flow.
+
+Give out a short-lived token that is scoped only to what is needed.
 
 ## Pattern 3: CIBA
 
-`CIBA` — Client-Initiated Backchannel Authentication. The industry is **already doing this**.
+- Client Initiated Backchannel Auth.
+- Industry is already doing this.
 
-## Match the pattern to the stakes
-
-That's the rule of thumb. **The higher the stakes, the more security you want.**
+**Match the pattern to the stakes** — the higher the stakes, the more security we need.
