@@ -42,11 +42,30 @@ pub enum CiCommand {
     /// AWS_SECRET_ACCESS_KEY, etc.). This wrapper enumerates the resolved
     /// env first, emits a mask command for each non-empty new/changed
     /// value, then execs `op run --env-file=<file> -- <args...>`.
+    ///
+    /// `--retry-on <text>` opts into bounded retries: when the command
+    /// exits non-zero and its combined output contains `<text>`, the
+    /// wrapper re-runs it (up to `--max-retries` times, waiting
+    /// `--retry-delay` seconds between attempts). Used to absorb the
+    /// first-deploy race where `cloudflare-deploy apply` attaches a
+    /// custom domain before the parallel `wrangler deploy` has created
+    /// the Worker script (#714). Without `--retry-on`, the wrapper execs
+    /// the command directly as before — no behaviour change.
     #[command(name = "mask-and-run")]
     MaskAndRun {
         /// Path passed through to `op run --env-file=<path>`.
         #[arg(long)]
         env_file: PathBuf,
+        /// Retry while the command's combined output contains this
+        /// substring and it exited non-zero. Empty disables retries.
+        #[arg(long, default_value = "")]
+        retry_on: String,
+        /// Maximum number of retries after the first attempt.
+        #[arg(long, default_value_t = 0)]
+        max_retries: u32,
+        /// Seconds to wait between retry attempts.
+        #[arg(long, default_value_t = 30)]
+        retry_delay: u64,
         /// Command and args to run under `op run` (separated by `--`).
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
         args: Vec<String>,
@@ -58,6 +77,12 @@ pub fn run(cmd: CiCommand) {
         CiCommand::Gate { needs } => gate::run(needs),
         CiCommand::GenerateWorkflows { check } => generate::run(check),
         CiCommand::AuditWorkflows => audit_workflows::run(),
-        CiCommand::MaskAndRun { env_file, args } => mask_and_run::run(env_file, args),
+        CiCommand::MaskAndRun {
+            env_file,
+            retry_on,
+            max_retries,
+            retry_delay,
+            args,
+        } => mask_and_run::run(env_file, args, retry_on, max_retries, retry_delay),
     }
 }
