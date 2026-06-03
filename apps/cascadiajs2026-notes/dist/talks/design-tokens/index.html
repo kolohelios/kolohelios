@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Tokens: Getting Agents to Follow Brand Guidelines · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-[color:var(--fg-faint)] hover:text-[color:var(--fg-muted)]">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-[color:var(--fg-strong)]">Design Tokens: Getting Agents to Follow Brand Guidelines</h1>
+    <p class="mt-2 text-[color:var(--fg-muted)]">Kaelig Deloumeau-Prigent · Design Tokens W3C CG · Day 2</p>
+  </header>
+  <div class="notes mt-8">
+<p>Design is not what ends up getting built. You've got <code>default</code>, <code>primary</code>, <code>special</code> — add <code>primary</code>/<code>muted</code> — and then you tell the agent "use the design system, don't make mistakes." Easier said than done.</p>
+<h2>Not everything belongs in a design system</h2>
+<p>Bind some complicated one-off edge case to every implementation and you've made a mess — too many decisions packed into each component. And every target needs a different language to consume the design system. So: <strong>give the decisions names, give the names values, and give them instructions.</strong> That's a single source of truth for branded targets — design tokens.</p>
+<p>The <strong>Design Tokens Format Module</strong> captures each design decision as a token in JSON, then defines relationships so you can swap values when you want. Lots of tooling already supports the spec — <code>Figma</code>, <code>Sketch</code>, <code>Penpot</code>, and more — coordinated by the <strong>Design Tokens Community Group</strong>.</p>
+<h2>Teaching agents to follow them</h2>
+<p>But how do we teach <em>agents</em> to follow them? Create skills, MCPs, hooks, plugins, CLIs; train a model on your design system and tokens. The loop:</p>
+<pre><code>find tokens (PLAN) --&gt; code (VERIFY, e.g. lint) --&gt; validate the suggestion
+</code></pre>
+<p>A lot of teams are investing in getting agents to follow design tokens — and there's little-to-no design-token tooling aimed at AIs yet.</p>
+<p>Join the fight against UI slop. <code>designtokens.org</code>.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--fg-faint)]">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://www.designtokens.org">designtokens.org</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-sm">
+
+  <a class="text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/beowulf-stroganoff/">← Beowulf Stroganoff: Building Economically Useless Chatbots</a>
+
+
+  <a class="text-right text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/hidden-connections-graphs/">Unlocking AI&#x27;s Hidden Connections With Graphs →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+    <p><a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/kolohelios/kolohelios/tree/main/apps/cascadiajs2026-notes">Source</a></p>
+  </div>
+</footer>
+</body>
+</html>

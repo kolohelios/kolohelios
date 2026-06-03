@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JavaScript Won the Web. Rust Is Taking the Critical Path. · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-[color:var(--fg-faint)] hover:text-[color:var(--fg-muted)]">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-[color:var(--fg-strong)]">JavaScript Won the Web. Rust Is Taking the Critical Path.</h1>
+    <p class="mt-2 text-[color:var(--fg-muted)]">Francesco Ciulla · Zerops · Day 2</p>
+  </header>
+  <div class="notes mt-8">
+<p>JavaScript winning the web isn't controversial — default for front-ends, huge ecosystem, fast iteration, the thing most web teams already know. The interesting frontier is the <strong>critical path</strong>: product work where performance, latency, memory pressure, and runtime predictability dominate.</p>
+<h2>"Is Rust ready for web development?" is a useless, dumb question</h2>
+<p>Ready for <em>what</em>? "Web development" could mean landing pages, proxies, or <code>WASM</code> — each optimizing for something different. For product-heavy UI work, no. When the constraints change, yes. The web stack is far more than the browser — frontend, edge, and a lot of layers underneath.</p>
+<p>Rust wins when the web becomes <strong>systems programming</strong>: predictable, low-latency, memory-efficient, safe concurrency, fewer runtime surprises. It's not <em>just</em> fast — explicit errors, strong types, <code>WASM</code>-ready, ownership and allocation control, memory safety without a garbage collector. From the outside it looks like web dev; from the inside it behaves like a systems language. Not for everything.</p>
+<h2>One pattern, real examples</h2>
+<p>Rust entering the parts that need stronger guarantees:</p>
+<ul>
+<li><strong>Cloudflare</strong> built <code>Pingora</code>, an HTTP proxy — 1T+ requests/day on a third of the CPU and memory.</li>
+<li><strong>Discord</strong> rewrote Read States in Rust: GC caused latency spikes, and P99 mattered more than simplicity. A targeted hot-path swap, not an ideological rewrite.</li>
+<li><strong>Shopify Functions</strong> compile to <code>WASM</code> — Rust for portable business logic, fast.</li>
+</ul>
+<h2>The stack, and where to reach for it</h2>
+<p>Frameworks <code>Axum</code> + <code>Actix</code>; foundations <code>Hyper</code> + <code>Tower</code>; data <code>SQLx</code>, <code>Diesel</code>, <code>SeaORM</code>; runtime <code>Tokio</code>; observability <code>OpenTelemetry</code>.</p>
+<p>The <code>Tokio</code> mental model is close to Node: an <code>async fn</code> creates a lazy future, and the runtime — executor, scheduler, reactor, timers, async I/O, task spawning — runs it when ready. It's <strong>not a thread</strong>; it's machinery to let many futures make progress. Production engineering starts when many handlers share one runtime. <code>SQLx</code> keeps SQL explicit and moves failures earlier — verifying Rust types against the schema at compile time. Not an ORM, but with compile-time guarantees.</p>
+<p>Rust wins at backend, auth, billing, realtime, proxies, <code>WASM</code>/tooling, queues — <strong>realtime is the biggest win</strong>. It loses when speed of change matters most: landing pages, blogs, classic CMS, three-day MVPs, frontend-heavy apps. It has a cost — learning curve, compile time, async complexity — so pay it when the leverage is worth it. Go is simpler but not the correctness win; Java/Kotlin for tooling and big teams; JS/TS for speed. Keep TypeScript for the frontend, reach for Rust at the constraints. <strong>Hybrid wins.</strong> Rust doesn't need to win the web — it should be on the critical path.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--fg-faint)]">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://github.com/cloudflare/pingora">Pingora</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://tokio.rs">Tokio</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://github.com/tokio-rs/axum">Axum</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://github.com/launchbadge/sqlx">SQLx</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-sm">
+
+  <a class="text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/last-mile-is-code/">← The Last Mile Is Code</a>
+
+
+  <a class="text-right text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/choosing-typescript/">Choosing TypeScript Matters More Than Ever →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+    <p><a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/kolohelios/kolohelios/tree/main/apps/cascadiajs2026-notes">Source</a></p>
+  </div>
+</footer>
+</body>
+</html>

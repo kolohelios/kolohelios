@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Building Apps With ATProto · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-[color:var(--fg-faint)] hover:text-[color:var(--fg-muted)]">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-[color:var(--fg-strong)]">Building Apps With ATProto</h1>
+    <p class="mt-2 text-[color:var(--fg-muted)]">Brittany Ellich · Bluesky · Day 2</p>
+  </header>
+  <div class="notes mt-8">
+<p>Brittany hosts the Overcommitted podcast (<code>brittanyellich.com</code>). Her pitch: open social isn't a dream — <code>ATProto</code> is what it looks like when it actually works, and the whole thing turns on owning your own data.</p>
+<h2>How did we get here?</h2>
+<p>The typical platform timeline — <strong>launch, growth, monetize, maximize</strong> (see the book <em>Enshittification</em>). Big app platforms weaponize design to trap you: A/B testing, infinite scroll, pull-to-refresh. People stay despite all of it because the apps are hard to leave — they own your data, and they can leave <em>without</em> you (RIP Google+). They exist to maximize revenue, not to connect people.</p>
+<h2>What is ATProto?</h2>
+<p>The "Atmosphere" does for data what open source did for code. <strong>If an app does something you don't like, you can just leave</strong> — your content and your people come with you. Which forces apps to actually be <em>good</em> to keep you.</p>
+<h2>How does it work?</h2>
+<p>Each user gets their own <strong>repo</strong> where their data lives. Sign in and you get a repo plus a <code>DID</code> — a Decentralized ID — and a handle, where handles are DNS records. The repo holds <strong>records</strong> (a piece of JSON, a bit of data) and <strong>blobs</strong> (binaries). Anyone can build their own thing to render content; it doesn't live in <code>Bluesky</code>, the user is in charge. <code>Blacksky</code> is an alternative to Bluesky; <code>Witchsky</code> adds badges and pronouns with a different representation; <code>Anisota</code> is a simplified view.</p>
+<h2>Exploring the Atmosphere</h2>
+<p>And you don't have to worry about auth anymore. <code>ATStore</code> (<code>atstore.fyi</code>) is a compendium of registered ATProto apps: <code>Sifa.id</code> (professional identity network), <code>Streamplace</code> (open-source livestreaming for video), <code>rpg.actor</code> (make an RPG character), <code>atmo.quest</code> (connect with folks at events). Get your stuff out easily, to multiple destinations. This is what open social looks like when it actually works.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--fg-faint)]">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://atstore.fyi">ATStore</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://sifa.id">Sifa.id</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://stream.place">Streamplace</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://rpg.actor">rpg.actor</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://atmo.quest">atmo.quest</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-sm">
+
+  <a class="text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/hidden-connections-graphs/">← Unlocking AI&#x27;s Hidden Connections With Graphs</a>
+
+
+  <a class="text-right text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/request-tax/">The Request Tax: Re-evaluating 20+ Years of Web Performance Dogma →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+    <p><a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/kolohelios/kolohelios/tree/main/apps/cascadiajs2026-notes">Source</a></p>
+  </div>
+</footer>
+</body>
+</html>

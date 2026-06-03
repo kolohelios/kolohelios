@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teaching LLMs New Tricks · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-[color:var(--fg-faint)] hover:text-[color:var(--fg-muted)]">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-[color:var(--fg-strong)]">Teaching LLMs New Tricks</h1>
+    <p class="mt-2 text-[color:var(--fg-muted)]">Marty Nelson · Works Real Estate · Day 2</p>
+  </header>
+  <div class="notes mt-8">
+<p><code>Azoth</code> is an open-source library Marty built in winter 2023-24, shelved when AI hit, then revived in Nov 2025 — the AI era changed the math and brought it back. The lesson it taught him: you don't onboard an LLM to a new framework, you <strong>subtract abstractions</strong> until the model already knows the problem.</p>
+<h2>The setup</h2>
+<p>Building a dashboard for a real estate brokerage on <code>Google Looker</code>, Marty needed a visually intensive component that wasn't in the "vending machine." Why not just write HTML and CSS? Because <code>JSX</code> is everywhere and the AI defaults to <code>React</code> — <strong>same syntax, wrong semantics</strong>. <code>Azoth</code> has no virtual DOM and controls rendering: <code>&lt;p&gt;Hello&lt;/p&gt;</code> just returns a real <code>p</code> element.</p>
+<h2>The wrong move</h2>
+<p>The first instinct was to treat the new framework like a new framework — borrow an adjacent concept, "just use it a bit." It backfired: leaning on the incumbent's language confuses the LLM. So Marty wrote a "Don't say… / Say instead" map. But <strong>describing your thing in the negative space of someone else's thing is still the wrong move</strong> — <em>don't think about a pink elephant.</em></p>
+<h2>The unlock: subtract</h2>
+<p>The real unlock is a shared mental model — a system metaphor you both hold, so you can talk about the thing AS IT IS. Don't onboard the LLM; <strong>hire it as the new senior maintainer</strong>, and they're curious about your tech. <code>Azoth</code>'s <code>JSX</code> is real DOM: it compiles HTML to a template, the JS creates no DOM, no factory function builds it — you add small, deduplicated binding helpers. What you opt INTO with <code>React</code>, you opt OUT of with <code>Azoth</code>. It accepts everything <code>JSX</code> already has — no proprietary primitives, just JS.</p>
+<p>Notice the shape: <strong>remove the abstraction.</strong> Don't replace the vDOM; subtract it. Reduce everything to a DOM problem — a component is, literally, a constructor — and the LLM reaches for a tool that fits.</p>
+<p>So prompts aren't engineering instructions; they're navigation. Push AWAY from what you're subtracting, pull TOWARD what you've unlocked. Two budgets matter now: <strong>Context</strong> (what you carry in) and <strong>Corpus</strong> (what's already in the model — spend it wisely). Subtract your abstractions, unlock the corpus.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--fg-faint)]">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://github.com/azothjs/azoth">Azoth</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-sm">
+
+  <a class="text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/on-device-ai-music/">← Accelerating Musical Live Coding With On-Device AI</a>
+
+
+  <a class="text-right text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/beowulf-stroganoff/">Beowulf Stroganoff: Building Economically Useless Chatbots →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+    <p><a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/kolohelios/kolohelios/tree/main/apps/cascadiajs2026-notes">Source</a></p>
+  </div>
+</footer>
+</body>
+</html>

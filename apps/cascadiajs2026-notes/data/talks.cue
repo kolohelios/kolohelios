@@ -16,13 +16,13 @@ package talks
 }
 
 #Talk: {
-	slug:     string & =~"^[a-z0-9-]+$"
-	speaker:  string
-	company:  string
-	title:    string
-	day:      int & >=1
-	order:    int & >=1
-	slides?:  string
+	slug:    string & =~"^[a-z0-9-]+$"
+	speaker: string
+	company: string
+	title:   string
+	day:     int & >=1
+	order:   int & >=1
+	slides?: string
 	projects: [...#Project] | *[]
 	sources: [...string] | *[]
 }
@@ -156,5 +156,144 @@ talks: [...#Talk] & [
 		title:   "The Last Mile Is Code"
 		day:     1
 		order:   12
+	},
+	{
+		slug:    "rust-critical-path"
+		speaker: "Francesco Ciulla"
+		company: "Zerops"
+		title:   "JavaScript Won the Web. Rust Is Taking the Critical Path."
+		day:     2
+		order:   1
+		projects: [
+			{name: "Pingora", url: "https://github.com/cloudflare/pingora"},
+			{name: "Tokio", url: "https://tokio.rs"},
+			{name: "Axum", url: "https://github.com/tokio-rs/axum"},
+			{name: "SQLx", url: "https://github.com/launchbadge/sqlx"},
+		]
+	},
+	{
+		slug:    "choosing-typescript"
+		speaker: "Filip Sodić"
+		company: "Wasp"
+		title:   "Choosing TypeScript Matters More Than Ever"
+		day:     2
+		order:   2
+		slides:  "https://forms.gle/j5KMBi1ASB5d1Lj76"
+		projects: [
+			{name: "Wasp", url: "https://wasp.sh"},
+		]
+	},
+	{
+		slug:    "on-device-ai-music"
+		speaker: "Alex Hinson"
+		company: "Fleetio"
+		title:   "Accelerating Musical Live Coding With On-Device AI"
+		day:     2
+		order:   3
+		projects: [
+			{name: "Strudel", url: "https://strudel.cc"},
+			{name: "transformers.js", url: "https://github.com/huggingface/transformers.js"},
+		]
+	},
+	{
+		slug:    "teaching-llms-new-tricks"
+		speaker: "Marty Nelson"
+		company: "Works Real Estate"
+		title:   "Teaching LLMs New Tricks"
+		day:     2
+		order:   4
+		projects: [
+			{name: "Azoth", url: "https://github.com/azothjs/azoth"},
+		]
+	},
+	{
+		slug:    "beowulf-stroganoff"
+		speaker: "Molly Jean Bennett"
+		company: "Grow Therapy"
+		title:   "Beowulf Stroganoff: Building Economically Useless Chatbots"
+		day:     2
+		order:   5
+	},
+	{
+		slug:    "design-tokens"
+		speaker: "Kaelig Deloumeau-Prigent"
+		company: "Design Tokens W3C CG"
+		title:   "Design Tokens: Getting Agents to Follow Brand Guidelines"
+		day:     2
+		order:   6
+		projects: [
+			{name: "designtokens.org", url: "https://www.designtokens.org"},
+		]
+	},
+	{
+		slug:    "hidden-connections-graphs"
+		speaker: "Nyah Macklin"
+		company: "Neo4j"
+		title:   "Unlocking AI's Hidden Connections With Graphs"
+		day:     2
+		order:   7
+		projects: [
+			{name: "Neo4j GraphAcademy", url: "https://graphacademy.neo4j.com"},
+		]
+	},
+	{
+		slug:    "atproto-apps"
+		speaker: "Brittany Ellich"
+		company: "Bluesky"
+		title:   "Building Apps With ATProto"
+		day:     2
+		order:   8
+		projects: [
+			{name: "ATStore", url: "https://atstore.fyi"},
+			{name: "Sifa.id", url: "https://sifa.id"},
+			{name: "Streamplace", url: "https://stream.place"},
+			{name: "rpg.actor", url: "https://rpg.actor"},
+			{name: "atmo.quest", url: "https://atmo.quest"},
+		]
+	},
+	{
+		slug:    "request-tax"
+		speaker: "Alex Moon"
+		company: "WP Engine"
+		title:   "The Request Tax: Re-evaluating 20+ Years of Web Performance Dogma"
+		day:     2
+		order:   9
+	},
+	{
+		slug:    "human-in-the-loop"
+		speaker: "Michael Liendo"
+		company: "Auth0"
+		title:   "Trust, But Verify: Human-in-the-Loop for Agents That Actually Matter"
+		day:     2
+		order:   10
+		projects: [
+			{name: "Auth0", url: "https://auth0.com"},
+		]
+	},
+	{
+		slug:    "karaoke-stems"
+		speaker: "Luis Montes"
+		company: "Iced Dev"
+		title:   "Hold Me Closer, Tony Danza"
+		day:     2
+		order:   11
+		projects: [
+			{name: "Demucs", url: "https://github.com/adefossez/demucs"},
+			{name: "Whisper", url: "https://github.com/openai/whisper"},
+			{name: "Butterchurn", url: "https://github.com/jberg/butterchurn"},
+			{name: "CREPE", url: "https://github.com/marl/crepe"},
+		]
+	},
+	{
+		slug:    "rethink-everything"
+		speaker: "Theo"
+		company: "T3 Chat"
+		title:   "It's Time to Rethink Everything"
+		day:     2
+		order:   12
+		projects: [
+			{name: "Lakebed", url: "https://lakebed.dev"},
+			{name: "shoo.dev", url: "https://shoo.dev"},
+		]
 	},
 ]
