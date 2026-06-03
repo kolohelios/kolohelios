@@ -54,7 +54,20 @@ jobs:
         # `.env` is gitignored; copy from the in-repo example so the
         # recipe's `_env-check` precondition passes. `.env.example`
         # already holds the `op://` refs the SA token will resolve.
+        #
+        # `--retry-on "This Worker does not exist"` absorbs the
+        # first-deploy race (#714): on a brand-new `rust-worker`, the
+        # `cloudflare_workers_custom_domain` attach in this apply runs
+        # concurrently with the project's `wrangler deploy`, and on a
+        # script that doesn't exist yet Cloudflare rejects the attach
+        # with that message. `tofu apply` is idempotent, so re-running
+        # self-heals once the parallel deploy lands the script. The
+        # retry rides along on every infra project that calls this
+        # reusable workflow (cloudflare-dns, cloudflare-tokens), but the
+        # substring only ever matches the worker-domain race, so it's a
+        # no-op elsewhere.
         run: |
           cp .env.example .env
-          nix develop . --command shaka ci mask-and-run --env-file=.env -- \
+          nix develop . --command shaka ci mask-and-run --env-file=.env \
+            --retry-on "This Worker does not exist" --max-retries 5 --retry-delay 30 -- \
             just apply -auto-approve -input=false
