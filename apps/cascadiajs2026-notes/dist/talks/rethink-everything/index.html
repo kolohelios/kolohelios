@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>It&#x27;s Time to Rethink Everything · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-[color:var(--fg-faint)] hover:text-[color:var(--fg-muted)]">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-[color:var(--fg-strong)]">It&#x27;s Time to Rethink Everything</h1>
+    <p class="mt-2 text-[color:var(--fg-muted)]">Theo · T3 Chat · Day 2</p>
+  </header>
+  <div class="notes mt-8">
+<p>Building software is wildly different now because of AI — the same way the cloud changed everything before it. The same movie, playing again.</p>
+<h2>The cloud already ran this play</h2>
+<p><strong>Before the cloud</strong>, building was capital-intensive: you had to predict the future, and experimentation was expensive. <strong>After</strong>, you start small and scale up, experimentation is cheap, and you don't need God-tier infra devs — Amazon-tier hardware without an Amazon-tier budget. AI is that movie again: <strong>Amazon-scale software without Amazon-scale SWE teams.</strong> The expertise required drops; the things that were rigid aren't anymore.</p>
+<h2>Rethink the assumptions we stopped questioning</h2>
+<p>Why can't we commit <code>.env</code> files? Why can't a public repo have private parts? Why can't a file be in two folders at once? Why do we need a file system to compile my app? Why do we assume our codebases still matter — our packages? Why can't we rebuild everything? <strong>Why can't we boil the ocean?</strong></p>
+<p><code>Salesforce</code> is the opposite of all this — a giant pile of features. Everyone needs a few, the Fortune 500 needs more, and there's a long tail that 1% of users touch. You have to build for every snowflake. Or do you? <strong>Breadth is now trivial to cover; depth isn't the problem</strong> — build a platform and let the client's agents handle the depth. Too broad is hard; too deep isn't good.</p>
+<h2>Boil the ocean</h2>
+<p><strong>Before</strong>: 40 hours to build, 3 hours to deploy. <strong>After</strong>: 30 minutes to build, 3 hours to deploy — now the deploy is the obnoxious part. <code>shoo.dev</code> does auth in two lines (easy, not necessarily secure or good); it didn't ship because it was built too deep in the vertical. So make all the problems go away. Theo went too far and built <code>Lakebed</code> [alpha] — <code>npx lakebed new sup-seattle</code>, then <code>npx lakebed deploy</code>, deployed in seconds; change something, redeploy in seconds. He built the language, compiler, CLI, <em>and</em> deployer. We kid ourselves that we need all the perfect things — just prompt something into existence. <code>lakebed.dev</code>.</p>
+<p><strong>Why haven't we been thinking right?</strong> We are not building big enough. Find the place where going so big makes you feel STUPID. The last 5, 10, 50 years don't matter — where will things be in five? You aren't building big enough.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--fg-faint)]">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://lakebed.dev">Lakebed</a></li>
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://shoo.dev">shoo.dev</a></li>
+
+    </ul>
+  </section>
+
+
+
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-sm">
+
+  <a class="text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/karaoke-stems/">← Hold Me Closer, Tony Danza</a>
+
+
+  <span></span>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+    <p><a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/kolohelios/kolohelios/tree/main/apps/cascadiajs2026-notes">Source</a></p>
+  </div>
+</footer>
+</body>
+</html>

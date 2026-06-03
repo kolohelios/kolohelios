@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choosing TypeScript Matters More Than Ever · CascadiaJS 2026 Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-[var(--bg)] text-[color:var(--fg)] antialiased">
+<header class="border-b border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl px-6 py-5">
+    <a href="/" class="text-sm font-semibold tracking-tight text-[color:var(--fg-strong)] hover:text-[color:var(--fg-muted)]">CascadiaJS 2026 · Notes</a>
+  </div>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-10">
+
+<a href="/" class="text-sm text-[color:var(--fg-faint)] hover:text-[color:var(--fg-muted)]">← All talks</a>
+<article class="mt-4">
+  <header>
+    <h1 class="text-2xl font-bold tracking-tight text-[color:var(--fg-strong)]">Choosing TypeScript Matters More Than Ever</h1>
+    <p class="mt-2 text-[color:var(--fg-muted)]">Filip Sodić · Wasp · Day 2</p>
+  </header>
+  <div class="notes mt-8">
+<p>Keep choosing TypeScript — it matters more than ever. LLM output is <strong>not</strong> "the new machine code"; you should still learn a language well, and <code>TypeScript</code> is the perfect choice.</p>
+<h2>Why the language layer still matters</h2>
+<p>Look at the world we built for agents: a tower of abstractions. <code>0/1</code> at the bottom, then <code>ASM</code>, then compilers down to <code>C</code>, then <code>TS</code>/<code>Go</code>/<code>Python</code>, then frameworks, then applications. We've spent most of our time in the language layer. People who dabble in predictions imagine squashing the lower languages — even the high-level ones. The truth sits in the middle, between "languages become irrelevant" and "English is a programming language." <strong>English is not a good programming language</strong> (per Paul Graham). If the prediction held, we'd be committing prompts instead of code — and we're not, yet.</p>
+<h2>Why TypeScript specifically</h2>
+<p>Software engineering is <strong>compression</strong> — the time spent compressing personal context. Picture nested, overlapping concepts where <code>MEMORY</code> is the outsized layer:</p>
+<pre><code>types -&gt; code -&gt; docs -&gt; memory
+</code></pre>
+<p>Shoot first, ask questions later — code is cheap, right? Imagine there's no TypeScript. <strong>Plan A: documentation.</strong> But docs aren't the harness — non-deterministic, no guarantee they match reality; you've just moved memory into docs. <strong>Plan B: tests.</strong> You move some memory into code via coverage and case exhaustion plus the happy path — but you reduce entropy by adding <em>more</em> code, and tests still expect you and the agent to generalize. Pile on tests if you want to throw off 100k lines a day.</p>
+<h2>Start with the types</h2>
+<p><strong>Then: types.</strong> Move context out of memory and code and into types — if <em>you</em> know something, the types should know it too. A prompt is just a specification written in English; step back and define the type <strong>manually</strong>. That's more precise. Fred Brooks: <em>"Show me your flowcharts and conceal your tables…"</em> Reach for the right type and you compress memory <em>and</em> preserve context — discover the domain <em>while</em> you build the model. (<code>GrillMe</code> is a skill for refining domain modeling.)</p>
+<p>He considered branded types, result types, exhaustiveness, smart constructors, edge type safety — and kept it simpler. <code>Rust</code> can do all this and more — maybe more than we need. Meanwhile <code>TS</code> keeps evolving: rewritten in <code>Go</code>, better errors, legacy baggage shed, still the most popular language.</p>
+
+  </div>
+
+
+  <section class="mt-10">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--fg-faint)]">Referenced</h2>
+    <ul class="mt-3 space-y-1">
+
+      <li><a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://wasp.sh">Wasp</a></li>
+
+    </ul>
+  </section>
+
+
+
+  <section class="mt-6">
+    <a class="text-[color:var(--link)] underline hover:text-[color:var(--link-hover)]" href="https://forms.gle/j5KMBi1ASB5d1Lj76">Slides</a>
+  </section>
+
+
+
+</article>
+
+<nav class="mt-12 flex justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-sm">
+
+  <a class="text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/rust-critical-path/">← JavaScript Won the Web. Rust Is Taking the Critical Path.</a>
+
+
+  <a class="text-right text-[color:var(--fg-muted)] hover:text-[color:var(--link)]" href="/talks/on-device-ai-music/">Accelerating Musical Live Coding With On-Device AI →</a>
+
+</nav>
+
+</main>
+<footer class="mt-16 border-t border-[color:var(--border)]">
+  <div class="mx-auto max-w-3xl space-y-1 px-6 py-8 text-xs text-[color:var(--fg-faint)]">
+    <p>Personal notes from <a class="underline hover:text-[color:var(--fg-muted)]" href="https://www.cascadiajs.com/">CascadiaJS 2026</a>.</p>
+    <p>Cross-referenced against the community notes at <a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/hurrendor/cascadiajs26">hurrendor/cascadiajs26</a> (GPL-3.0); no prose copied.</p>
+    <p><a class="underline hover:text-[color:var(--fg-muted)]" href="https://github.com/kolohelios/kolohelios/tree/main/apps/cascadiajs2026-notes">Source</a></p>
+  </div>
+</footer>
+</body>
+</html>
