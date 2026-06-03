@@ -118,21 +118,13 @@ pub fn run(json: bool) {
         }
     };
 
-    if json {
-        match serde_json::to_string_pretty(&description) {
-            Ok(s) => println!("{s}"),
-            Err(e) => {
-                eprintln!("{RED}{BOLD}error:{RESET} failed to serialize description: {e}");
-                std::process::exit(1);
-            }
-        }
-    } else {
-        println!("{}", description.title);
-        if !description.body.is_empty() {
+    crate::output::emit(json, &description, |d| {
+        println!("{}", d.title);
+        if !d.body.is_empty() {
             println!();
-            println!("{}", description.body);
+            println!("{}", d.body);
         }
-    }
+    });
 }
 
 #[cfg(test)]
