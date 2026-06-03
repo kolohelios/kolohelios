@@ -502,14 +502,21 @@ pub fn pr_merge_auto_rebase(pr_url: &str) -> Result<(), GhError> {
 
 /// Fetch the title of a GitHub issue by number.
 ///
-/// Shells out to `gh issue view <n> --json title --jq .title`.
+/// Shells out to `gh issue view <n> --repo <owner/repo> --json title
+/// --jq .title`. `--repo` is resolved via [`detect_repo_or_env`] so this
+/// works from inside a sibling jj workspace, which has no `.git` of its
+/// own for `gh` to auto-detect the remote from.
+///
 /// Returns an error if `gh` is not authenticated or the issue does not exist.
 pub fn issue_title(n: u64) -> Result<String, GhError> {
+    let repo = detect_repo_or_env()?;
     let output = Command::new("gh")
         .args([
             "issue",
             "view",
             &n.to_string(),
+            "--repo",
+            &repo,
             "--json",
             "title",
             "--jq",
@@ -521,7 +528,7 @@ pub fn issue_title(n: u64) -> Result<String, GhError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return GhCommandSnafu {
-            command: format!("gh issue view {n}"),
+            command: format!("gh issue view {n} --repo {repo}"),
             stderr: stderr.trim().to_string(),
         }
         .fail();
