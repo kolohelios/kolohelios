@@ -792,6 +792,94 @@ pub(crate) fn parse_open_prs(body: &str) -> Result<Vec<OpenPr>, GhError> {
         .collect()
 }
 
+/// Issue numbers that an open PR in `repo` would auto-close on merge.
+///
+/// One `gh pr list` call fetches every open PR's body; each is parsed
+/// for `Closes #N` / `Fixes #N` / `Resolves #N` autoclose references
+/// via [`crate::commit::issue_ref::extract_autoclose_refs`]. The union
+/// is the set of issues "already in flight" behind a PR — used by
+/// `shaka issue next` to drop them from the available list.
+pub fn open_pr_issue_refs(repo: &str) -> Result<std::collections::BTreeSet<u64>, GhError> {
+    let output = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--limit",
+            "200",
+            "--json",
+            "number,body",
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: "gh pr list".to_string(),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_open_pr_issue_refs(&body)
+}
+
+pub(crate) fn parse_open_pr_issue_refs(
+    body: &str,
+) -> Result<std::collections::BTreeSet<u64>, GhError> {
+    let value: Value = serde_json::from_str(body).context(JsonParseSnafu {
+        context: "failed to parse gh pr list JSON".to_string(),
+    })?;
+    let arr = value.as_array().context(SchemaSnafu {
+        message: "gh pr list did not return an array",
+    })?;
+
+    let mut refs = std::collections::BTreeSet::new();
+    for pr in arr {
+        let pr_body = pr["body"].as_str().unwrap_or("");
+        for n in crate::commit::issue_ref::extract_autoclose_refs(pr_body) {
+            refs.insert(n);
+        }
+    }
+    Ok(refs)
+}
+
+/// Self-assign the authenticated GitHub viewer to `{repo}#{n}`.
+///
+/// Uses `gh issue edit --add-assignee @me`, which `gh` resolves to the
+/// current user. Callers treat failure as non-fatal: assignment is a
+/// convenience signal, not a correctness gate.
+pub fn assign_issue_to_me(repo: &str, n: u64) -> Result<(), GhError> {
+    let number = n.to_string();
+    let output = Command::new("gh")
+        .args([
+            "issue",
+            "edit",
+            &number,
+            "--repo",
+            repo,
+            "--add-assignee",
+            "@me",
+        ])
+        .output()
+        .context(SpawnSnafu)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCommandSnafu {
+            command: format!("gh issue edit {number} --add-assignee @me"),
+            stderr: stderr.trim().to_string(),
+        }
+        .fail();
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListState {
     Open,
@@ -833,6 +921,8 @@ pub struct IssueSummary {
     pub url: String,
     pub created_at: String,
     pub updated_at: String,
+    /// GitHub logins of the issue's assignees. Empty when unassigned.
+    pub assignees: Vec<String>,
 }
 
 /// List GitHub issues from `repo` matching the given filters.
@@ -860,7 +950,7 @@ pub fn list_issues(
         "--limit".into(),
         limit,
         "--json".into(),
-        "number,title,state,labels,url,createdAt,updatedAt".into(),
+        "number,title,state,labels,url,createdAt,updatedAt,assignees".into(),
     ];
     for label in labels {
         args.push("--label".into());
@@ -938,6 +1028,14 @@ pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError>
                 .to_string();
             let created_at = v["createdAt"].as_str().unwrap_or("").to_string();
             let updated_at = v["updatedAt"].as_str().unwrap_or("").to_string();
+            let assignees = v["assignees"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|u| u["login"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
             Ok(IssueSummary {
                 number,
                 title,
@@ -946,6 +1044,7 @@ pub(crate) fn parse_issue_list(body: &str) -> Result<Vec<IssueSummary>, GhError>
                 url,
                 created_at,
                 updated_at,
+                assignees,
             })
         })
         .collect()
@@ -1394,5 +1493,43 @@ mod tests {
         let body: Value =
             serde_json::from_str(r#"{"data":{"repository":{"issue":null}}}"#).unwrap();
         assert_eq!(parse_issue_parent_graphql(&body), None);
+    }
+
+    #[test]
+    fn parse_open_pr_issue_refs_unions_autoclose_refs() {
+        let body = r#"[
+            {"number": 730, "body": "Add --json output.\n\nCloses #68"},
+            {"number": 712, "body": "Fixes #711 and resolves #709"},
+            {"number": 700, "body": "No issue reference here"},
+            {"number": 699, "body": "Refs #500 (not an autoclose keyword)"}
+        ]"#;
+        let refs = parse_open_pr_issue_refs(body).unwrap();
+        assert!(refs.contains(&68));
+        assert!(refs.contains(&711));
+        assert!(refs.contains(&709));
+        // `Refs #500` is a mention, not an autoclose keyword.
+        assert!(!refs.contains(&500));
+        assert_eq!(refs.len(), 3);
+    }
+
+    #[test]
+    fn parse_open_pr_issue_refs_empty_when_no_prs() {
+        let refs = parse_open_pr_issue_refs("[]").unwrap();
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn parse_issue_list_extracts_assignees() {
+        let body = r#"[
+            {"number": 1, "title": "taken", "state": "OPEN", "labels": [],
+             "url": "https://x/1", "createdAt": "", "updatedAt": "",
+             "assignees": [{"login": "jedwards"}]},
+            {"number": 2, "title": "free", "state": "OPEN", "labels": [],
+             "url": "https://x/2", "createdAt": "", "updatedAt": "",
+             "assignees": []}
+        ]"#;
+        let issues = parse_issue_list(body).unwrap();
+        assert_eq!(issues[0].assignees, vec!["jedwards".to_string()]);
+        assert!(issues[1].assignees.is_empty());
     }
 }
