@@ -49,6 +49,7 @@ talks: [...#Talk] & [
 		title:   "AI Agent Swarms Are Amazing"
 		day:     1
 		order:   2
+		slides:  "https://cascadia.wzrrd.sh/"
 		projects: [
 			{name: "opencode", url: "https://github.com/sst/opencode"},
 			{name: "mattpocock/skills", url: "https://github.com/mattpocock/skills"},
@@ -178,7 +179,7 @@ talks: [...#Talk] & [
 		title:   "Choosing TypeScript Matters More Than Ever"
 		day:     2
 		order:   2
-		slides:  "https://forms.gle/j5KMBi1ASB5d1Lj76"
+		slides:  "https://sodic.dev/choosing-typescript-matters-cascadiajs-2026.pdf"
 		projects: [
 			{name: "Wasp", url: "https://wasp.sh"},
 		]
@@ -190,6 +191,7 @@ talks: [...#Talk] & [
 		title:   "Accelerating Musical Live Coding With On-Device AI"
 		day:     2
 		order:   3
+		slides:  "https://bit.ly/cascadia-ai-music"
 		projects: [
 			{name: "Strudel", url: "https://strudel.cc"},
 			{name: "transformers.js", url: "https://github.com/huggingface/transformers.js"},
@@ -213,6 +215,10 @@ talks: [...#Talk] & [
 		title:   "Beowulf Stroganoff: Building Economically Useless Chatbots"
 		day:     2
 		order:   5
+		slides:  "https://docs.google.com/presentation/d/1mxPhGJUA2f2FTfEm0B09IbVC5MwJ-f8oEgMhEBA1A64/edit?usp=sharing"
+		projects: [
+			{name: "Beowulf Stroganoff (Hugging Face Space)", url: "https://huggingface.co/spaces/MollyJeanB/beowulf-stroganoff"},
+		]
 	},
 	{
 		slug:    "design-tokens"
@@ -243,6 +249,7 @@ talks: [...#Talk] & [
 		title:   "Building Apps With ATProto"
 		day:     2
 		order:   8
+		slides:  "https://docs.google.com/presentation/d/1GCG0h4H5w-ZLJ0Gl9YkQXu1iHyivS-AhueAtUzqfqzw/edit?usp=drivesdk"
 		projects: [
 			{name: "ATStore", url: "https://atstore.fyi"},
 			{name: "Sifa.id", url: "https://sifa.id"},
@@ -258,6 +265,7 @@ talks: [...#Talk] & [
 		title:   "The Request Tax: Re-evaluating 20+ Years of Web Performance Dogma"
 		day:     2
 		order:   9
+		slides:  "https://github.com/moonmeister/request-tax/tree/cascadia-js"
 	},
 	{
 		slug:    "human-in-the-loop"
