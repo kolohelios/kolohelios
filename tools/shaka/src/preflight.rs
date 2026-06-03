@@ -1,8 +1,35 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
+
+use serde::Serialize;
 
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
+
+/// Set in `--json` mode: checks capture subprocess output into their
+/// `detail` instead of streaming it to the terminal, so stdout stays a
+/// clean JSON document and failure detail carries the tool's own output.
+static CAPTURE_OUTPUT: AtomicBool = AtomicBool::new(false);
+
+fn capture_output() -> bool {
+    CAPTURE_OUTPUT.load(Ordering::Relaxed)
+}
+
+/// Combine a child process's stdout and stderr into one trimmed string
+/// for a failed check's `detail`.
+fn combined_output(out: &Output) -> String {
+    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
+    let err = String::from_utf8_lossy(&out.stderr);
+    if !err.trim().is_empty() {
+        if !s.trim().is_empty() {
+            s.push('\n');
+        }
+        s.push_str(&err);
+    }
+    s.trim().to_string()
+}
 
 enum CheckResult {
     Pass,
@@ -15,6 +42,36 @@ struct Check {
     /// Empty list means "always run regardless of changed files".
     paths: &'static [&'static str],
     run: fn() -> CheckResult,
+}
+
+/// Machine-readable preflight result, emitted under `--json`. Stable
+/// enough for CI parsers and assistant fix-routing to depend on.
+#[derive(Serialize)]
+struct PreflightReport {
+    checks: Vec<CheckReport>,
+    total: usize,
+    passed: usize,
+    failed: usize,
+    skipped: usize,
+    success: bool,
+}
+
+#[derive(Serialize)]
+struct CheckReport {
+    name: String,
+    /// `"repo"` for cross-project checks, `"project"` for a per-project
+    /// `just validate`.
+    kind: &'static str,
+    /// `"pass"`, `"fail"`, or `"skipped"` (path scope didn't intersect
+    /// `--since`).
+    status: &'static str,
+    duration_ms: u128,
+    /// Tool stderr / failure detail; present only for failed checks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+    /// Path scope that selects this check: glob patterns for repo
+    /// checks, the project directory for project checks.
+    paths: Vec<String>,
 }
 
 const CHECKS: &[Check] = &[
@@ -151,7 +208,12 @@ const CHECKS: &[Check] = &[
     },
 ];
 
-pub fn run(keep_going: bool, since: Option<String>) {
+pub fn run(keep_going: bool, since: Option<String>, json: bool) {
+    // JSON mode emits a single document at the end, so suppress the
+    // streaming per-check progress lines and have checks capture their
+    // subprocess output into `detail` rather than printing to stdout.
+    let stream = !json;
+    CAPTURE_OUTPUT.store(json, Ordering::Relaxed);
     let changed = match since.as_deref() {
         Some(r) => match changed_paths(r) {
             Ok(p) => Some(p),
@@ -179,18 +241,36 @@ pub fn run(keep_going: bool, since: Option<String>) {
     let total = repo_to_run.len() + project_to_run.len();
     let total_skipped = repo_skipped.len() + project_skipped.len();
 
+    let mut checks: Vec<CheckReport> = Vec::new();
     let mut passed = 0usize;
-    let mut failures: Vec<(String, CheckResult)> = Vec::new();
+    let mut failed = 0usize;
     let mut bail = false;
 
-    if changed.is_some() {
-        if total_skipped == 0 {
-            println!(
-                "{BOLD}preflight:{RESET} running {} repo + {} project checks",
-                repo_to_run.len(),
-                project_to_run.len()
-            );
-        } else {
+    // Path-scope skips: record as `skipped` entries so a JSON consumer
+    // sees the full check inventory, not just what ran.
+    for c in &repo_skipped {
+        checks.push(CheckReport {
+            name: c.name.to_string(),
+            kind: "repo",
+            status: "skipped",
+            duration_ms: 0,
+            detail: None,
+            paths: c.paths.iter().map(|p| (*p).to_string()).collect(),
+        });
+    }
+    for p in &project_skipped {
+        checks.push(CheckReport {
+            name: project_label(p),
+            kind: "project",
+            status: "skipped",
+            duration_ms: 0,
+            detail: None,
+            paths: vec![project_label(p)],
+        });
+    }
+
+    if stream {
+        if changed.is_some() && total_skipped > 0 {
             println!(
                 "{BOLD}preflight:{RESET} running {} repo + {} project checks ({YELLOW}skipped:{RESET} {} repo, {} projects)",
                 repo_to_run.len(),
@@ -198,34 +278,59 @@ pub fn run(keep_going: bool, since: Option<String>) {
                 repo_skipped.len(),
                 project_skipped.len()
             );
+        } else {
+            println!(
+                "{BOLD}preflight:{RESET} running {} repo + {} project checks",
+                repo_to_run.len(),
+                project_to_run.len()
+            );
         }
-    } else {
-        println!(
-            "{BOLD}preflight:{RESET} running {} repo + {} project checks",
-            repo_to_run.len(),
-            project_to_run.len()
-        );
     }
 
     let mut idx = 0usize;
     for check in &repo_to_run {
         idx += 1;
-        let label = format!("[repo {}/{}] {}", idx, repo_to_run.len(), check.name);
-        print!("  {label} ... ");
-        std::io::stdout().flush().ok();
+        if stream {
+            let label = format!("[repo {}/{}] {}", idx, repo_to_run.len(), check.name);
+            print!("  {label} ... ");
+            std::io::stdout().flush().ok();
+        }
 
+        let start = Instant::now();
         let result = (check.run)();
-        match &result {
+        let duration_ms = start.elapsed().as_millis();
+        let paths: Vec<String> = check.paths.iter().map(|p| (*p).to_string()).collect();
+        match result {
             CheckResult::Pass => {
-                println!("{GREEN}{BOLD}ok{RESET}");
-                passed += 1;
-            }
-            CheckResult::Fail { detail, .. } => {
-                println!("{RED}{BOLD}FAIL{RESET}");
-                if !detail.is_empty() {
-                    println!("    {DIM}{detail}{RESET}");
+                if stream {
+                    println!("{GREEN}{BOLD}ok{RESET}");
                 }
-                failures.push((check.name.to_string(), result));
+                passed += 1;
+                checks.push(CheckReport {
+                    name: check.name.to_string(),
+                    kind: "repo",
+                    status: "pass",
+                    duration_ms,
+                    detail: None,
+                    paths,
+                });
+            }
+            CheckResult::Fail { detail } => {
+                if stream {
+                    println!("{RED}{BOLD}FAIL{RESET}");
+                    if !detail.is_empty() {
+                        println!("    {DIM}{detail}{RESET}");
+                    }
+                }
+                failed += 1;
+                checks.push(CheckReport {
+                    name: check.name.to_string(),
+                    kind: "repo",
+                    status: "fail",
+                    duration_ms,
+                    detail: Some(detail),
+                    paths,
+                });
                 if !keep_going {
                     bail = true;
                     break;
@@ -237,27 +342,51 @@ pub fn run(keep_going: bool, since: Option<String>) {
     if !bail {
         for (i, project) in project_to_run.iter().enumerate() {
             let display = project_label(project);
-            let label = format!(
-                "[proj {}/{}] {} (just validate)",
-                i + 1,
-                project_to_run.len(),
-                display
-            );
-            print!("  {label} ... ");
-            std::io::stdout().flush().ok();
+            if stream {
+                let label = format!(
+                    "[proj {}/{}] {} (just validate)",
+                    i + 1,
+                    project_to_run.len(),
+                    display
+                );
+                print!("  {label} ... ");
+                std::io::stdout().flush().ok();
+            }
 
+            let start = Instant::now();
             let result = just_validate(project);
-            match &result {
+            let duration_ms = start.elapsed().as_millis();
+            match result {
                 CheckResult::Pass => {
-                    println!("{GREEN}{BOLD}ok{RESET}");
-                    passed += 1;
-                }
-                CheckResult::Fail { detail, .. } => {
-                    println!("{RED}{BOLD}FAIL{RESET}");
-                    if !detail.is_empty() {
-                        println!("    {DIM}{detail}{RESET}");
+                    if stream {
+                        println!("{GREEN}{BOLD}ok{RESET}");
                     }
-                    failures.push((display, result));
+                    passed += 1;
+                    checks.push(CheckReport {
+                        name: display,
+                        kind: "project",
+                        status: "pass",
+                        duration_ms,
+                        detail: None,
+                        paths: vec![project_label(project)],
+                    });
+                }
+                CheckResult::Fail { detail } => {
+                    if stream {
+                        println!("{RED}{BOLD}FAIL{RESET}");
+                        if !detail.is_empty() {
+                            println!("    {DIM}{detail}{RESET}");
+                        }
+                    }
+                    failed += 1;
+                    checks.push(CheckReport {
+                        name: display,
+                        kind: "project",
+                        status: "fail",
+                        duration_ms,
+                        detail: Some(detail),
+                        paths: vec![project_label(project)],
+                    });
                     if !keep_going {
                         break;
                     }
@@ -266,24 +395,42 @@ pub fn run(keep_going: bool, since: Option<String>) {
         }
     }
 
-    println!();
-    if failures.is_empty() {
-        println!(
-            "{GREEN}{BOLD}preflight passed{RESET} ({passed}/{total}{})",
-            if total_skipped > 0 {
-                format!(", {total_skipped} skipped")
-            } else {
-                String::new()
-            }
-        );
-        return;
-    }
+    let report = PreflightReport {
+        checks,
+        total,
+        passed,
+        failed,
+        skipped: total_skipped,
+        success: failed == 0,
+    };
 
-    eprintln!(
-        "{RED}{BOLD}preflight failed{RESET} ({passed} passed, {} failed of {total})",
-        failures.len()
-    );
-    std::process::exit(1);
+    crate::output::emit(json, &report, render_human_summary);
+
+    if !report.success {
+        std::process::exit(1);
+    }
+}
+
+/// Trailing summary line for human mode; the per-check lines were already
+/// streamed as the checks ran.
+fn render_human_summary(report: &PreflightReport) {
+    println!();
+    if report.success {
+        let skipped = if report.skipped > 0 {
+            format!(", {} skipped", report.skipped)
+        } else {
+            String::new()
+        };
+        println!(
+            "{GREEN}{BOLD}preflight passed{RESET} ({}/{}{skipped})",
+            report.passed, report.total
+        );
+    } else {
+        eprintln!(
+            "{RED}{BOLD}preflight failed{RESET} ({} passed, {} failed of {})",
+            report.passed, report.failed, report.total
+        );
+    }
 }
 
 /// Render a project path like "tools/shaka" — drops a leading `./` when present.
@@ -424,6 +571,25 @@ fn vale_check() -> CheckResult {
         return CheckResult::Pass;
     }
 
+    // JSON mode: the suggestion-level display pass exists only for live
+    // human output, so skip it and run a single warning-level pass with
+    // captured output feeding the report's `detail` on failure.
+    if capture_output() {
+        return match Command::new("vale")
+            .args(["--minAlertLevel=warning"])
+            .args(&md_files)
+            .output()
+        {
+            Ok(out) if out.status.success() => CheckResult::Pass,
+            Ok(out) => CheckResult::Fail {
+                detail: combined_output(&out),
+            },
+            Err(e) => CheckResult::Fail {
+                detail: format!("failed to spawn vale: {e}"),
+            },
+        };
+    }
+
     // Two passes so suggestions print but don't gate. Vale's
     // `--minAlertLevel` controls both display and exit code, so to honor
     // "show suggestions, fail on warnings" we display once at suggestion
@@ -512,6 +678,25 @@ fn spawn_self(args: &[&str]) -> CheckResult {
 }
 
 fn run_command(cmd: &mut Command) -> CheckResult {
+    if capture_output() {
+        // JSON mode: capture combined output so the report's `detail`
+        // carries the tool's own stderr/stdout, and the parent's stdout
+        // stays a clean JSON document.
+        return match cmd
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+        {
+            Ok(out) if out.status.success() => CheckResult::Pass,
+            Ok(out) => CheckResult::Fail {
+                detail: combined_output(&out),
+            },
+            Err(e) => CheckResult::Fail {
+                detail: format!("failed to spawn: {e}"),
+            },
+        };
+    }
+
     // Stream stdout/stderr to the parent so progress is visible as it
     // happens. With nix-heavy per-project commands (cargo build, nix
     // develop closures), capturing output keeps the user staring at a
@@ -533,6 +718,58 @@ fn run_command(cmd: &mut Command) -> CheckResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn report_json_shape_is_stable() {
+        let report = PreflightReport {
+            checks: vec![
+                CheckReport {
+                    name: "typos".to_string(),
+                    kind: "repo",
+                    status: "pass",
+                    duration_ms: 12,
+                    detail: None,
+                    paths: vec![],
+                },
+                CheckReport {
+                    name: "tools/shaka".to_string(),
+                    kind: "project",
+                    status: "fail",
+                    duration_ms: 3400,
+                    detail: Some("clippy: unused import".to_string()),
+                    paths: vec!["tools/shaka".to_string()],
+                },
+                CheckReport {
+                    name: "infra/devbox".to_string(),
+                    kind: "project",
+                    status: "skipped",
+                    duration_ms: 0,
+                    detail: None,
+                    paths: vec!["infra/devbox".to_string()],
+                },
+            ],
+            total: 2,
+            passed: 1,
+            failed: 1,
+            skipped: 1,
+            success: false,
+        };
+        let v: serde_json::Value = serde_json::to_value(&report).unwrap();
+
+        assert_eq!(v["success"], false);
+        assert_eq!(v["total"], 2);
+        assert_eq!(v["passed"], 1);
+        assert_eq!(v["failed"], 1);
+        assert_eq!(v["skipped"], 1);
+
+        // Passing checks omit `detail`; failing checks carry the tool output.
+        assert!(v["checks"][0].get("detail").is_none());
+        assert_eq!(v["checks"][0]["status"], "pass");
+        assert_eq!(v["checks"][1]["status"], "fail");
+        assert_eq!(v["checks"][1]["detail"], "clippy: unused import");
+        assert_eq!(v["checks"][2]["status"], "skipped");
+        assert_eq!(v["checks"][1]["kind"], "project");
+    }
 
     #[test]
     fn matches_exact_path() {

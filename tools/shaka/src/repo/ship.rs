@@ -90,7 +90,7 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
         println!("{BOLD}step 5/6: preflight{RESET} {DIM}(skipped via --skip-preflight){RESET}");
     } else {
         println!("{BOLD}step 5/6: preflight{RESET}");
-        preflight::run(false, None);
+        preflight::run(false, None, false);
     }
 
     println!("{BOLD}step 6/6: handing off to repo send{RESET}");
