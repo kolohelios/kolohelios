@@ -1,5 +1,5 @@
 use super::issue_link::{self, IssueLink};
-use super::{die, workspace_path, BOLD, DIM, GREEN, RESET};
+use super::{die, workspace_path, BOLD, DIM, GREEN, RESET, YELLOW};
 use crate::{gh, jj};
 
 pub fn run(name: Option<&str>, issue: Option<u64>) {
@@ -43,6 +43,22 @@ pub fn run(name: Option<&str>, issue: Option<u64>) {
         // after `repo sync` deletes the local bookmark (see issue #164).
         if let Err(e) = issue_link::write(&repo_root, &derived_name, &IssueLink { issue: n }) {
             die(&format!("failed to record issue link: {e}"));
+        }
+        // Best-effort self-assign on GitHub so `shaka issue next` and the
+        // GitHub UI both show the issue as taken. A failure here (no write
+        // access, offline) must not fail workspace creation — the workspace
+        // and its local issue link already exist and are the source of truth.
+        match gh::detect_repo() {
+            Ok(repo) => {
+                if let Err(e) = gh::assign_issue_to_me(&repo, n) {
+                    eprintln!("{YELLOW}warning:{RESET} could not self-assign issue #{n}: {e}");
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "{YELLOW}warning:{RESET} could not detect repo to self-assign issue #{n}: {e}"
+                );
+            }
         }
         println!(
             "{GREEN}{BOLD}created{RESET} workspace {BOLD}{derived_name}{RESET} at \
