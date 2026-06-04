@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* `color-scheme: light dark` makes the document follow the OS appearance:
+   the UA canvas, scrollbars, and form controls render in the active mode
+   (no flash of white before paint in dark mode), and `light-dark()`
+   resolves per the active scheme — the technique from the Steinbach
+   "Modern CSS Colors" talk hosted on this site. */
+:root {
+  color-scheme: light dark;
+}
+
 /* Custom SVG fill colors for the career-arc chart.
  *
  * The chart JS (chart/career-arc.js) sets these as `class` on SVG
@@ -16,27 +25,20 @@
  *   muted  — stone-500 (legible in both modes; no dark variant)
  *   text   — stone-700 / stone-300 (default label color)
  *   strong — stone-900 / stone-50 (high-contrast labels over color)
- */
-.ca-bg { fill: #fafaf9; }
+ *
+ * Each color is a single `light-dark()` declaration; with
+ * `color-scheme: light dark` set above, the browser resolves the
+ * matching value per the OS appearance — no paired media queries. */
+.ca-bg { fill: light-dark(#fafaf9, #0c0a09); }
 .ca-muted { fill: #78716c; }
-.ca-text { fill: #44403c; }
-.ca-strong { fill: #1c1917; }
-@media (prefers-color-scheme: dark) {
-  .ca-bg { fill: #0c0a09; }
-  .ca-text { fill: #d6d3d1; }
-  .ca-strong { fill: #fafaf9; }
-}
+.ca-text { fill: light-dark(#44403c, #d6d3d1); }
+.ca-strong { fill: light-dark(#1c1917, #fafaf9); }
 
 /* Track colors for the seniority arc — applied to <path> and
  * <circle> elements so a single composite line can change color
  * at track transitions. IC uses the default text color so it
  * reads as "default state"; Lead and Manager get distinct hues
  * that still read as muted next to the chart background. */
-.ca-track-ic { stroke: #44403c; fill: #44403c; }
-.ca-track-lead { stroke: #d97706; fill: #d97706; }
-.ca-track-mgr { stroke: #a855f7; fill: #a855f7; }
-@media (prefers-color-scheme: dark) {
-  .ca-track-ic { stroke: #d6d3d1; fill: #d6d3d1; }
-  .ca-track-lead { stroke: #f59e0b; fill: #f59e0b; }
-  .ca-track-mgr { stroke: #c084fc; fill: #c084fc; }
-}
+.ca-track-ic { stroke: light-dark(#44403c, #d6d3d1); fill: light-dark(#44403c, #d6d3d1); }
+.ca-track-lead { stroke: light-dark(#d97706, #f59e0b); fill: light-dark(#d97706, #f59e0b); }
+.ca-track-mgr { stroke: light-dark(#a855f7, #c084fc); fill: light-dark(#a855f7, #c084fc); }
