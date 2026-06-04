@@ -2,7 +2,12 @@
 # (via nix-darwin) and Linux (via NixOS). `home.username` and
 # `home.homeDirectory` are set by the host system's user list; this
 # module stays platform-agnostic.
-{ pkgs, claude-hooks, ... }:
+{
+  pkgs,
+  claude-hooks,
+  kolohelios-nix,
+  ...
+}:
 
 {
   home.stateVersion = "25.05";
@@ -30,6 +35,14 @@
     # globally lets the hook fire in any working directory, not just
     # inside the kolohelios checkout.
     claude-hooks.packages.${pkgs.stdenv.hostPlatform.system}.default
+    # `shaka` PATH shim from the shared lib. Same rationale as
+    # `claude-hooks` above: on PATH globally it resolves `shaka` in any
+    # bare shell (login shell, non-direnv terminal, agent harness)
+    # whenever `cwd` is inside the kolohelios checkout — not only inside
+    # a project devshell. The shim walks up from `cwd` to the canonical
+    # `tools/shaka/bin/shaka` wrapper; outside a checkout it's a no-op
+    # that exits non-zero, so installing it globally is safe (#755).
+    (kolohelios-nix.lib.shakaShim pkgs)
   ];
 
   programs.git = {

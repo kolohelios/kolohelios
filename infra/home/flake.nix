@@ -46,7 +46,7 @@
 
       darwinConfigurations.Jons-MacBook-Pro = nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
-        specialArgs = { inherit claude-hooks; };
+        specialArgs = { inherit claude-hooks kolohelios-nix; };
         modules = [
           home-manager.darwinModules.home-manager
           ./modules/darwin.nix
@@ -55,15 +55,15 @@
 
       # NixOS module — imported by `infra/devbox` to apply this user's
       # home-manager profile to the `jon` account on the devbox.
-      # `_module.args.claude-hooks` is the NixOS equivalent of the
-      # `specialArgs` plumbing above so `infra/devbox` doesn't have
-      # to know about it.
+      # `_module.args` is the NixOS equivalent of the `specialArgs`
+      # plumbing above (claude-hooks, kolohelios-nix) so `infra/devbox`
+      # doesn't have to know about them.
       nixosModules.home = {
         imports = [
           home-manager.nixosModules.home-manager
           ./modules/linux.nix
         ];
-        _module.args = { inherit claude-hooks; };
+        _module.args = { inherit claude-hooks kolohelios-nix; };
       };
 
       formatter = kolohelios-nix.formatter;
