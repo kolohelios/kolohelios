@@ -3,6 +3,12 @@ package project
 #Project & {
 	name: "kolohelios-portfolio"
 	kind: "rust-worker"
+	worker: {
+		// tailwindcss compiles the site's CSS; cue exports
+		// data/work-history.cue to JSON the templates iterate over —
+		// both invoked from wrangler.toml's [build] step.
+		extraDevShellPackages: ["tailwindcss", "cue"]
+	}
 	audit: {
 		overrides: [
 			{
