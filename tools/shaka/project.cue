@@ -53,7 +53,7 @@ package project
 	}
 	coverage: {
 		line: {
-			fail: 30
+			fail: 62
 		}
 	}
 	ci: {
