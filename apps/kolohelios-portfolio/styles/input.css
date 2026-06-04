@@ -6,9 +6,28 @@
    the UA canvas, scrollbars, and form controls render in the active mode
    (no flash of white before paint in dark mode), and `light-dark()`
    resolves per the active scheme — the technique from the Steinbach
-   "Modern CSS Colors" talk hosted on this site. */
+   "Modern CSS Colors" talk hosted on this site.
+
+   Each token below is a single `light-dark()` pair — one source of truth
+   for both modes, with no `dark:` variants and no media queries. Templates
+   reference them as Tailwind arbitrary values (`bg-[var(--bg)]`,
+   `text-[color:var(--fg)]`, `border-[color:var(--border)]`). Values
+   reproduce the stone/amber `dark:` pairs the templates carried before, so
+   both modes render identically. */
 :root {
   color-scheme: light dark;
+
+  --bg: light-dark(#fafaf9, #0c0a09); /* stone-50  / stone-950 */
+  --surface: light-dark(#ffffff, #1c1917); /* white     / stone-900 */
+  --fg-strong: light-dark(#1c1917, #f5f5f4); /* stone-900 / stone-100 */
+  --fg: light-dark(#44403c, #d6d3d1); /* stone-700 / stone-300 */
+  --fg-muted: light-dark(#57534e, #a8a29e); /* stone-600 / stone-400 */
+  --fg-faint: #78716c; /* stone-500 (flat in both modes) */
+  --border: light-dark(#e7e5e4, #292524); /* stone-200 / stone-800 */
+
+  --callout-border: light-dark(#fcd34d, #b45309); /* amber-300 / amber-700    */
+  --callout-bg: light-dark(#fffbeb, rgba(69, 26, 3, 0.3)); /* amber-50 / amber-950/30 */
+  --callout-fg: light-dark(#292524, #e7e5e4); /* stone-800 / stone-200 */
 }
 
 /* Custom SVG fill colors for the career-arc chart.

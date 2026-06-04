@@ -8,45 +8,45 @@
 
   <section aria-labelledby="career-arc-heading" class="space-y-4">
     <h2 id="career-arc-heading" class="text-xl font-semibold tracking-tight">Career trajectory</h2>
-    <p class="text-sm text-stone-600 dark:text-stone-400">
+    <p class="text-sm text-[color:var(--fg-muted)]">
       Seniority, affiliations, industries, clients, and active technologies on
       a shared time axis. Hover or tap to read the slice at any year; the
       chart auto-pans when the cursor approaches its edges. Click any section
       header to expand or collapse it.
     </p>
-    <div class="career-arc-scroll overflow-x-auto rounded border border-stone-200 dark:border-stone-800">
+    <div class="career-arc-scroll overflow-x-auto rounded border border-[color:var(--border)]">
       <svg id="career-arc"
-           class="block text-stone-900 dark:text-stone-100"
+           class="block text-[color:var(--fg-strong)]"
            role="img"
            aria-label="Career trajectory: seniority, companies, industries, clients, and technologies over time"
            data-url="/data/career-arc.json"></svg>
     </div>
     <div id="career-arc-detail"
-         class="rounded border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+         class="rounded border border-[color:var(--border)] bg-[var(--surface)] p-4"
          aria-live="polite"></div>
   </section>
 
   {% for entry in entries %}
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">{{ entry.role }}</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">{{ entry.company }}</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; {{ entry.start_date }} &mdash; {% match entry.end_date %}{% when Some with (e) %}{{ e }}{% when None %}present{% endmatch %}</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; {{ entry.start_date }} &mdash; {% match entry.end_date %}{% when Some with (e) %}{{ e }}{% when None %}present{% endmatch %}</span>
       </p>
       {% match entry.context %}{% when Some with (c) %}
-      <p class="text-sm italic text-stone-500 dark:text-stone-500">{{ c }}</p>
+      <p class="text-sm italic text-[color:var(--fg-faint)]">{{ c }}</p>
       {% when None %}{% endmatch %}
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
       {% for achievement in entry.achievements %}
       <li>{{ achievement }}</li>
       {% endfor %}
     </ul>
 
     {% match entry.technology %}{% when Some with (techs) %}
-    <p class="text-xs text-stone-500 dark:text-stone-500">
+    <p class="text-xs text-[color:var(--fg-faint)]">
       <span class="font-medium">Technology:</span>
       {% for tech in techs %}{{ tech }}{% if !loop.last %}, {% endif %}{% endfor %}
     </p>
@@ -54,10 +54,10 @@
   </section>
   {% endfor %}
 
-  <section class="space-y-2 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-2 border-l-2 border-[color:var(--border)] pl-6">
     <h2 class="text-xl font-semibold tracking-tight">Earlier career</h2>
-    <p class="text-stone-500 dark:text-stone-500 text-sm">1997 &mdash; 2015</p>
-    <p class="text-stone-700 dark:text-stone-300 leading-relaxed">
+    <p class="text-[color:var(--fg-faint)] text-sm">1997 &mdash; 2015</p>
+    <p class="text-[color:var(--fg)] leading-relaxed">
       Leadership roles spanning engineering, operations, sales and marketing, and
       general business management at manufacturing and industrial automation
       companies. Co-inventor on US patent 7,610,734 for siding installation
