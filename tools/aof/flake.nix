@@ -63,12 +63,24 @@
             version = "0.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
-            nativeBuildInputs = [ pkgs.installShellFiles ];
+            nativeBuildInputs = [
+              pkgs.makeWrapper
+              pkgs.installShellFiles
+            ];
             postInstall = ''
               installShellCompletion --cmd aof \
                 --bash <($out/bin/aof completions bash) \
                 --fish <($out/bin/aof completions fish) \
                 --zsh  <($out/bin/aof completions zsh)
+            '';
+            postFixup = ''
+              wrapProgram $out/bin/aof \
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath [
+                    pkgs.cue
+                    pkgs.d2
+                  ]
+                }
             '';
           };
         }
@@ -90,6 +102,7 @@
           default = pkgs.mkShell {
             packages = [
               (rustToolchain pkgs)
+              pkgs.d2
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
