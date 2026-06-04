@@ -285,6 +285,36 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		deploy?: #CiDeploy
 	}
 } | {
+	// Rust library crate shared across consumers — compiled natively
+	// for `cargo test` and to wasm32-unknown-unknown by the Worker and
+	// the WASM editor. No binary and no Cloudflare deploy; the wasm
+	// target is part of the contract, so the generated `validate`
+	// includes a `wasm-check`. `packages/notes-protocol` is the first.
+	//
+	// Coverage is required (like rust-cli): a shared lib is pure,
+	// natively testable logic, so cargo-llvm-cov measures the real
+	// surface — unlike rust-worker, whose wasm-only request paths it
+	// can't see.
+	kind: "rust-lib"
+	coverage: {
+		line: {
+			fail: number & >=0 & <=100
+		}
+	}
+	// Optional FlakeHub publication for a lib consumed by other repos.
+	// `notes-protocol` is consumed in-repo via a path dep and omits it.
+	ci?: {
+		build?: #CiBuild
+	}
+	rustLib?: {
+		// Top-level flake `description`. Defaults to the project name.
+		description?: string & !=""
+
+		// Extra nixpkgs attrs dropped into the devShell, on top of the
+		// rust toolchain and `workflowPackages`.
+		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
+	}
+} | {
 	kind: "infra"
 	// CI/CD workflow configuration. Workflow files under
 	// `.github/workflows/` are generated from this block by

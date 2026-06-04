@@ -39,6 +39,7 @@ struct AuditConfig {
 pub enum ProjectKind {
     RustCli,
     RustWorker,
+    RustLib,
     Infra,
     NixLib,
     Document,
@@ -48,7 +49,10 @@ impl ProjectKind {
     /// Rust-flavored kinds share the cargo/clippy/license rules even
     /// when coverage requirements diverge.
     fn is_rust_flavored(self) -> bool {
-        matches!(self, ProjectKind::RustCli | ProjectKind::RustWorker)
+        matches!(
+            self,
+            ProjectKind::RustCli | ProjectKind::RustWorker | ProjectKind::RustLib
+        )
     }
 }
 
@@ -189,6 +193,9 @@ impl Rule for RustCoverageThresholdNonzero {
             return match meta.kind {
                 ProjectKind::RustCli => {
                     RuleResult::Fail("rust-cli project missing coverage block".into())
+                }
+                ProjectKind::RustLib => {
+                    RuleResult::Fail("rust-lib project missing coverage block".into())
                 }
                 ProjectKind::RustWorker => RuleResult::Pass,
                 _ => RuleResult::Pass,

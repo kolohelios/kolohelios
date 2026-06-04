@@ -24,6 +24,8 @@ struct ProjectMeta {
     infra: Option<InfraMeta>,
     #[serde(default)]
     nix_lib: Option<NixLibMeta>,
+    #[serde(default)]
+    rust_lib: Option<RustLibMeta>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +95,15 @@ struct NixLibMeta {
 }
 
 #[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RustLibMeta {
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    extra_dev_shell_packages: Vec<String>,
+}
+
+#[derive(Default, Deserialize)]
 struct ExtraInput {
     url: String,
     #[serde(default)]
@@ -157,6 +168,17 @@ pub fn run(check: bool) {
                     render_infra_flake(&meta.name, infra),
                 ));
             }
+            "rust-lib" => {
+                // `rustLib:` is optional — fall back to a default block
+                // so a lib that doesn't override description or devShell
+                // packages still picks up the project name.
+                let default = RustLibMeta::default();
+                let rl = meta.rust_lib.as_ref().unwrap_or(&default);
+                items.push((
+                    project.join("flake.nix"),
+                    render_rust_lib_flake(&meta.name, rl),
+                ));
+            }
             "nix-lib" => {
                 // Same opt-in pattern as `infra`.
                 let Some(nl) = meta.nix_lib.as_ref() else {
@@ -200,6 +222,92 @@ fn render_flake(name: &str, cli: &CliMeta) -> String {
     out.push_str(&render_devshell(cli));
     out.push_str("\n      formatter = kolohelios-nix.formatter;\n    };\n");
     out.push_str("}\n");
+    out
+}
+
+/// Compose a rust-lib flake: a shared library crate consumed natively
+/// (for tests) and on wasm32-unknown-unknown (the Worker + the WASM
+/// editor). devShell-only — a lib produces no binary, so there's no
+/// `packages.default` / `apps.default`; the toolchain carries the wasm
+/// target so the generated `wasm-check` recipe finds the stdlib. Same
+/// kolohelios-nix + nixpkgs + rust-overlay inputs as the rust-cli flake.
+fn render_rust_lib_flake(name: &str, rl: &RustLibMeta) -> String {
+    let description = rl.description.as_deref().unwrap_or(name);
+    let mut out = String::with_capacity(2048);
+    out.push_str(HEADER);
+    out.push_str(&format!("{{\n  description = \"{description}\";\n\n"));
+    out.push_str(INPUTS);
+    out.push_str("\n  outputs =\n");
+    out.push_str(RUST_LIB_OUTPUT_HEADER);
+    out.push_str("    in\n    {\n");
+    out.push_str(&render_rust_lib_devshell(rl));
+    out.push_str("\n      formatter = kolohelios-nix.formatter;\n    };\n");
+    out.push_str("}\n");
+    out
+}
+
+/// `outputs` header for a rust-lib flake: identical to the rust-cli
+/// `OUTPUT_HEADER` except the toolchain adds the `wasm32-unknown-unknown`
+/// target (so `wasm-check` finds the stdlib) and there's no
+/// `rustPlatform` — a lib is never built via `buildRustPackage` here,
+/// it's consumed as a path dependency.
+const RUST_LIB_OUTPUT_HEADER: &str = r#"    {
+      self,
+      kolohelios-nix,
+      nixpkgs,
+      rust-overlay,
+      ...
+    }:
+    let
+      inherit (kolohelios-nix.lib) supportedSystems workflowPackages;
+
+      forEachSupportedSystem =
+        f:
+        nixpkgs.lib.genAttrs supportedSystems (
+          system:
+          f {
+            inherit system;
+            pkgs = import nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+              overlays = [ rust-overlay.overlays.default ];
+            };
+          }
+        );
+
+      rustToolchain =
+        pkgs:
+        pkgs.rust-bin.stable."1.95.0".default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "llvm-tools-preview"
+          ];
+          targets = [ "wasm32-unknown-unknown" ];
+        };
+"#;
+
+/// devShell for a rust-lib flake: the wasm-targeted toolchain, any
+/// `extraDevShellPackages`, `workflowPackages`, and `cargo-llvm-cov` on
+/// Linux (for the `coverage` recipe). Mirrors the rust-cli devShell
+/// minus the shell-completion hook.
+fn render_rust_lib_devshell(rl: &RustLibMeta) -> String {
+    let mut out = String::new();
+    out.push_str("      devShells = forEachSupportedSystem (\n");
+    out.push_str("        { pkgs, ... }:\n");
+    out.push_str("        {\n");
+    out.push_str("          default = pkgs.mkShell {\n");
+    out.push_str("            packages = [\n");
+    out.push_str("              (rustToolchain pkgs)\n");
+    for pkg in &rl.extra_dev_shell_packages {
+        out.push_str(&format!("              pkgs.{pkg}\n"));
+    }
+    out.push_str("            ]\n");
+    out.push_str("            ++ (workflowPackages pkgs)\n");
+    out.push_str(
+        "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
+    );
+    out.push_str("          };\n        }\n      );\n");
     out
 }
 
@@ -907,5 +1015,62 @@ mod tests {
     fn no_shell_hook_without_shell_completions() {
         let out = render_flake("demo", &minimal_cli());
         assert!(!out.contains("shellHook"));
+    }
+
+    #[test]
+    fn rust_lib_flake_starts_with_generated_header() {
+        let out = render_rust_lib_flake("notes-protocol", &RustLibMeta::default());
+        assert!(out.starts_with("# Generated by shaka. Do not edit by hand."));
+    }
+
+    #[test]
+    fn rust_lib_description_defaults_to_project_name() {
+        let out = render_rust_lib_flake("notes-protocol", &RustLibMeta::default());
+        assert!(out.contains(r#"description = "notes-protocol""#));
+    }
+
+    #[test]
+    fn rust_lib_description_override_takes_precedence() {
+        let rl = RustLibMeta {
+            description: Some("notes-protocol — wire types".into()),
+            ..RustLibMeta::default()
+        };
+        let out = render_rust_lib_flake("notes-protocol", &rl);
+        assert!(out.contains(r#"description = "notes-protocol — wire types""#));
+    }
+
+    #[test]
+    fn rust_lib_flake_carries_wasm_target() {
+        // The lib is consumed on wasm32-unknown-unknown, so the toolchain
+        // must add the target for the `wasm-check` recipe to find the stdlib.
+        let out = render_rust_lib_flake("notes-protocol", &RustLibMeta::default());
+        assert!(out.contains(r#"targets = [ "wasm32-unknown-unknown" ];"#));
+    }
+
+    #[test]
+    fn rust_lib_flake_is_devshell_only() {
+        // A lib produces no binary — no packages/apps, no buildRustPackage.
+        let out = render_rust_lib_flake("notes-protocol", &RustLibMeta::default());
+        assert!(!out.contains("packages = forEachSupportedSystem"));
+        assert!(!out.contains("apps = forEachSupportedSystem"));
+        assert!(!out.contains("buildRustPackage"));
+        assert!(out.contains("devShells = forEachSupportedSystem"));
+    }
+
+    #[test]
+    fn rust_lib_extra_dev_shell_packages_render_into_dev_shell() {
+        let rl = RustLibMeta {
+            extra_dev_shell_packages: vec!["wabt".into(), "wasm-tools".into()],
+            ..RustLibMeta::default()
+        };
+        let out = render_rust_lib_flake("notes-protocol", &rl);
+        assert!(out.contains("pkgs.wabt"));
+        assert!(out.contains("pkgs.wasm-tools"));
+    }
+
+    #[test]
+    fn rust_lib_flake_carries_formatter() {
+        let out = render_rust_lib_flake("notes-protocol", &RustLibMeta::default());
+        assert!(out.contains("formatter = kolohelios-nix.formatter;"));
     }
 }
