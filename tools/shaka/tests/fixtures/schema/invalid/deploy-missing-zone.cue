@@ -7,6 +7,7 @@ package project
 #Project & {
 	name: "kolohelios-portfolio"
 	kind: "rust-worker"
+	worker: {}
 	deploy: {
 		target:       "cloudflare-worker"
 		customDomain: "kolohelios.com"

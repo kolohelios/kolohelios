@@ -5,7 +5,7 @@ package project
 #Project & {
 	name: "pollen-alert"
 	kind: "rust-worker"
-	worker: {
+	wrangler: {
 		main:               "build/worker/shim.mjs"
 		compatibility_date: "2026-5-1"
 	}

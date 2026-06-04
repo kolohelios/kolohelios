@@ -5,6 +5,7 @@ package project
 #Project & {
 	name: "portfolio-cached"
 	kind: "rust-worker"
+	worker: {}
 	deploy: {
 		target:       "cloudflare-worker"
 		customDomain: "cached.kolohelios.com"

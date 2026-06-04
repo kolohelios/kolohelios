@@ -45,19 +45,20 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	cache?:       #CacheRules
 }
 
-// Worker runtime/build config that drives `wrangler.toml` for a
+// Wrangler runtime/build config that drives `wrangler.toml` for a
 // `rust-worker` project. `shaka deploy generate-wrangler` (#113) emits
 // `wrangler.toml` from this block and drift-checks it in preflight, so
 // the hand-maintained TOML in `apps/*/wrangler.toml` becomes generated.
-// Distinct from `#Deploy` (DNS + cache rules, emitted as Terraform):
-// this block is everything wrangler itself needs to build and run the
-// worker. The project's top-level `name` is the source of truth for the
-// worker name — not duplicated here.
+// Distinct from `#Deploy` (DNS + cache rules, emitted as Terraform) and
+// from the `worker:` flake-shape block (devShell knobs for
+// `generate-flakes`): this block is everything wrangler itself needs to
+// build and run the worker. The project's top-level `name` is the source
+// of truth for the worker name — not duplicated here.
 //
 // Covers the two real shapes in the repo: pollen-alert (`build` + `cron`
 // + `vars`) and the portfolio (`assets`, no triggers/vars). Every field
 // past `main`/`compatibility_date` is optional so both validate.
-#Worker: {
+#Wrangler: {
 	// Entry point wrangler uploads — the `worker-build` shim, e.g.
 	// `build/worker/shim.mjs`.
 	main: string & !=""
@@ -280,9 +281,28 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		}
 	}
 	deploy?: #Deploy
-	worker?: #Worker
+	wrangler?: #Wrangler
 	ci?: {
 		deploy?: #CiDeploy
+	}
+	// Flake-shape knobs consumed by `shaka project generate-flakes`.
+	// The worker template is fixed (rust-overlay toolchain with the
+	// `wasm32-unknown-unknown` target, `wrangler`, `pkg-config` +
+	// `openssl` for `worker-build`'s native `cargo install`, the
+	// `~/.cargo/bin` PATH `shellHook`); this block carries only the
+	// per-project variation. Required so every rust-worker has a
+	// generated flake — no hand-authored holdouts.
+	worker: {
+		// Top-level flake `description`. Defaults to the project
+		// name; override when a longer phrase reads better.
+		description?: string & !=""
+
+		// Extra nixpkgs attrs dropped into the devShell, on top of
+		// the worker toolchain, `wrangler`, `pkg-config`, `openssl`,
+		// and `workflowPackages`. `kolohelios-portfolio` lists
+		// `tailwindcss` + `cue` for its build path; `pollen-alert`
+		// needs none.
+		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 	}
 } | {
 	// Rust library crate shared across consumers — compiled natively

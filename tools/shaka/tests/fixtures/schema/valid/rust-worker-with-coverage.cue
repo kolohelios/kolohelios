@@ -4,6 +4,7 @@ package project
 #Project & {
 	name: "kolohelios-portfolio"
 	kind: "rust-worker"
+	worker: {}
 	coverage: {
 		line: {
 			fail: 30

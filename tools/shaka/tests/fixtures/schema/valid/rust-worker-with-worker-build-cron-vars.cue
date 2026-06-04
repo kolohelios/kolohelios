@@ -2,11 +2,11 @@ package project
 
 // Worker app with a custom build, a scheduled cron trigger, non-secret
 // vars, and declared secret names (the pollen-alert shape). Exercises
-// every optional field of `#Worker` at once.
+// every optional field of `#Wrangler` at once.
 #Project & {
 	name: "pollen-alert"
 	kind: "rust-worker"
-	worker: {
+	wrangler: {
 		main:               "build/worker/shim.mjs"
 		compatibility_date: "2026-05-14"
 		build: {
