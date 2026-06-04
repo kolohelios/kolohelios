@@ -23,11 +23,11 @@ geometry:
 
 ## Summary
 
-Business-minded software-engineering leader practicing end-to-end product engineering on streaming data platforms over datasets in the hundreds of millions of records and modernizing developer platforms with Nix and monorepo tooling. In the past year, shipped a Flow-Based Programming data graph (~2.5M events/day and growing), a Property and People data delivery platform that unlocked $1M in net new revenue and new categories of products, and Scala load shedding for a high-traffic search layer. 11+ years bridging deep IC and engineering leadership; has managed teams of up to 12 ICs.
+Business-minded software-engineering leader practicing end-to-end product engineering on streaming data platforms over datasets in the hundreds of millions of records and modernizing developer platforms with Nix and monorepo tooling. In the past year, shipped a Flow-Based Programming data graph (~2.5M events/day and growing), a Property and People data delivery platform that unlocked $1M in net new revenue and, and Scala load shedding for a high-traffic search layer. 11+ years bridging deep IC and engineering leadership; has managed teams of up to 12 ICs.
 
 ## Skills
 
-- **Leadership:** team management, mentorship, high-volume substantive code review, engineering governance
+- **Leadership:** team management, mentorship, high-volume substantive code review, system design, architectural direction
 - **Languages:** Python, TypeScript/JavaScript, CUE, Rust, Scala 2; prior production: Java, C#, Kotlin, Swift
 - **Cloud & Infrastructure:** AWS, Azure, Linode, Cloudflare, Terraform
 - **Build & Deploy:** Nix, Kubernetes, Helm, Docker, monorepos, CI/CD pipelines (GitHub Actions, Jenkins)
@@ -41,20 +41,21 @@ Business-minded software-engineering leader practicing end-to-end product engine
 
 **Principal Software Engineer** — Jun 2023 – Present
 
-- Tripled team commit throughput year-over-year (CRO tickets, bug fixes, feature requests, and new tooling) by pairing hands-on mentorship with operationalized agentic AI and a robust spec process, leaving the team running ahead of business demand despite shrinking headcount.
+- Tripled team commit throughput year-over-year (conversion-rate optimization tickets, bug fixes, feature requests, and new tooling) by pairing hands-on mentorship with operationalized agentic AI and a robust spec process, leaving the team running ahead of business demand despite shrinking headcount.
 - Architected and productionized a Flow-Based Programming data graph streaming platform (function server, CUE-based pipeline compiler, metrics and logging, bulk ingestion/export), replacing parts of a multi-week, manually coordinated release process with on-demand delivery; currently handles ~2.5M events/day across two tenants and is in active onboarding.
 - Built a Property and People (PnP) data delivery platform that unlocked a $1M net new revenue source, covering ~125M properties across all 50 states, built on a custom geographic aggregation DSL and Census TIGER pipelines.
 - Drove monorepo migration with shared tooling, standardized linting, Nix-based developer environments (wp-home-manager), and an internal developer-productivity CLI (pagecraft, PR review workflow with parallelized GitHub fetches and Nix/darwin tooling), supporting ~100 service releases per week and shifting CVE scanning from infrequent reactive SRE scans to proactive CI gates.
-- Built MCP integration and AI inference harness on the engineering platform; authored org-wide documentation to establish AI-assisted engineering practice.
-- Sustained high-volume, substantive peer code review across the platform org: 261 reviews in the first 15 weeks of 2026 alone (~75/month, mean 6 / median 4 comments per PR, ~1,000-line PR average), reinforcing engineering standards.
+- Built MCP integration and AI inference harness on the engineering platform which allowed non-engineers to truly explore our raw data for the first time and unlock product research.
+- Authored org-wide documentation to establish AI-assisted engineering practice to set expectations and governance.
+- Sustained high-volume, substantive peer code review across the platform org: 261 reviews in the first 15 weeks of 2026 alone (~75/month, mean 6 / median 4 comments per PR, ~1,000-line PR average), reinforcing engineering standards and coaching/developing the engineering team overall.
 
 **Lead Sr. Software Engineer, Engineering Manager** — Dec 2021 – Jun 2023
 
+- Returned to the IC track in Jun 2023 to focus on data platform architecture.
 - Reversed a multi-quarter decline in Google indexation and increased indexed page count by more than 30%.
 - Drove tens of millions of SERP-indexed URLs from red LCP (Core Web Vitals failure) to zero, with monitoring automation to keep them green.
 - Increased mobile revenue by 20% YoY by reworking state management to cut the app's crash rate. Lifted release cadence from twice a month to 2+ per week.
 - Managed and mentored a team of 6 engineers on the consumer web platform and mobile app team (SEO, Core Web Vitals, conversion optimization, legal compliance), leading delivery on LCP regression fixes for high-traffic page types, INP tracking ahead of Google's CWV INP rollout, and an org-wide cookie consent rollout.
-- Returned to the IC track in Jun 2023 to focus on data platform architecture.
 
 ### LIFX / Buddy Technologies
 
@@ -69,7 +70,7 @@ Business-minded software-engineering leader practicing end-to-end product engine
 
 **Senior Software Engineer** — Nov 2018 – Jul 2019
 
-- Extended a Cordova mobile application, built React Native and Flutter proof-of-concept apps, and created a test automation framework.
+- Added third-party services to a Cordova mobile application which added a brand new subscription revenue stream to the Linksys product family, built React Native and Flutter proof-of-concept apps, and created a test automation framework.
 
 ### UpTop
 
