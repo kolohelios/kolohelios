@@ -3,6 +3,12 @@ package project
 #Project & {
 	name: "cascadiajs2026-notes"
 	kind: "rust-worker"
+	worker: {
+		// tailwindcss compiles the notes' CSS; cue exports
+		// data/talks.cue to JSON build-site deserializes — both
+		// invoked from wrangler.toml's [build] step.
+		extraDevShellPackages: ["tailwindcss", "cue"]
+	}
 	audit: {
 		overrides: [
 			{
