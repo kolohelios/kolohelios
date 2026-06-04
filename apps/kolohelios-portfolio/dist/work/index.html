@@ -6,14 +6,14 @@
 <title>work — kolohelios</title>
 <link rel="stylesheet" href="/style.css">
 </head>
-<body class="min-h-screen bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
-<header class="border-b border-stone-200 dark:border-stone-800">
+<body class="min-h-screen bg-[var(--bg)] text-[color:var(--fg-strong)]">
+<header class="border-b border-[color:var(--border)]">
   <nav class="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-    <a href="/" class="font-semibold tracking-tight hover:text-stone-600 dark:hover:text-stone-400">kolohelios</a>
+    <a href="/" class="font-semibold tracking-tight hover:text-[color:var(--fg-muted)]">kolohelios</a>
     <ul class="flex gap-6 text-sm">
-      <li><a href="/about" class="hover:text-stone-600 dark:hover:text-stone-400">about</a></li>
-      <li><a href="/work" class="hover:text-stone-600 dark:hover:text-stone-400">work</a></li>
-      <li><a href="/projects" class="hover:text-stone-600 dark:hover:text-stone-400">projects</a></li>
+      <li><a href="/about" class="hover:text-[color:var(--fg-muted)]">about</a></li>
+      <li><a href="/work" class="hover:text-[color:var(--fg-muted)]">work</a></li>
+      <li><a href="/projects" class="hover:text-[color:var(--fg-muted)]">projects</a></li>
     </ul>
   </nav>
 </header>
@@ -26,38 +26,38 @@
 
   <section aria-labelledby="career-arc-heading" class="space-y-4">
     <h2 id="career-arc-heading" class="text-xl font-semibold tracking-tight">Career trajectory</h2>
-    <p class="text-sm text-stone-600 dark:text-stone-400">
+    <p class="text-sm text-[color:var(--fg-muted)]">
       Seniority, affiliations, industries, clients, and active technologies on
       a shared time axis. Hover or tap to read the slice at any year; the
       chart auto-pans when the cursor approaches its edges. Click any section
       header to expand or collapse it.
     </p>
-    <div class="career-arc-scroll overflow-x-auto rounded border border-stone-200 dark:border-stone-800">
+    <div class="career-arc-scroll overflow-x-auto rounded border border-[color:var(--border)]">
       <svg id="career-arc"
-           class="block text-stone-900 dark:text-stone-100"
+           class="block text-[color:var(--fg-strong)]"
            role="img"
            aria-label="Career trajectory: seniority, companies, industries, clients, and technologies over time"
            data-url="/data/career-arc.json"></svg>
     </div>
     <div id="career-arc-detail"
-         class="rounded border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+         class="rounded border border-[color:var(--border)] bg-[var(--surface)] p-4"
          aria-live="polite"></div>
   </section>
 
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Principal Software Engineer</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">Whitepages</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2023-06 &mdash; present</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2023-06 &mdash; present</span>
       </p>
 
-      <p class="text-sm italic text-stone-500 dark:text-stone-500">consumer search platform: 1B+ indexed pages, 10M+ unique users/month</p>
+      <p class="text-sm italic text-[color:var(--fg-faint)]">consumer search platform: 1B+ indexed pages, 10M+ unique users/month</p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Architected and productionized a Flow-Based Programming data graph streaming platform, replacing a multi-week manually coordinated release process with on-demand delivery; currently handles ~2.5M events/day across two tenants in active onboarding.</li>
 
@@ -86,24 +86,24 @@
     </ul>
 
 
-    <p class="text-xs text-stone-500 dark:text-stone-500">
+    <p class="text-xs text-[color:var(--fg-faint)]">
       <span class="font-medium">Technology:</span>
       Python, Rust, Scala, CUE, Nix, Kubernetes, Helm, Databricks, Delta Lake, MCP
     </p>
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Engineering Manager</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">Whitepages</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2022-08 &mdash; 2023-06</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2022-08 &mdash; 2023-06</span>
       </p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Managed and mentored a team of 6 engineers on the consumer web platform (SEO, Core Web Vitals, conversion optimization, GDPR compliance).</li>
 
@@ -116,17 +116,17 @@
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Lead Sr. Software Engineer, Web &amp; Mobile Apps</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">Whitepages</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2021-12 &mdash; 2022-08</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2021-12 &mdash; 2022-08</span>
       </p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Reversed a multi-quarter decline in Google indexation, increasing indexed pages 30%.</li>
 
@@ -141,19 +141,19 @@
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Software Engineer</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">LIFX / Buddy Technologies</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2019-07 &mdash; 2021-12</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2019-07 &mdash; 2021-12</span>
       </p>
 
-      <p class="text-sm italic text-stone-500 dark:text-stone-500">contractor through Bluehawk Consulting, converted to FTE in Jan 2020</p>
+      <p class="text-sm italic text-[color:var(--fg-faint)]">contractor through Bluehawk Consulting, converted to FTE in Jan 2020</p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Built a new React Native application to replace separate native iOS and Android applications.</li>
 
@@ -170,24 +170,24 @@
     </ul>
 
 
-    <p class="text-xs text-stone-500 dark:text-stone-500">
+    <p class="text-xs text-[color:var(--fg-faint)]">
       <span class="font-medium">Technology:</span>
       React Native, TypeScript, Java, Swift, Kotlin, Micronaut, PostgreSQL, Azure, MQTT, HomeKit
     </p>
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Senior Software Engineer</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">Belkin International</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2018-11 &mdash; 2019-07</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2018-11 &mdash; 2019-07</span>
       </p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Extended a Cordova mobile application, built React Native and Flutter proof-of-concept apps, and created a test automation framework.</li>
 
@@ -196,17 +196,17 @@
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Product Development Manager</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">UpTop</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2018-06 &mdash; 2018-11</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2018-06 &mdash; 2018-11</span>
       </p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Delivered a React Native application for TERRA Staffing and an Alexa skill for TD Bank.</li>
 
@@ -215,17 +215,17 @@
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Development Team Lead</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">UpTop</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2016-04 &mdash; 2018-06</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2016-04 &mdash; 2018-06</span>
       </p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Added value as an individual contributor (averaging 120% billable utilization) while supporting business goals to build a full-stack development team which grew as large as 12 developers.</li>
 
@@ -238,24 +238,24 @@
     </ul>
 
 
-    <p class="text-xs text-stone-500 dark:text-stone-500">
+    <p class="text-xs text-[color:var(--fg-faint)]">
       <span class="font-medium">Technology:</span>
       ASP.NET Core, C#, Node, MS SQL, Azure, AWS, React, Angular 2+, PHP, WordPress, Elasticsearch
     </p>
 
   </section>
 
-  <section class="space-y-3 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-3 border-l-2 border-[color:var(--border)] pl-6">
     <header class="space-y-1">
       <h2 class="text-xl font-semibold tracking-tight">Software Developer</h2>
-      <p class="text-stone-700 dark:text-stone-300">
+      <p class="text-[color:var(--fg)]">
         <span class="font-medium">UpTop</span>
-        <span class="text-stone-500 dark:text-stone-500"> &middot; 2015-07 &mdash; 2016-04</span>
+        <span class="text-[color:var(--fg-faint)]"> &middot; 2015-07 &mdash; 2016-04</span>
       </p>
 
     </header>
 
-    <ul class="list-disc pl-6 space-y-2 text-stone-700 dark:text-stone-300 leading-relaxed">
+    <ul class="list-disc pl-6 space-y-2 text-[color:var(--fg)] leading-relaxed">
 
       <li>Finished three client projects (each estimated between 4 and 6 months) early and under budget.</li>
 
@@ -265,10 +265,10 @@
   </section>
 
 
-  <section class="space-y-2 border-l-2 border-stone-200 dark:border-stone-800 pl-6">
+  <section class="space-y-2 border-l-2 border-[color:var(--border)] pl-6">
     <h2 class="text-xl font-semibold tracking-tight">Earlier career</h2>
-    <p class="text-stone-500 dark:text-stone-500 text-sm">1997 &mdash; 2015</p>
-    <p class="text-stone-700 dark:text-stone-300 leading-relaxed">
+    <p class="text-[color:var(--fg-faint)] text-sm">1997 &mdash; 2015</p>
+    <p class="text-[color:var(--fg)] leading-relaxed">
       Leadership roles spanning engineering, operations, sales and marketing, and
       general business management at manufacturing and industrial automation
       companies. Co-inventor on US patent 7,610,734 for siding installation
@@ -281,9 +281,9 @@
 <script src="/chart/career-arc.js" defer></script>
 
 </main>
-<footer class="border-t border-stone-200 mt-16 dark:border-stone-800">
-  <div class="mx-auto max-w-3xl px-6 py-6 text-xs text-stone-500 dark:text-stone-500">
-    <p>&copy; Jon Edwards &middot; <a href="https://github.com/kolohelios" class="hover:text-stone-700 dark:hover:text-stone-300">github</a></p>
+<footer class="border-t border-[color:var(--border)] mt-16">
+  <div class="mx-auto max-w-3xl px-6 py-6 text-xs text-[color:var(--fg-faint)]">
+    <p>&copy; Jon Edwards &middot; <a href="https://github.com/kolohelios" class="hover:text-[color:var(--fg)]">github</a></p>
   </div>
 </footer>
 </body>
