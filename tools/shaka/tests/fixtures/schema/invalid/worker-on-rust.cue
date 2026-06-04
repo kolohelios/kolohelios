@@ -1,6 +1,6 @@
 package project
 
-// `worker` lives on `rust-worker`, not `rust-cli` — wrangler config
+// `wrangler` lives on `rust-worker`, not `rust-cli` — wrangler config
 // only makes sense for a wasm worker build.
 #Project & {
 	name: "pollen-alert"
@@ -8,7 +8,7 @@ package project
 	cli: {
 		binaryName: "pollen-alert"
 	}
-	worker: {
+	wrangler: {
 		main:               "build/worker/shim.mjs"
 		compatibility_date: "2026-05-14"
 	}

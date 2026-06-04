@@ -26,6 +26,8 @@ struct ProjectMeta {
     nix_lib: Option<NixLibMeta>,
     #[serde(default)]
     rust_lib: Option<RustLibMeta>,
+    #[serde(default)]
+    worker: Option<WorkerMeta>,
 }
 
 #[derive(Deserialize)]
@@ -97,6 +99,15 @@ struct NixLibMeta {
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RustLibMeta {
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    extra_dev_shell_packages: Vec<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkerMeta {
     #[serde(default)]
     description: Option<String>,
     #[serde(default)]
@@ -189,9 +200,21 @@ pub fn run(check: bool) {
                     render_nix_lib_flake(&meta.name, nl),
                 ));
             }
+            "rust-worker" => {
+                let worker = meta.worker.as_ref().unwrap_or_else(|| {
+                    eprintln!(
+                        "{RED}{BOLD}error:{RESET} {} is kind rust-worker but has no `worker:` block",
+                        project.display()
+                    );
+                    std::process::exit(1);
+                });
+                items.push((
+                    project.join("flake.nix"),
+                    render_worker_flake(&meta.name, worker),
+                ));
+            }
             // Other kinds keep their hand-authored flake.nix until the
-            // generator grows a template for them: rust-worker follows
-            // in a separate issue.
+            // generator grows a template for them.
             _ => continue,
         }
     }
@@ -450,6 +473,101 @@ fn render_devshell(cli: &CliMeta) -> String {
         ));
     }
 
+    out.push_str("          };\n        }\n      );\n");
+    out
+}
+
+/// Compose a rust-worker flake. Shares the rust-cli inputs
+/// (kolohelios-nix + nixpkgs + rust-overlay) but the output is
+/// devShell-only: workers build to wasm via `worker-build`, not
+/// `buildRustPackage`, so there's no `packages`/`apps` and no
+/// `rustPlatform`. The toolchain adds the `wasm32-unknown-unknown`
+/// target; the devShell carries a fixed base (`wrangler` plus
+/// `pkg-config` and `openssl` for `worker-build`'s native
+/// `cargo install`), the `~/.cargo/bin` PATH `shellHook`, and any
+/// `extra_dev_shell_packages`.
+fn render_worker_flake(name: &str, worker: &WorkerMeta) -> String {
+    let description = worker.description.as_deref().unwrap_or(name);
+    let mut out = String::with_capacity(2048);
+    out.push_str(HEADER);
+    out.push_str(&format!("{{\n  description = \"{description}\";\n\n"));
+    out.push_str(INPUTS);
+    out.push_str("\n  outputs =\n");
+    out.push_str(WORKER_OUTPUT_HEADER);
+    out.push_str("    in\n    {\n");
+    out.push_str(&render_worker_devshell(&worker.extra_dev_shell_packages));
+    out.push_str("\n      formatter = kolohelios-nix.formatter;\n    };\n");
+    out.push_str("}\n");
+    out
+}
+
+/// Like `OUTPUT_HEADER` but tailored for workers: the toolchain gains
+/// the `wasm32-unknown-unknown` target (so `cargo check --target
+/// wasm32-unknown-unknown` and `worker-build` find the stdlib), and
+/// `rustPlatform` is omitted since workers never call `buildRustPackage`.
+const WORKER_OUTPUT_HEADER: &str = r#"    {
+      self,
+      kolohelios-nix,
+      nixpkgs,
+      rust-overlay,
+      ...
+    }:
+    let
+      inherit (kolohelios-nix.lib) supportedSystems workflowPackages;
+
+      forEachSupportedSystem =
+        f:
+        nixpkgs.lib.genAttrs supportedSystems (
+          system:
+          f {
+            inherit system;
+            pkgs = import nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+              overlays = [ rust-overlay.overlays.default ];
+            };
+          }
+        );
+
+      rustToolchain =
+        pkgs:
+        pkgs.rust-bin.stable."1.95.0".default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "llvm-tools-preview"
+          ];
+          targets = [ "wasm32-unknown-unknown" ];
+        };
+"#;
+
+/// Devshell block for worker flakes. Fixed base — the worker toolchain,
+/// `wrangler`, `pkg-config`, `openssl` — then any `extra_dev_shell_packages`,
+/// then `workflowPackages` and the Linux-only `cargo-llvm-cov`, closing
+/// with the `~/.cargo/bin` PATH `shellHook` (appended, not prepended, so
+/// a runner's rustup `cargo` doesn't shadow nix's toolchain).
+fn render_worker_devshell(extra_dev_shell_packages: &[String]) -> String {
+    let mut out = String::new();
+    out.push_str("      devShells = forEachSupportedSystem (\n");
+    out.push_str("        { pkgs, ... }:\n");
+    out.push_str("        {\n");
+    out.push_str("          default = pkgs.mkShell {\n");
+    out.push_str("            packages = [\n");
+    out.push_str("              (rustToolchain pkgs)\n");
+    out.push_str("              pkgs.wrangler\n");
+    out.push_str("              pkgs.pkg-config\n");
+    out.push_str("              pkgs.openssl\n");
+    for pkg in extra_dev_shell_packages {
+        out.push_str(&format!("              pkgs.{pkg}\n"));
+    }
+    out.push_str("            ]\n");
+    out.push_str("            ++ (workflowPackages pkgs)\n");
+    out.push_str(
+        "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
+    );
+    out.push_str("\n            shellHook = ''\n");
+    out.push_str("              export PATH=\"$PATH:$HOME/.cargo/bin\"\n");
+    out.push_str("            '';\n");
     out.push_str("          };\n        }\n      );\n");
     out
 }
@@ -817,6 +935,70 @@ mod tests {
         let out = render_flake("demo", &cli);
         assert!(out.contains("pkgs.actionlint"));
         assert!(out.contains("pkgs.taplo"));
+    }
+
+    #[test]
+    fn worker_flake_starts_with_generated_header() {
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.starts_with("# Generated by shaka. Do not edit by hand."));
+    }
+
+    #[test]
+    fn worker_description_defaults_to_project_name() {
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.contains(r#"description = "pollen-alert""#));
+    }
+
+    #[test]
+    fn worker_description_override_takes_precedence() {
+        let worker = WorkerMeta {
+            description: Some("kolohelios portfolio worker".into()),
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("kolohelios-portfolio", &worker);
+        assert!(out.contains(r#"description = "kolohelios portfolio worker""#));
+    }
+
+    #[test]
+    fn worker_toolchain_targets_wasm() {
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.contains(r#"targets = [ "wasm32-unknown-unknown" ];"#));
+    }
+
+    #[test]
+    fn worker_omits_packages_apps_and_rust_platform() {
+        // Workers build to wasm via worker-build, not buildRustPackage —
+        // no packages/apps output, and no rustPlatform let-binding.
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(!out.contains("packages = forEachSupportedSystem"));
+        assert!(!out.contains("apps = forEachSupportedSystem"));
+        assert!(!out.contains("rustPlatform"));
+    }
+
+    #[test]
+    fn worker_devshell_carries_fixed_base_and_shell_hook() {
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.contains("pkgs.wrangler"));
+        assert!(out.contains("pkgs.pkg-config"));
+        assert!(out.contains("pkgs.openssl"));
+        assert!(out.contains(r#"export PATH="$PATH:$HOME/.cargo/bin""#));
+    }
+
+    #[test]
+    fn worker_extra_dev_shell_packages_render_into_dev_shell_list() {
+        let worker = WorkerMeta {
+            extra_dev_shell_packages: vec!["tailwindcss".into(), "cue".into()],
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("kolohelios-portfolio", &worker);
+        assert!(out.contains("pkgs.tailwindcss"));
+        assert!(out.contains("pkgs.cue"));
+    }
+
+    #[test]
+    fn worker_flake_carries_formatter() {
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.contains("formatter = kolohelios-nix.formatter;"));
     }
 
     #[test]
