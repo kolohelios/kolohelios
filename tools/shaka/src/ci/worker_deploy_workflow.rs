@@ -319,3 +319,127 @@ fn filename_of(path: &str) -> String {
         .expect("reusable_workflow has a filename")
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture_spec() -> WorkerDeploySpec {
+        WorkerDeploySpec {
+            project_dir: PathBuf::from("apps/portfolio"),
+            project_name: "portfolio".to_string(),
+            deploy: CiDeploy {
+                reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
+                preview_script_prefix: "portfolio".to_string(),
+            },
+        }
+    }
+
+    fn emit_fixture() -> serde_yaml_ng::Value {
+        let yaml = super::super::workflow::emit(&build(&fixture_spec()));
+        serde_yaml_ng::from_str(&yaml).expect("valid YAML")
+    }
+
+    #[test]
+    fn emits_five_lifecycle_jobs() {
+        let parsed = emit_fixture();
+        let jobs = parsed["jobs"].as_mapping().expect("jobs is a mapping");
+        // The deploy workflow is exactly these five jobs in order;
+        // `cleanup` lives in the generated sibling, not here.
+        for job in ["changes", "verify", "preview", "comment", "deploy"] {
+            assert!(jobs.contains_key(job), "missing job: {job}");
+        }
+        assert!(
+            !jobs.contains_key("cleanup"),
+            "cleanup belongs in the sibling file"
+        );
+        assert_eq!(parsed["name"].as_str(), Some("portfolio deploy"));
+    }
+
+    #[test]
+    fn triggers_on_pr_push_main_and_dispatch() {
+        let parsed = emit_fixture();
+        assert!(parsed["on"].get("pull_request").is_some());
+        assert_eq!(parsed["on"]["push"]["branches"][0].as_str(), Some("main"));
+        assert!(parsed["on"].get("workflow_dispatch").is_some());
+    }
+
+    #[test]
+    fn permissions_allow_oidc_and_pr_comments() {
+        let parsed = emit_fixture();
+        let perms = &parsed["permissions"];
+        assert_eq!(perms["id-token"].as_str(), Some("write"));
+        assert_eq!(perms["contents"].as_str(), Some("read"));
+        // The `comment` job needs write to post the sticky URL comment.
+        assert_eq!(perms["pull-requests"].as_str(), Some("write"));
+    }
+
+    #[test]
+    fn concurrency_group_is_per_project() {
+        let parsed = emit_fixture();
+        let group = parsed["concurrency"]["group"]
+            .as_str()
+            .expect("group is a string");
+        assert!(group.starts_with("portfolio-deploy-"), "got: {group}");
+    }
+
+    #[test]
+    fn verify_call_gates_on_pr_and_runs_verify_only() {
+        let parsed = emit_fixture();
+        let verify = &parsed["jobs"]["verify"];
+        assert_eq!(
+            verify["uses"].as_str(),
+            Some("./.github/workflows/cf-deploy.yml")
+        );
+        assert_eq!(verify["with"]["verify_only"].as_bool(), Some(true));
+        let if_ = verify["if"].as_str().expect("verify has an if");
+        assert!(if_.contains("github.event_name == 'pull_request'"), "{if_}");
+    }
+
+    #[test]
+    fn preview_overrides_script_name_with_pr_number() {
+        let parsed = emit_fixture();
+        let preview = &parsed["jobs"]["preview"];
+        assert_eq!(
+            preview["with"]["script_name_override"].as_str(),
+            Some("portfolio-pr-${{ github.event.pull_request.number }}")
+        );
+        // Sequenced after verify so broken creds don't burn a deploy.
+        let needs = preview["needs"].as_sequence().expect("needs is a list");
+        assert!(needs.iter().any(|n| n.as_str() == Some("verify")));
+    }
+
+    #[test]
+    fn deploy_call_runs_on_push_main_or_dispatch_not_verify_only() {
+        let parsed = emit_fixture();
+        let deploy = &parsed["jobs"]["deploy"];
+        assert_eq!(deploy["with"]["verify_only"].as_bool(), Some(false));
+        let if_ = deploy["if"].as_str().expect("deploy has an if");
+        assert!(if_.contains("github.event_name == 'push'"), "{if_}");
+        assert!(
+            if_.contains("github.event_name == 'workflow_dispatch'"),
+            "{if_}"
+        );
+    }
+
+    #[test]
+    fn comment_job_carries_a_project_scoped_marker() {
+        let yaml = super::super::workflow::emit(&build(&fixture_spec()));
+        // The HTML marker lets later runs find and edit the existing
+        // comment instead of posting a new one each push.
+        assert!(yaml.contains("<!-- preview-deploy:portfolio -->"));
+    }
+
+    #[test]
+    fn changes_filter_watches_project_and_reusable_workflow() {
+        let parsed = emit_fixture();
+        let filters = parsed["jobs"]["changes"]["steps"]
+            .as_sequence()
+            .expect("steps")
+            .iter()
+            .find_map(|s| s["with"].get("filters").and_then(|f| f.as_str()))
+            .expect("paths-filter step with a filters body");
+        assert!(filters.contains("apps/portfolio/**"), "{filters}");
+        assert!(filters.contains("cf-deploy.yml"), "{filters}");
+    }
+}
