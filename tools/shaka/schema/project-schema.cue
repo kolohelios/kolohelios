@@ -45,6 +45,52 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	cache?:       #CacheRules
 }
 
+// Worker runtime/build config that drives `wrangler.toml` for a
+// `rust-worker` project. `shaka deploy generate-wrangler` (#113) emits
+// `wrangler.toml` from this block and drift-checks it in preflight, so
+// the hand-maintained TOML in `apps/*/wrangler.toml` becomes generated.
+// Distinct from `#Deploy` (DNS + cache rules, emitted as Terraform):
+// this block is everything wrangler itself needs to build and run the
+// worker. The project's top-level `name` is the source of truth for the
+// worker name — not duplicated here.
+//
+// Covers the two real shapes in the repo: pollen-alert (`build` + `cron`
+// + `vars`) and the portfolio (`assets`, no triggers/vars). Every field
+// past `main`/`compatibility_date` is optional so both validate.
+#Worker: {
+	// Entry point wrangler uploads — the `worker-build` shim, e.g.
+	// `build/worker/shim.mjs`.
+	main: string & !=""
+
+	// Cloudflare runtime compatibility date, `YYYY-MM-DD`.
+	compatibility_date: string & =~"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+
+	// Custom build step (`[build].command`). Omit when the artifact is
+	// produced upstream of `wrangler deploy` (the portfolio builds in a
+	// dedicated CI/devshell step instead).
+	build?: {
+		command: string & !=""
+	}
+
+	// Workers Static Assets (`[assets].directory`) — CF serves these
+	// files at the edge, unmatched paths fall through to `main`.
+	assets?: {
+		directory: string & !=""
+	}
+
+	// Scheduled triggers (`[triggers].crons`): standard 5-field UTC cron
+	// expressions.
+	cron?: [...string & =~"^(\\S+\\s+){4}\\S+$"]
+
+	// Non-secret runtime config (`[vars]`).
+	vars?: {[string]: string}
+
+	// Secret names declared for the worker (set out-of-band via
+	// `wrangler secret put`); values never live in the repo. Names only,
+	// so the generator can surface them as a comment.
+	secrets?: [...string & =~"^[A-Z][A-Z0-9_]*$"]
+}
+
 // Publication target for a `#CiBuild` job. Each variant emits a
 // different post-`nix build` step in the generated `main.yaml` job:
 // `flakehub` runs `DeterminateSystems/flakehub-push`; `artifact` runs
@@ -234,6 +280,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		}
 	}
 	deploy?: #Deploy
+	worker?: #Worker
 	ci?: {
 		deploy?: #CiDeploy
 	}
