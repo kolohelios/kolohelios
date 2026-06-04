@@ -1,0 +1,26 @@
+[package]
+edition      = "2021"
+license      = "MIT OR Apache-2.0"
+name         = "notes-sync"
+publish      = false
+rust-version = "1.95"
+version      = "0.1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Per-connection hibernation attachment is (de)serialized through serde;
+# the shared wire types land here in phase 2 (`packages/notes-protocol`).
+serde = { version = "1", features = ["derive"] }
+# workers-rs runtime: Durable Objects + the WebSocket Hibernation API.
+worker = "0.8"
+
+[profile.release]
+codegen-units = 1
+lto           = true
+opt-level     = "s"
+strip         = true
+
+[lints.clippy]
+mod_module_files = "deny"

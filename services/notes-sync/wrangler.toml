@@ -1,0 +1,26 @@
+compatibility_date = "2026-05-14"
+main               = "build/worker/shim.mjs"
+name               = "notes-sync"
+
+# `worker-build` compiles the crate to wasm32-unknown-unknown and emits
+# `build/worker/shim.mjs` + the WASM module wrangler uploads. The
+# `cargo install` is a no-op on subsequent runs and matches the
+# workers-rs documented idiom; the devshell adds `~/.cargo/bin` to PATH
+# so the installed binary is visible to the build step.
+[build]
+command = "cargo install -q worker-build --locked && worker-build --release"
+
+# Per-note Durable Object binding. The Worker resolves a note id to its
+# object with `env.durable_object("NOTE").id_from_name(noteId)`; while a
+# note is open that object is the single writer and source of truth.
+[durable_objects]
+bindings = [
+  { name = "NOTE", class_name = "NoteDurableObject" },
+]
+
+# SQLite-backed storage for the Durable Object class. The SQLite backend
+# is what the append-only edit log (phase 2) is built on; a fresh class
+# opts in here at creation time.
+[[migrations]]
+new_sqlite_classes = ["NoteDurableObject"]
+tag                = "v1"
