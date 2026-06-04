@@ -390,7 +390,20 @@ pub fn run(check: bool) {
 
 fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
     match kind {
-        "rust-cli" => Some(RUST_TEMPLATE.to_string()),
+        "rust-cli" => Some(
+            // A `data/schema.cue` signals the project ships typed CUE
+            // data (e.g. `aof`'s areas-of-focus tree) that
+            // `shaka project schema-check` doesn't cover — it validates
+            // `project.cue`, not arbitrary data. Add a `cue-vet` recipe
+            // that vets the whole `data/` package and fold it into
+            // `validate` so a malformed `data/*.cue` fails locally and
+            // in CI.
+            if project_dir.join("data/schema.cue").is_file() {
+                rust_cli_with_data_vet()
+            } else {
+                RUST_TEMPLATE.to_string()
+            },
+        ),
         "rust-worker" => Some(
             // `src/bin/build-site.rs` signals a static-site build
             // pipeline (templates + tailwind → committed `dist/`).
@@ -436,6 +449,27 @@ fn rust_worker_with_build_site() -> String {
     ));
     body
 }
+
+/// `RUST_TEMPLATE` with the `cue-vet` recipe prepended and the recipe
+/// added as a dependency of `validate`. Used when a rust-cli project
+/// ships typed CUE data under `data/` (marked by `data/schema.cue`).
+fn rust_cli_with_data_vet() -> String {
+    let mut body = RUST_CLI_DATA_VET_RECIPE.to_string();
+    body.push_str(&RUST_TEMPLATE.replace(
+        "validate: fmt-check lint",
+        "validate: cue-vet fmt-check lint",
+    ));
+    body
+}
+
+const RUST_CLI_DATA_VET_RECIPE: &str = r#"# Vet typed CUE data under `data/` against its schema. Unlike
+# `shaka project schema-check` (which validates `project.cue`), this
+# gates arbitrary `data/*.cue` so a malformed data file fails here
+# rather than at runtime.
+cue-vet:
+    cue vet ./data/...
+
+"#;
 
 const RUST_WORKER_BUILD_CHECK_RECIPE: &str = r#"# Drift check for the static-asset build pipeline. Re-runs the same
 # render-and-tailwind pipeline that produces committed `dist/`, into
@@ -570,6 +604,19 @@ mod tests {
         assert_eq!(
             template_for("rust-cli", dir.path()).as_deref(),
             Some(RUST_TEMPLATE)
+        );
+    }
+
+    #[test]
+    fn template_for_rust_cli_with_data_schema_adds_cue_vet() {
+        let dir = tmp_project("rust-cli-data");
+        std::fs::create_dir(dir.path().join("data")).unwrap();
+        std::fs::write(dir.path().join("data/schema.cue"), "// stub").unwrap();
+        let tpl = template_for("rust-cli", dir.path()).expect("template");
+        assert!(tpl.contains("cue-vet:"), "missing cue-vet recipe");
+        assert!(
+            tpl.contains("validate: cue-vet fmt-check lint"),
+            "cue-vet not folded into validate"
         );
     }
 
