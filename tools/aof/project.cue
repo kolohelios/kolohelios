@@ -7,6 +7,13 @@ package project
 		binaryName:       "aof"
 		package:          true
 		shellCompletions: true
+		// `aof render` shells out to `cue export` (load the areas tree)
+		// and `d2` (emit the diagram SVG). Wrap both onto the packaged
+		// binary's PATH so it's self-contained off FlakeHub; `cue` also
+		// rides along in the devShell via `workflowPackages`, but `d2`
+		// is aof-specific.
+		runtimePathDeps: ["cue", "d2"]
+		extraDevShellPackages: ["d2"]
 	}
 	coverage: {
 		line: {
