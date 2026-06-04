@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use aof::{render, todoist};
+use aof::{diagram, render, todoist};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
@@ -27,11 +27,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Render an SVG diagram inline in the current terminal
+    /// Render the areas-of-focus tree as a diagram inline in the terminal
     Render {
-        /// Path to the SVG file to render
-        #[arg(long)]
-        from: PathBuf,
+        /// Directory holding the areas CUE package (schema + data).
+        #[arg(long, default_value = "data")]
+        data: PathBuf,
+        /// Render this pre-rendered SVG directly, bypassing the
+        /// cue/d2 pipeline. A debug escape hatch.
+        #[arg(long, conflicts_with = "data")]
+        from: Option<PathBuf>,
     },
     #[command(hide = true)]
     Completions { shell: Shell },
@@ -51,7 +55,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Command::Render { from } => match run_render(&from) {
+        Command::Render { data, from } => match run_render(&data, from.as_deref()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("aof render: {e}");
@@ -67,8 +71,17 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_render(from: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let svg = std::fs::read(from)?;
+fn run_render(data: &Path, from: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+    let svg = match from {
+        // Escape hatch: render a pre-built SVG without touching cue/d2.
+        Some(path) => std::fs::read(path)?,
+        // Default: load the areas tree, emit D2, render to SVG.
+        None => {
+            let tree = diagram::Tree::load(data)?;
+            let source = diagram::tree_to_d2(&tree);
+            diagram::d2_to_svg(&source)?
+        }
+    };
     render::render_svg(&svg)?;
     Ok(())
 }
