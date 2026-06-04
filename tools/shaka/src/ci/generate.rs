@@ -273,3 +273,73 @@ fn check_drift(items: &[(PathBuf, String)]) {
         println!("{GREEN}{BOLD}generate-workflows --check passed{RESET}");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn apply_fixture() -> Workflow {
+        build_apply_workflow(
+            "cloudflare-dns",
+            Path::new("./infra/cloudflare-dns"),
+            &CiApply {
+                reusable_workflow: "./.github/workflows/tf-apply.yml".to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn apply_workflow_strips_leading_dot_slash_from_paths() {
+        let yaml = workflow::emit(&apply_fixture());
+        let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).expect("valid YAML");
+        let paths = parsed["on"]["push"]["paths"]
+            .as_sequence()
+            .expect("push paths");
+        // Globs must read as `infra/...`, never `./infra/...`.
+        assert!(paths
+            .iter()
+            .any(|p| p.as_str() == Some("infra/cloudflare-dns/**")));
+        for p in paths {
+            let s = p.as_str().unwrap();
+            assert!(!s.starts_with("./"), "path leaked a ./ prefix: {s}");
+        }
+    }
+
+    #[test]
+    fn apply_workflow_watches_itself_and_the_reusable_workflow() {
+        let yaml = workflow::emit(&apply_fixture());
+        // A refactor of either the wrapper or the reusable workflow it
+        // calls should re-apply on the next main-merge.
+        assert!(yaml.contains(".github/workflows/cloudflare-dns-apply.yml"));
+        assert!(yaml.contains(".github/workflows/tf-apply.yml"));
+    }
+
+    #[test]
+    fn apply_workflow_requests_oidc_and_serializes_applies() {
+        let yaml = workflow::emit(&apply_fixture());
+        let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(parsed["name"].as_str(), Some("cloudflare-dns apply"));
+        assert_eq!(parsed["permissions"]["id-token"].as_str(), Some("write"));
+        // Applies must not cancel each other mid-flight.
+        assert_eq!(
+            parsed["concurrency"]["cancel-in-progress"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            parsed["concurrency"]["group"].as_str(),
+            Some("cloudflare-dns-apply")
+        );
+    }
+
+    #[test]
+    fn read_meta_errors_when_project_cue_is_absent() {
+        let dir = std::env::temp_dir().join("shaka-ci-generate-no-cue");
+        // No project.cue here — read_meta should short-circuit before
+        // ever spawning `cue`.
+        let err = match read_meta(Path::new("/nonexistent-schema.cue"), &dir) {
+            Err(e) => e,
+            Ok(_) => panic!("missing project.cue must error"),
+        };
+        assert!(err.contains("missing project.cue"), "{err}");
+    }
+}

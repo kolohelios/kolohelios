@@ -578,3 +578,146 @@ fn gate_job(specs: &[MainBuildSpec]) -> InlineJob {
         })],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flakehub_spec() -> MainBuildSpec {
+        MainBuildSpec {
+            project_dir: PathBuf::from("tools/shaka"),
+            project_name: "shaka".to_string(),
+            build: CiBuild {
+                filter_key: "shaka".to_string(),
+                job_id: "shaka".to_string(),
+                display_name: "shaka".to_string(),
+                nix_command: "build".to_string(),
+                attr: None,
+                publish: Publish::Flakehub(PublishFlakehub {
+                    name: "kolohelios/shaka".to_string(),
+                    visibility: "public".to_string(),
+                    rolling: true,
+                    populate_consumer_cache: false,
+                }),
+                dispatch: vec![],
+            },
+        }
+    }
+
+    fn parse(specs: &[MainBuildSpec]) -> serde_yaml_ng::Value {
+        let yaml = super::super::workflow::emit(&build(specs));
+        serde_yaml_ng::from_str(&yaml).expect("valid YAML")
+    }
+
+    #[test]
+    fn always_emits_changes_preflight_and_gate() {
+        let parsed = parse(&[flakehub_spec()]);
+        let jobs = parsed["jobs"].as_mapping().expect("jobs mapping");
+        for job in ["changes", "preflight", "gate"] {
+            assert!(jobs.contains_key(job), "missing fixed job: {job}");
+        }
+        assert_eq!(parsed["name"].as_str(), Some("CI"));
+    }
+
+    #[test]
+    fn build_job_id_is_prefixed_and_gate_depends_on_it() {
+        let parsed = parse(&[flakehub_spec()]);
+        assert!(parsed["jobs"].get("build-shaka").is_some());
+        let needs = parsed["jobs"]["gate"]["needs"]
+            .as_sequence()
+            .expect("gate needs list");
+        assert!(needs.iter().any(|n| n.as_str() == Some("build-shaka")));
+        // `gate` runs even when upstreams skip, so branch protection
+        // stays green on path-filtered PRs.
+        assert_eq!(parsed["jobs"]["gate"]["if"].as_str(), Some("always()"));
+    }
+
+    #[test]
+    fn flakehub_publish_step_carries_name_and_visibility() {
+        let parsed = parse(&[flakehub_spec()]);
+        let steps = parsed["jobs"]["build-shaka"]["steps"]
+            .as_sequence()
+            .expect("steps");
+        let push = steps
+            .iter()
+            .find(|s| s["uses"].as_str() == Some("DeterminateSystems/flakehub-push@main"))
+            .expect("flakehub-push step");
+        assert_eq!(push["with"]["name"].as_str(), Some("kolohelios/shaka"));
+        assert_eq!(push["with"]["visibility"].as_str(), Some("public"));
+        assert_eq!(push["with"]["rolling"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn populate_consumer_cache_adds_a_flakehub_url_rebuild() {
+        let mut spec = flakehub_spec();
+        if let Publish::Flakehub(ref mut fh) = spec.build.publish {
+            fh.populate_consumer_cache = true;
+        }
+        let yaml = super::super::workflow::emit(&build(&[spec]));
+        assert!(yaml.contains("nix build 'https://flakehub.com/f/kolohelios/shaka/*.tar.gz'"));
+    }
+
+    #[test]
+    fn artifact_publish_uploads_with_retention() {
+        let mut spec = flakehub_spec();
+        spec.build.publish = Publish::Artifact(PublishArtifact {
+            name: "site".to_string(),
+            path: "dist".to_string(),
+            retention_days: 7,
+            compression_level: 6,
+        });
+        let yaml = super::super::workflow::emit(&build(&[spec]));
+        let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
+        let steps = parsed["jobs"]["build-shaka"]["steps"]
+            .as_sequence()
+            .unwrap();
+        let upload = steps
+            .iter()
+            .find(|s| s["uses"].as_str() == Some("actions/upload-artifact@v7"))
+            .expect("upload-artifact step");
+        assert_eq!(upload["with"]["name"].as_str(), Some("site"));
+        assert_eq!(upload["with"]["retention-days"].as_u64(), Some(7));
+    }
+
+    #[test]
+    fn nix_check_command_uses_flake_check_verb() {
+        let mut spec = flakehub_spec();
+        spec.build.nix_command = "check".to_string();
+        let yaml = super::super::workflow::emit(&build(&[spec]));
+        assert!(yaml.contains("nix flake check ./tools/shaka"));
+    }
+
+    #[test]
+    fn attr_suffix_appends_to_the_nix_target() {
+        let mut spec = flakehub_spec();
+        spec.build.attr = Some("packages.x86_64-linux.default".to_string());
+        let yaml = super::super::workflow::emit(&build(&[spec]));
+        assert!(yaml.contains("nix build ./tools/shaka#packages.x86_64-linux.default"));
+    }
+
+    #[test]
+    fn dispatch_mints_a_bot_token_and_posts_to_target_repo() {
+        let mut spec = flakehub_spec();
+        spec.build.dispatch = vec![Dispatch {
+            repo: "kolohelios/blogs-and-posts".to_string(),
+            event_type: "shaka-published".to_string(),
+        }];
+        let yaml = super::super::workflow::emit(&build(&[spec]));
+        assert!(yaml.contains("actions/create-github-app-token@v3"));
+        assert!(yaml.contains("repos/kolohelios/blogs-and-posts/dispatches"));
+        assert!(yaml.contains("event_type=shaka-published"));
+    }
+
+    #[test]
+    fn changes_filter_lists_each_project_filter_key() {
+        let parsed = parse(&[flakehub_spec()]);
+        let filters = parsed["jobs"]["changes"]["steps"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .find_map(|s| s["with"].get("filters").and_then(|f| f.as_str()))
+            .expect("filters body");
+        assert!(filters.contains("shaka:"), "{filters}");
+        assert!(filters.contains("tools/shaka/**"), "{filters}");
+    }
+}

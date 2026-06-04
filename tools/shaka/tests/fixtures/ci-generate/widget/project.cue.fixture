@@ -1,0 +1,23 @@
+package project
+
+// A minimal buildable rust-cli project used by `tests/ci_generate.rs`
+// to exercise `shaka ci generate-workflows` and `audit-workflows`
+// end-to-end. The `ci.build` block makes the generator emit a
+// `build-widget` job into `main.yaml`.
+#Project & {
+	name: "widget"
+	kind: "rust-cli"
+	coverage: line: fail: 50
+	cli: binaryName: "widget"
+	ci: build: {
+		filterKey:   "widget"
+		jobId:       "widget"
+		displayName: "Widget"
+		publish: {
+			kind:       "flakehub"
+			name:       "kolohelios/widget"
+			visibility: "public"
+			rolling:    true
+		}
+	}
+}
