@@ -57,6 +57,12 @@
     };
     casks = [
       "claude-code@latest"
+      # `pkgs.ghostty` is Linux-only (`meta.platforms` lists no darwin —
+      # the macOS app needs the Xcode toolchain nixpkgs can't build), so
+      # the Mac install rides the same cask path as `claude-code`. The
+      # ghostty config is already managed via `xdg.configFile` in
+      # `common.nix`. Linux uses the host's built-in terminal (#735).
+      "ghostty"
     ];
   };
 
