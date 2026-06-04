@@ -19,7 +19,7 @@ geometry:
 
 **Principal Software Engineer/Engineering Manager**
 
-(360) 509-8185 • jkedwards@me.com • US Person • Bainbridge Island, WA • [LinkedIn](https://www.linkedin.com/in/kolohelios) • [GitHub](https://github.com/kolohelios)
+\(360\) 509-8185 • jkedwards@me.com • US Person • Bainbridge Island, WA • [LinkedIn](https://www.linkedin.com/in/kolohelios) • [GitHub](https://github.com/kolohelios)
 
 ## Summary
 
