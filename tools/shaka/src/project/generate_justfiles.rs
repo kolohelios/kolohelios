@@ -66,6 +66,73 @@ whitespace-check:
 validate: fmt-check lint doc-check deny machete coverage nix-fmt-check flake-check whitespace-check
 "#;
 
+// Shared library crate (`packages/`). Same native gates as the
+// rust-cli template, plus a `wasm-check`: a shared lib is consumed on
+// both native (for tests) and `wasm32-unknown-unknown` (by the Worker
+// and the WASM editor), so wasm-compat is part of the contract and is
+// checked here for localized feedback rather than only transitively
+// through consumers. No worker-build — a lib produces no artifact of
+// its own.
+const RUST_LIB_TEMPLATE: &str = r#"build:
+    cargo build --release
+
+test:
+    cargo test
+
+fmt:
+    cargo fmt
+
+fmt-check:
+    cargo fmt --check
+
+fmt-toml:
+    taplo fmt
+
+lint:
+    cargo clippy --all-targets -- -D warnings
+
+doc-check:
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+
+deny:
+    cargo deny check
+
+# Macro-only deps can register as false positives — allowlist via
+# `package.metadata.cargo-machete.ignored` in the offending Cargo.toml.
+machete:
+    cargo machete
+
+# Shared libs are consumed on wasm32-unknown-unknown by the Worker and
+# the WASM editor, so the wasm target is part of the contract.
+wasm-check:
+    cargo check --target wasm32-unknown-unknown
+
+coverage:
+    #!/usr/bin/env bash
+    # Line coverage only — `cargo llvm-cov --branch` requires nightly
+    # (`-Z coverage-options=branch`), incompatible with the pinned
+    # stable toolchain.
+    set -euo pipefail
+    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
+    measured=$(cargo llvm-cov --json --summary-only)
+    line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
+    printf 'coverage: line=%.1f%% (gate: line>=%s%%)\n' "$line" "$fail_line"
+    awk -v l="$line" -v fl="$fail_line" \
+        'BEGIN { exit (l < fl) ? 1 : 0 }'
+
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
+    nix flake check
+
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: fmt-check lint doc-check deny machete wasm-check coverage nix-fmt-check flake-check whitespace-check
+"#;
+
 const NIX_LIB_TEMPLATE: &str = r#"fmt-toml:
     taplo fmt
 
@@ -431,6 +498,7 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
             }
             .to_string(),
         ),
+        "rust-lib" => Some(RUST_LIB_TEMPLATE.to_string()),
         "nix-lib" => Some(NIX_LIB_TEMPLATE.to_string()),
         "document" => Some(DOCUMENT_TEMPLATE.to_string()),
         _ => None,
@@ -666,6 +734,31 @@ mod tests {
             template_for("rust-worker", dir.path()).as_deref(),
             Some(RUST_WORKER_TEMPLATE)
         );
+    }
+
+    #[test]
+    fn template_for_rust_lib_returns_rust_lib_template() {
+        let dir = tmp_project("rust-lib");
+        assert_eq!(
+            template_for("rust-lib", dir.path()).as_deref(),
+            Some(RUST_LIB_TEMPLATE)
+        );
+    }
+
+    #[test]
+    fn rust_lib_template_gates_validate_on_wasm_check() {
+        // A shared lib is consumed on wasm32-unknown-unknown, so the
+        // generated `validate` must include `wasm-check`.
+        assert!(RUST_LIB_TEMPLATE.contains("wasm-check:\n"));
+        assert!(RUST_LIB_TEMPLATE
+            .lines()
+            .any(|l| l.starts_with("validate:") && l.contains("wasm-check")));
+    }
+
+    #[test]
+    fn rust_lib_template_has_no_worker_build() {
+        // A lib produces no artifact of its own — no worker-build step.
+        assert!(!RUST_LIB_TEMPLATE.contains("worker-build"));
     }
 
     #[test]
