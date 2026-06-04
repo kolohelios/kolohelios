@@ -76,7 +76,12 @@
     in
     {
       lib = {
-        inherit supportedSystems forEachSupportedSystem workflowPackages;
+        inherit
+          supportedSystems
+          forEachSupportedSystem
+          workflowPackages
+          shakaShim
+          ;
       };
 
       formatter = forEachSupportedSystem ({ pkgs, ... }: pkgs.nixfmt-rfc-style);
