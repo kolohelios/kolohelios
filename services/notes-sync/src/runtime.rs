@@ -3,7 +3,9 @@
 //! `NoteDurableObject` itself. Cfg-gated to `wasm32` because everything
 //! here depends on `worker` runtime types that only exist on the
 //! Cloudflare Worker target; native `cargo test` exercises the pure
-//! `route` and `state` modules instead (mirrors the `pollen-alert` split).
+//! `route`, `state`, and `git` modules instead.
+
+use std::time::Duration;
 
 use notes_protocol::{ClientMsg, Delta, Seq, ServerMsg};
 use serde::{Deserialize, Serialize};
@@ -11,12 +13,25 @@ use serde::{Deserialize, Serialize};
 // `#[durable_object]` macro expands to JS-glue code that references it by
 // bare name (see the workers-rs `counter.rs` example).
 use worker::{
-    console_log, durable_object, event, wasm_bindgen, Context, DurableObject, Env, Error, Request,
-    Response, ResponseBuilder, Result, State, WebSocket, WebSocketIncomingMessage, WebSocketPair,
+    console_log, durable_object, event, wasm_bindgen, Context, Date, DurableObject, Env, Error,
+    Request, Response, ResponseBuilder, Result, State, WebSocket, WebSocketIncomingMessage,
+    WebSocketPair,
 };
 
+use crate::git::{commit_with_retry, CommitError, GitTarget, WorkerGitHubClient};
 use crate::route::parse_ws_note_id;
-use crate::state::is_stale;
+use crate::state::{is_stale, next_alarm};
+
+/// Commit the note this long after the last edit — coalesces a burst of
+/// keystrokes into a single git commit once the typing settles.
+const COMMIT_DEBOUNCE: Duration = Duration::from_secs(5);
+/// Commit at least this often under continuous editing, so a never-idle
+/// session still backs up.
+const COMMIT_BACKSTOP: Duration = Duration::from_secs(60);
+/// After a failed commit, retry no sooner than this.
+const COMMIT_RETRY_BACKOFF: Duration = Duration::from_secs(30);
+/// Optimistic stale-ref retries within a single commit attempt.
+const MAX_COMMIT_RETRIES: u32 = 3;
 
 /// Top-level Worker entrypoint. A websocket upgrade for `/note/<id>/ws`
 /// is forwarded to that note's Durable Object (`idFromName(id)`), which
@@ -65,8 +80,6 @@ fn send(ws: &WebSocket, msg: &ServerMsg) -> Result<()> {
 #[durable_object]
 pub struct NoteDurableObject {
     state: State,
-    // Unused until phase 3 (alarms read GitHub-commit config off the env).
-    #[allow(dead_code)]
     env: Env,
 }
 
@@ -90,6 +103,86 @@ impl NoteDurableObject {
         self.state.storage().put("text", text).await?;
         Ok(())
     }
+
+    /// Schedule the lazy git commit after an accepted edit: push the
+    /// debounce deadline out to now + `COMMIT_DEBOUNCE`, arm the backstop
+    /// once if it isn't already, and set the DO's single alarm to the
+    /// earlier of the two.
+    async fn schedule_commit(&self) -> Result<()> {
+        let now = Date::now().as_millis() as i64;
+        let debounce = now + COMMIT_DEBOUNCE.as_millis() as i64;
+        self.state
+            .storage()
+            .put("commit_debounce_due", debounce)
+            .await?;
+
+        let backstop = match self.state.storage().get("commit_backstop_due").await? {
+            Some(existing) => existing,
+            None => {
+                let b = now + COMMIT_BACKSTOP.as_millis() as i64;
+                self.state.storage().put("commit_backstop_due", b).await?;
+                b
+            }
+        };
+
+        if let Some(at) = next_alarm(Some(debounce), Some(backstop)) {
+            let delay = (at - now).max(0) as u64;
+            self.state
+                .storage()
+                .set_alarm(Duration::from_millis(delay))
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Clear the commit deadlines (after a commit lands, or before a
+    /// reschedule).
+    async fn clear_commit_deadlines(&self) {
+        let _ = self.state.storage().delete("commit_debounce_due").await;
+        let _ = self.state.storage().delete("commit_backstop_due").await;
+    }
+
+    /// Resolve the GitHub target for this note from env config plus the
+    /// stored note id. The body lives at `notes/<note_id>.md`.
+    async fn git_target(&self) -> Result<GitTarget> {
+        let note_id: String = self
+            .state
+            .storage()
+            .get("note_id")
+            .await?
+            .unwrap_or_default();
+        Ok(GitTarget {
+            owner: self.env.var("GITHUB_OWNER")?.to_string(),
+            repo: self.env.var("GITHUB_REPO")?.to_string(),
+            branch: self.env.var("GITHUB_BRANCH")?.to_string(),
+            path: format!("notes/{note_id}.md"),
+        })
+    }
+
+    /// Commit the current body to git with optimistic stale-ref retry.
+    /// Returns the new commit sha.
+    async fn commit_now(&self, seq: Seq, text: &str) -> std::result::Result<String, CommitError> {
+        let target = self
+            .git_target()
+            .await
+            .map_err(|e| CommitError::Transport(e.to_string()))?;
+        let token = self
+            .env
+            .secret("GITHUB_TOKEN")
+            .map_err(|e| CommitError::Transport(e.to_string()))?
+            .to_string();
+        let client = WorkerGitHubClient::new(token);
+        let message = format!("note: update {} (seq {seq})", target.path);
+        commit_with_retry(&client, &target, text, &message, MAX_COMMIT_RETRIES).await
+    }
+
+    /// Send `msg` to every connected editor (e.g. a `BackedUp` after a
+    /// commit lands).
+    fn broadcast(&self, msg: &ServerMsg) {
+        for ws in self.state.get_websockets() {
+            let _ = send(&ws, msg);
+        }
+    }
 }
 
 impl DurableObject for NoteDurableObject {
@@ -105,6 +198,9 @@ impl DurableObject for NoteDurableObject {
         let note_id = parse_ws_note_id(&req.path())
             .map(str::to_owned)
             .unwrap_or_default();
+        // Persist the note id so the alarm handler (which has no socket)
+        // can resolve the git path on wake.
+        self.state.storage().put("note_id", &note_id).await?;
 
         let pair = WebSocketPair::new()?;
         let server = pair.server;
@@ -171,6 +267,9 @@ impl DurableObject for NoteDurableObject {
                     Ok(new_text) => {
                         let new_seq = seq + 1;
                         self.commit_edit(new_seq, &delta, &new_text).await?;
+                        // Persist is done; schedule the lazy git commit.
+                        // The fast cadence never touches git.
+                        self.schedule_commit().await?;
                         send(&ws, &ServerMsg::Ack { seq: new_seq })
                     }
                     Err(e) => {
@@ -189,6 +288,43 @@ impl DurableObject for NoteDurableObject {
         }
     }
 
+    async fn alarm(&self) -> Result<Response> {
+        let (seq, text) = self.load_state().await?;
+        let committed: Seq = self
+            .state
+            .storage()
+            .get("committed_seq")
+            .await?
+            .unwrap_or(0);
+        // Clear deadlines up front; a failed commit re-arms a backstop.
+        self.clear_commit_deadlines().await;
+
+        if seq <= committed {
+            return Response::ok("nothing to commit");
+        }
+
+        match self.commit_now(seq, &text).await {
+            Ok(commit_sha) => {
+                self.state.storage().put("committed_seq", seq).await?;
+                self.broadcast(&ServerMsg::BackedUp {
+                    commit_sha: Some(commit_sha),
+                });
+                Response::ok("committed")
+            }
+            Err(e) => {
+                console_log!("git commit failed: {e}; backing off");
+                let backstop =
+                    Date::now().as_millis() as i64 + COMMIT_RETRY_BACKOFF.as_millis() as i64;
+                self.state
+                    .storage()
+                    .put("commit_backstop_due", backstop)
+                    .await?;
+                self.state.storage().set_alarm(COMMIT_RETRY_BACKOFF).await?;
+                Response::error("commit failed; retry scheduled", 500)
+            }
+        }
+    }
+
     async fn websocket_close(
         &self,
         _ws: WebSocket,
@@ -196,6 +332,30 @@ impl DurableObject for NoteDurableObject {
         _reason: String,
         _was_clean: bool,
     ) -> Result<()> {
+        // On the last socket leaving, flush to git immediately rather than
+        // waiting for the alarm. `get_websockets()` still includes the
+        // socket being closed, so `<= 1` means "this was the last one".
+        if self.state.get_websockets().len() <= 1 {
+            let (seq, text) = self.load_state().await?;
+            let committed: Seq = self
+                .state
+                .storage()
+                .get("committed_seq")
+                .await?
+                .unwrap_or(0);
+            if seq > committed {
+                match self.commit_now(seq, &text).await {
+                    Ok(_) => {
+                        self.state.storage().put("committed_seq", seq).await?;
+                        self.clear_commit_deadlines().await;
+                    }
+                    Err(e) => {
+                        // Leave the deadlines armed so the alarm retries.
+                        console_log!("commit on disconnect failed: {e}");
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
