@@ -18,9 +18,17 @@ package terraform
 	"$ref": string & =~"^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)*$"
 }
 
+// #NonRefObject: a generic object value that is *not* a ref. Without this,
+// CUE's union semantics let a malformed ref like `{"$ref": "bad string"}`
+// satisfy the open object branch of #Value and bypass the regex on #Ref —
+// the schema would accept it and only the IR walker would reject it.
+// Forbidding `$ref` here (`"$ref"?: _|_`) forces any object carrying a
+// `$ref` key through #Ref, where the regex applies.
+#NonRefObject: {[string]: #Value, "$ref"?: _|_}
+
 // #Value: the recursive value type for attributes. Anything that JSON can
 // represent, plus refs.
-#Value: bool | number | string | #Ref | [...#Value] | {[string]: #Value}
+#Value: bool | number | string | #Ref | [...#Value] | #NonRefObject
 
 #Variable: {
 	name:         string & =~"^[a-z][a-z0-9_]*$"
