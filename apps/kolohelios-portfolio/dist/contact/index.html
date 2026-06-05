@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>contact — kolohelios</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="min-h-screen bg-[var(--bg)] text-[color:var(--fg-strong)]">
+<header class="border-b border-[color:var(--border)]">
+  <nav class="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+    <a href="/" class="font-semibold tracking-tight hover:text-[color:var(--fg-muted)]">kolohelios</a>
+    <ul class="flex gap-6 text-sm">
+      <li><a href="/about" class="hover:text-[color:var(--fg-muted)]">about</a></li>
+      <li><a href="/work" class="hover:text-[color:var(--fg-muted)]">work</a></li>
+      <li><a href="/projects" class="hover:text-[color:var(--fg-muted)]">projects</a></li>
+      <li><a href="/resume" class="hover:text-[color:var(--fg-muted)]">résumé</a></li>
+      <li><a href="/contact" class="hover:text-[color:var(--fg-muted)]">contact</a></li>
+    </ul>
+  </nav>
+</header>
+<main class="mx-auto max-w-3xl px-6 py-12">
+
+<article class="space-y-12">
+  <header class="space-y-2">
+    <h1 class="text-3xl font-semibold tracking-tight">Contact</h1>
+    <p class="text-[color:var(--fg)]">Get in touch, or subscribe for the occasional note on what I'm building.</p>
+  </header>
+
+  <section class="space-y-4">
+    <h2 class="text-xl font-semibold tracking-tight">Send a message</h2>
+    <form method="post" action="/api/subscribe" class="space-y-4">
+      <input type="hidden" name="kind" value="contact">
+      <!-- Honeypot: hidden from humans; bots fill it and the worker rejects
+           the submission before it ever reaches Kit. -->
+      <div class="hidden" aria-hidden="true">
+        <label for="contact-hp">Leave this field empty</label>
+        <input type="text" id="contact-hp" name="hp_url" tabindex="-1" autocomplete="off">
+      </div>
+      <div class="space-y-1">
+        <label for="contact-name" class="block text-sm font-medium text-[color:var(--fg-strong)]">Name</label>
+        <input type="text" id="contact-name" name="first_name" autocomplete="name"
+          class="w-full rounded border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-[color:var(--fg-strong)] focus:border-[color:var(--fg-muted)] focus:outline-none">
+      </div>
+      <div class="space-y-1">
+        <label for="contact-email" class="block text-sm font-medium text-[color:var(--fg-strong)]">Email</label>
+        <input type="email" id="contact-email" name="email" required autocomplete="email"
+          class="w-full rounded border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-[color:var(--fg-strong)] focus:border-[color:var(--fg-muted)] focus:outline-none">
+      </div>
+      <div class="space-y-1">
+        <label for="contact-message" class="block text-sm font-medium text-[color:var(--fg-strong)]">Message</label>
+        <textarea id="contact-message" name="message" rows="5" required
+          class="w-full rounded border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-[color:var(--fg-strong)] focus:border-[color:var(--fg-muted)] focus:outline-none"></textarea>
+      </div>
+      <button type="submit"
+        class="rounded bg-[var(--fg-strong)] px-4 py-2 text-sm font-medium text-[color:var(--bg)] hover:opacity-90">Send</button>
+    </form>
+  </section>
+
+  <section class="space-y-4 border-t border-[color:var(--border)] pt-8">
+    <h2 class="text-xl font-semibold tracking-tight">Subscribe</h2>
+    <p class="text-sm text-[color:var(--fg)]">Occasional notes on what I'm building. Double opt-in; unsubscribe anytime.</p>
+    <form method="post" action="/api/subscribe" class="space-y-4">
+      <input type="hidden" name="kind" value="newsletter">
+      <div class="hidden" aria-hidden="true">
+        <label for="news-hp">Leave this field empty</label>
+        <input type="text" id="news-hp" name="hp_url" tabindex="-1" autocomplete="off">
+      </div>
+      <div class="space-y-1">
+        <label for="news-name" class="block text-sm font-medium text-[color:var(--fg-strong)]">Name</label>
+        <input type="text" id="news-name" name="first_name" autocomplete="name"
+          class="w-full rounded border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-[color:var(--fg-strong)] focus:border-[color:var(--fg-muted)] focus:outline-none">
+      </div>
+      <div class="space-y-1">
+        <label for="news-email" class="block text-sm font-medium text-[color:var(--fg-strong)]">Email</label>
+        <input type="email" id="news-email" name="email" required autocomplete="email"
+          class="w-full rounded border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-[color:var(--fg-strong)] focus:border-[color:var(--fg-muted)] focus:outline-none">
+      </div>
+      <button type="submit"
+        class="rounded bg-[var(--fg-strong)] px-4 py-2 text-sm font-medium text-[color:var(--bg)] hover:opacity-90">Subscribe</button>
+    </form>
+  </section>
+</article>
+
+</main>
+<footer class="border-t border-[color:var(--border)] mt-16">
+  <div class="mx-auto max-w-3xl px-6 py-6 text-xs text-[color:var(--fg-faint)]">
+    <p>&copy; Jon Edwards &middot; <a href="https://github.com/kolohelios" class="hover:text-[color:var(--fg)]">github</a></p>
+  </div>
+</footer>
+</body>
+</html>

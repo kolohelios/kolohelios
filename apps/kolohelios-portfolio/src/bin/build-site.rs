@@ -74,6 +74,10 @@ struct ResumeTemplate {
     body: String,
 }
 
+#[derive(Template)]
+#[template(path = "contact.html")]
+struct ContactTemplate;
+
 fn main() {
     let check = std::env::args().any(|a| a == "--check");
     match run(check) {
@@ -226,6 +230,12 @@ fn render_pages(entries: &[WorkEntry]) -> Result<Vec<(PathBuf, String)>, String>
         }
         .render()
         .map_err(|e| format!("render resume: {e}"))?,
+    ));
+    out.push((
+        PathBuf::from("contact/index.html"),
+        ContactTemplate
+            .render()
+            .map_err(|e| format!("render contact: {e}"))?,
     ));
     Ok(out)
 }
