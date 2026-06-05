@@ -14,9 +14,7 @@ command = "cargo install -q worker-build --locked && worker-build --release"
 # object with `env.durable_object("NOTE").id_from_name(noteId)`; while a
 # note is open that object is the single writer and source of truth.
 [durable_objects]
-bindings = [
-  { name = "NOTE", class_name = "NoteDurableObject" },
-]
+bindings = [{ name = "NOTE", class_name = "NoteDurableObject" }]
 
 # SQLite-backed storage for the Durable Object class. The SQLite backend
 # is what the append-only edit log (phase 2) is built on; a fresh class
