@@ -17,6 +17,10 @@ version = 2
 [bans]
 multiple-versions = "warn"
 wildcards         = "deny"
+# The `notes-protocol` sibling is a path dependency with no version
+# (it's unpublished, consumed in-repo). That's a legitimate wildcard;
+# allow it for path deps only, keeping the deny for registry crates.
+allow-wildcard-paths = true
 
 [sources]
 allow-registry   = ["https://github.com/rust-lang/crates.io-index"]

@@ -8,10 +8,16 @@
 //! crate — accept via the hibernation API, survive eviction by reading
 //! durable state from DO storage (not in-memory fields) on wake, and
 //! carry per-connection state across hibernation via the socket
-//! attachment. The append-only edit log, two-alarm persistence, lazy
-//! GitHub commit, and auth land in later phases.
+//! attachment.
+//!
+//! Phase 2 (issue #763) adds the append-only edit log: the editor speaks
+//! the `notes-protocol` wire types over the socket, accepted edits are
+//! appended to DO storage, and the body rehydrates by replaying the log
+//! (see [`state`]). Two-alarm persistence, the lazy GitHub commit, and
+//! auth land in later phases.
 
 pub mod route;
+pub mod state;
 
 #[cfg(target_arch = "wasm32")]
 mod runtime;

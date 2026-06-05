@@ -10,9 +10,13 @@ version      = "0.1.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Per-connection hibernation attachment is (de)serialized through serde;
-# the shared wire types land here in phase 2 (`packages/notes-protocol`).
+# Shared wire-protocol types (ClientMsg / ServerMsg / Delta), used by
+# both the Durable Object here and the WASM editor.
+notes-protocol = { path = "../../packages/notes-protocol" }
+# Per-connection hibernation attachment is (de)serialized through serde.
 serde = { version = "1", features = ["derive"] }
+# Wire frames are JSON-encoded ClientMsg / ServerMsg over the WebSocket.
+serde_json = "1"
 # workers-rs runtime: Durable Objects + the WebSocket Hibernation API.
 worker = "0.8"
 
