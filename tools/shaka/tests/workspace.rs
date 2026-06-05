@@ -41,6 +41,20 @@ fn assert_success(out: &std::process::Output, ctx: &str) {
     );
 }
 
+fn jj(repo: &Path, args: &[&str]) -> String {
+    let out = Command::new("jj")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .expect("failed to spawn jj");
+    assert!(
+        out.status.success(),
+        "jj {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr),
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
 #[test]
 fn new_creates_workspace_and_directory() {
     let parent = TempDir::new().expect("tempdir");
@@ -275,5 +289,56 @@ fn cleanup_dry_run_does_not_remove_workspace() {
         workspace_path.is_dir(),
         "cleanup --dry-run must not remove the workspace directory: {}",
         workspace_path.display()
+    );
+}
+
+// Regression test for #805: a new workspace must be parented on the
+// fetched `main@origin`, not wherever the invoking tree's `@` sits.
+#[test]
+fn new_parents_workspace_on_main_origin_when_present() {
+    let parent = TempDir::new().expect("tempdir");
+
+    // An "origin" repo whose `main` carries a real commit.
+    let origin = parent.path().join("origin");
+    std::fs::create_dir(&origin).unwrap();
+    jj_init_colocated(&origin);
+    std::fs::write(origin.join("seed.txt"), "seed\n").unwrap();
+    jj(&origin, &["describe", "-m", "seed main"]);
+    jj(&origin, &["bookmark", "create", "main", "-r", "@"]);
+    // Export the bookmark to a git ref so the working repo can fetch it.
+    jj(&origin, &["git", "export"]);
+    let main_commit = jj(
+        &origin,
+        &["log", "-r", "main", "--no-graph", "-T", "commit_id"],
+    );
+
+    // The working repo fetches `main@origin`; its own `@` stays on the fresh
+    // root-based commit — i.e. NOT on main@origin (the stale-base scenario).
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+    let origin_git = origin.join(".git");
+    jj(
+        &repo,
+        &[
+            "git",
+            "remote",
+            "add",
+            "origin",
+            origin_git.to_str().unwrap(),
+        ],
+    );
+    jj(&repo, &["git", "fetch"]);
+
+    let out = shaka(&repo, &["workspace", "new", "feat-x"]);
+    assert_success(&out, "workspace new");
+
+    // The new workspace's working-copy commit must sit directly on top of
+    // main@origin, regardless of the invoking tree's `@`.
+    let ws = parent.path().join("repo-feat-x");
+    let ws_parent = jj(&ws, &["log", "-r", "@-", "--no-graph", "-T", "commit_id"]);
+    assert_eq!(
+        ws_parent, main_commit,
+        "workspace should be parented on main@origin ({main_commit}), got {ws_parent}"
     );
 }
