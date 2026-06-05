@@ -179,6 +179,26 @@ const CHECKS: &[Check] = &[
         run: shaka_project_audit,
     },
     Check {
+        // Cross-project drift gate: kolohelios-portfolio serves the
+        // résumé via copies of tools/resume's rendered artifacts under
+        // its committed dist/. The portfolio's own build-check only runs
+        // when the portfolio's files change (per-project scoping), so a
+        // résumé re-render alone would otherwise leave the served copies
+        // stale. Triggering on both sides closes that gap. Guarding only
+        // the PDF/DOCX is sufficient even for the rendered /resume page:
+        // tools/resume's own drift check ties resume.md to its rendered
+        // PDF/DOCX, so the markdown can't change without these changing.
+        name: "resume synced to portfolio dist",
+        paths: &[
+            "tools/shaka/**",
+            "tools/resume/resume.pdf",
+            "tools/resume/resume.docx",
+            "apps/kolohelios-portfolio/dist/resume.pdf",
+            "apps/kolohelios-portfolio/dist/resume.docx",
+        ],
+        run: resume_synced_to_portfolio,
+    },
+    Check {
         // Whole-repo scan: typos is fast enough that scoping by
         // changed paths isn't worth the complexity, and a fresh
         // entry in typos.toml that suppresses an old false positive
@@ -548,6 +568,56 @@ fn shaka_project_audit() -> CheckResult {
     spawn_self(&["project", "audit"])
 }
 
+/// Source → committed-copy artifact pairs guarded by
+/// `resume_synced_to_portfolio`. Paths are repo-root relative, matching
+/// the `cwd` preflight runs from.
+const RESUME_ARTIFACT_PAIRS: &[(&str, &str)] = &[
+    (
+        "tools/resume/resume.pdf",
+        "apps/kolohelios-portfolio/dist/resume.pdf",
+    ),
+    (
+        "tools/resume/resume.docx",
+        "apps/kolohelios-portfolio/dist/resume.docx",
+    ),
+];
+
+fn resume_synced_to_portfolio() -> CheckResult {
+    match resume_artifact_drift(RESUME_ARTIFACT_PAIRS) {
+        Ok(stale) if stale.is_empty() => CheckResult::Pass,
+        Ok(stale) => {
+            let mut detail =
+                String::from("resume artifacts differ from the committed portfolio copies:\n");
+            for dst in &stale {
+                detail.push_str(&format!("  {dst}\n"));
+            }
+            detail.push_str(
+                "rebuild and commit the portfolio: \
+                 (in apps/kolohelios-portfolio) \
+                 cargo run --features build-site --bin build-site",
+            );
+            CheckResult::Fail { detail }
+        }
+        Err(detail) => CheckResult::Fail { detail },
+    }
+}
+
+/// Byte-compare each (source, committed-copy) pair; returns the
+/// committed-copy paths whose bytes differ from their source. An
+/// unreadable file on either side is a hard error — a missing copy
+/// means the portfolio was never rebuilt after the artifact landed.
+fn resume_artifact_drift(pairs: &[(&str, &str)]) -> Result<Vec<String>, String> {
+    let mut stale = Vec::new();
+    for (src, dst) in pairs {
+        let want = std::fs::read(src).map_err(|e| format!("read {src}: {e}"))?;
+        let got = std::fs::read(dst).map_err(|e| format!("read {dst}: {e}"))?;
+        if want != got {
+            stale.push((*dst).to_string());
+        }
+    }
+    Ok(stale)
+}
+
 fn typos_check() -> CheckResult {
     run_command(&mut Command::new("typos"))
 }
@@ -855,5 +925,32 @@ mod tests {
     fn project_label_strips_leading_dot() {
         assert_eq!(project_label(Path::new("./tools/shaka")), "tools/shaka");
         assert_eq!(project_label(Path::new("tools/shaka")), "tools/shaka");
+    }
+
+    #[test]
+    fn resume_artifact_drift_flags_mismatch_keeps_match_errors_on_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.bin");
+        let same = dir.path().join("same.bin");
+        let diff = dir.path().join("diff.bin");
+        std::fs::write(&src, b"resume-bytes").unwrap();
+        std::fs::write(&same, b"resume-bytes").unwrap();
+        std::fs::write(&diff, b"stale-bytes").unwrap();
+        let s = src.to_str().unwrap();
+
+        // Byte-identical copy → no drift.
+        assert!(resume_artifact_drift(&[(s, same.to_str().unwrap())])
+            .unwrap()
+            .is_empty());
+
+        // Differing copy → drift names the committed-copy path.
+        let dst = diff.to_str().unwrap();
+        assert_eq!(
+            resume_artifact_drift(&[(s, dst)]).unwrap(),
+            vec![dst.to_string()]
+        );
+
+        // Missing copy → hard error (portfolio never rebuilt).
+        assert!(resume_artifact_drift(&[(s, "/no/such/copy.bin")]).is_err());
     }
 }
