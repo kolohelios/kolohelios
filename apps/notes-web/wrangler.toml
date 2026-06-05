@@ -1,0 +1,15 @@
+name               = "notes-web"
+compatibility_date = "2026-05-14"
+main               = "build/worker/shim.mjs"
+
+# Workers Static Assets: Cloudflare serves files from `./dist/` at the
+# edge, bypassing the Worker for matched paths; unmatched paths fall
+# through to the 404 stub in `src/lib.rs`. `single-page-application`
+# serves `index.html` for unmatched document routes (e.g. `/?note=foo`).
+#
+# `dist/index.html` and `dist/style.css` are committed; the editor bundle
+# (`dist/editor/`) is built from `apps/notes-editor` and copied in at
+# deploy — see this project's README.
+[assets]
+directory          = "./dist"
+not_found_handling = "single-page-application"

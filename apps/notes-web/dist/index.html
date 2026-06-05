@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>notes</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+  </head>
+  <body>
+    <header class="chrome">
+      <h1>notes</h1>
+      <span id="status" class="status">connecting…</span>
+    </header>
+    <main>
+      <textarea
+        id="editor"
+        spellcheck="true"
+        autofocus
+        placeholder="Start typing — every keystroke streams to the server and backs up to git."
+      ></textarea>
+    </main>
+
+    <!--
+      The editing surface and the socket client are the Rust-WASM module
+      built from apps/notes-editor. The shell chrome above is plain
+      HTML/HTMX; the live document is owned entirely by the WASM editor.
+    -->
+    <script type="module">
+      import init, { start } from "/editor/notes_editor.js";
+
+      const noteId =
+        new URLSearchParams(location.search).get("note") || "scratch";
+      const wsProto = location.protocol === "https:" ? "wss" : "ws";
+      // The notes-sync backend hosts the per-note WebSocket. It is a
+      // separate Worker; its host is injected at deploy as
+      // `window.NOTES_BACKEND`, defaulting to this origin for local dev.
+      const backend = window.NOTES_BACKEND || location.host;
+      const wsUrl = `${wsProto}://${backend}/note/${encodeURIComponent(noteId)}/ws`;
+
+      const status = document.getElementById("status");
+      try {
+        await init();
+        start(wsUrl);
+        status.textContent = noteId;
+      } catch (e) {
+        status.textContent = "editor failed to load";
+        console.error(e);
+      }
+    </script>
+  </body>
+</html>

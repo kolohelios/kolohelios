@@ -1,0 +1,6 @@
+target/
+build/
+.wrangler/
+dist/editor/
+result
+.direnv/
