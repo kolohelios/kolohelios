@@ -42,7 +42,13 @@ need to compile under native `cargo test`.
 
 ## Configuration
 
-Non-secret `config` lives in `wrangler.toml` under `[vars]`:
+`wrangler.toml` is **generated** from the `wrangler:` block in
+`project.cue` by `shaka deploy generate-wrangler`; `shaka preflight`
+fails on drift. Never hand-edit `wrangler.toml` — change `project.cue`
+and regenerate.
+
+Non-secret `config` lives in the `wrangler.vars` block of `project.cue`
+(emitted to `wrangler.toml`'s `[vars]`):
 
 | Key                     | Default                 | Meaning                                           |
 | ----------------------- | ----------------------- | ------------------------------------------------- |
@@ -54,7 +60,8 @@ Non-secret `config` lives in `wrangler.toml` under `[vars]`:
 | `DRY_RUN`               | `true`                  | When `true`, log instead of sending to Pushover.  |
 
 Tuning the threshold or the consecutive-hour requirement is a
-`wrangler.toml` edit and a `wrangler deploy` away.
+`project.cue` edit, a `shaka deploy generate-wrangler`, and a
+`wrangler deploy` away.
 
 ## Secrets
 
@@ -65,7 +72,8 @@ nix develop . --command wrangler secret put PUSHOVER_APP_TOKEN
 nix develop . --command wrangler secret put PUSHOVER_USER_KEY
 ```
 
-Then flip `DRY_RUN = false` in `wrangler.toml` and re-deploy.
+Then flip `DRY_RUN` to `"false"` in `project.cue`'s `wrangler.vars`,
+run `shaka deploy generate-wrangler`, and re-deploy.
 
 ## Deploy
 
@@ -83,7 +91,8 @@ away. See kolohelios/kolohelios#411 for the tracker.
 
 ## Schedule
 
-`0 2 * * *` UTC (configured in `wrangler.toml [triggers]`). In PDT
-this is `7 PM` local; in PST it's `6 PM` local. DST drift is
-accepted — v1 keeps the UTC time stable rather than tracking local
-time. Adjust by editing `[triggers].crons` and re-deploying.
+`0 2 * * *` UTC (set in `project.cue`'s `wrangler.cron`, emitted to
+`wrangler.toml [triggers]`). In PDT this is `7 PM` local; in PST it's
+`6 PM` local. DST drift is accepted — v1 keeps the UTC time stable
+rather than tracking local time. Adjust by editing `wrangler.cron`,
+regenerating, and re-deploying.
