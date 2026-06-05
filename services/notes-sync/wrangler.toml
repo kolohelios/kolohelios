@@ -10,18 +10,26 @@ name               = "notes-sync"
 [build]
 command = "cargo install -q worker-build --locked && worker-build --release"
 
-# Per-note Durable Object binding. The Worker resolves a note id to its
-# object with `env.durable_object("NOTE").id_from_name(noteId)`; while a
-# note is open that object is the single writer and source of truth.
+# Durable Object bindings: one per-note object (`NOTE`, the single writer
+# and source of truth), and one per-OAuth-flow object (`AUTH_FLOW`, keyed
+# by the `state` value, holding the PKCE verifier + DPoP key between login
+# and callback).
 [durable_objects]
-bindings = [{ name = "NOTE", class_name = "NoteDurableObject" }]
+bindings = [
+  { name = "NOTE", class_name = "NoteDurableObject" },
+  { name = "AUTH_FLOW", class_name = "AuthFlow" },
+]
 
-# SQLite-backed storage for the Durable Object class. The SQLite backend
-# is what the append-only edit log (phase 2) is built on; a fresh class
-# opts in here at creation time.
+# SQLite-backed storage for the Durable Object classes. The SQLite backend
+# is what the append-only edit log (phase 2) is built on; classes opt in
+# at creation time. Migrations are append-only by tag.
 [[migrations]]
 new_sqlite_classes = ["NoteDurableObject"]
 tag                = "v1"
+
+[[migrations]]
+new_sqlite_classes = ["AuthFlow"]
+tag                = "v2"
 
 # Cold-tier git target (phase 3). The Durable Object commits each note's
 # body to `notes/<note_id>.md` in this repo on the lazy debounce/backstop
@@ -31,7 +39,16 @@ tag                = "v1"
 # installation token or a PAT) — unrelated to user login. Set it out of
 # band, never in this file:
 #   wrangler secret put GITHUB_TOKEN
+#
+# Auth (phase 4): `OAUTH_BASE_URL` is this Worker's public origin — the
+# client_id is `<OAUTH_BASE_URL>/client-metadata.json` and the redirect is
+# `<OAUTH_BASE_URL>/oauth/callback`, so it must match the deployed
+# hostname. `OAUTH_HANDLE_RESOLVER` (optional) is the appview used to
+# resolve a handle to a DID. The cookie-signing key is a secret:
+#   wrangler secret put SESSION_SECRET
 [vars]
-GITHUB_BRANCH = "main"
-GITHUB_OWNER  = "kolohelios"
-GITHUB_REPO   = "notes-store"
+GITHUB_BRANCH        = "main"
+GITHUB_OWNER         = "kolohelios"
+GITHUB_REPO          = "notes-store"
+OAUTH_BASE_URL       = "https://notes-sync.example.workers.dev"
+OAUTH_HANDLE_RESOLVER = "https://bsky.social"

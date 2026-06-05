@@ -40,7 +40,25 @@ const MAX_COMMIT_RETRIES: u32 = 3;
 /// hello response.
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    if let Some(note_id) = parse_ws_note_id(&req.path()) {
+    let path = req.path();
+
+    // ATProto OAuth, authentication only. The metadata document's URL is
+    // the client_id; login resolves + redirects; the callback verifies the
+    // DID and mints the session cookie.
+    match path.as_str() {
+        "/client-metadata.json" => {
+            let base = env
+                .var("OAUTH_BASE_URL")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            return Response::from_json(&crate::oauth::client_metadata(&base));
+        }
+        "/oauth/login" => return crate::oauth::handle_login(req, env).await,
+        "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
+        _ => {}
+    }
+
+    if let Some(note_id) = parse_ws_note_id(&path) {
         // The session cookie gates the upgrade. The `sub`-vs-DID check at
         // login is where identity is established; this only re-checks the
         // signed cookie that login minted.
