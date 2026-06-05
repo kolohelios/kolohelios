@@ -171,6 +171,9 @@ machete:
 
 # Build the browser bundle: wasm32 compile -> wasm-bindgen JS glue ->
 # wasm-opt shrink. `dist/` is gitignored and rebuilt here and at deploy.
+# wasm-opt must be told which wasm features the toolchain emits — rustc's
+# wasm32 target uses bulk-memory and friends, which wasm-opt rejects
+# unless explicitly enabled.
 wasm-build:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -178,7 +181,12 @@ wasm-build:
     cargo build --release --target wasm32-unknown-unknown
     mkdir -p dist
     wasm-bindgen "target/wasm32-unknown-unknown/release/${crate}.wasm" --out-dir dist --target web
-    wasm-opt -Oz "dist/${crate}_bg.wasm" -o "dist/${crate}_bg.wasm"
+    wasm-opt -Oz \
+        --enable-bulk-memory \
+        --enable-nontrapping-float-to-int \
+        --enable-sign-ext \
+        --enable-mutable-globals \
+        "dist/${crate}_bg.wasm" -o "dist/${crate}_bg.wasm"
 
 coverage:
     #!/usr/bin/env bash
@@ -857,6 +865,9 @@ mod tests {
         // A browser-wasm app's `validate` must build the bundle.
         assert!(WASM_APP_TEMPLATE.contains("wasm-build:\n"));
         assert!(WASM_APP_TEMPLATE.contains("wasm-bindgen"));
+        // wasm-opt must be told which wasm features rustc emits, or it
+        // rejects the bulk-memory ops the wasm32 target now produces.
+        assert!(WASM_APP_TEMPLATE.contains("--enable-bulk-memory"));
         assert!(WASM_APP_TEMPLATE
             .lines()
             .any(|l| l.starts_with("validate:") && l.contains("wasm-build")));
