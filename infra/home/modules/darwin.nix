@@ -1,4 +1,8 @@
-{ claude-hooks, ... }:
+{
+  claude-hooks,
+  kolohelios-nix,
+  ...
+}:
 
 {
   system.stateVersion = 5;
@@ -28,7 +32,7 @@
 
   home-manager.useGlobalPkgs = true;
   home-manager.useUserPackages = true;
-  home-manager.extraSpecialArgs = { inherit claude-hooks; };
+  home-manager.extraSpecialArgs = { inherit claude-hooks kolohelios-nix; };
   home-manager.users.jedwards = import ./common.nix;
 
   # First-switch activation will encounter pre-existing dotfiles
