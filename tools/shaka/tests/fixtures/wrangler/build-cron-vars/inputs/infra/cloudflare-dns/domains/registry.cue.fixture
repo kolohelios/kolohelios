@@ -1,0 +1,18 @@
+package domain
+
+// Stand-in for the real registry, scoped to the hostnames this
+// fixture's project.cue files use. Imports `strings` for dot-escaping
+// in the regex disjunction (matches `aggregate.cue` in the real
+// registry).
+
+import "strings"
+
+domains: [string]: {}
+
+domains: "kolohelios.com": {}
+
+#KnownHostnames: or([
+	for k, _ in domains {
+		=~"(^|\\.)\(strings.Replace(k, ".", "\\.", -1))$"
+	},
+])

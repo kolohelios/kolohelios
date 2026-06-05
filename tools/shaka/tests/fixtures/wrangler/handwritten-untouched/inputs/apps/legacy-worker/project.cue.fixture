@@ -1,0 +1,9 @@
+package project
+
+// A rust-worker project with a hand-maintained wrangler.toml but no
+// `wrangler:` block yet. The generator must leave its wrangler.toml
+// byte-for-byte untouched (and --check must not flag it).
+#Project & {
+	name: "legacy-worker"
+	kind: "rust-worker"
+}

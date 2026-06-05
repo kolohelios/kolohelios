@@ -1,0 +1,7 @@
+# Hand-maintained wrangler.toml — this project has not adopted a
+# `wrangler:` block, so `shaka deploy generate-wrangler` must leave it
+# exactly as-is. The rich comments below are precisely what would be
+# lost on generation, so the generator stays hands-off until adoption.
+name = "legacy-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-01-01"

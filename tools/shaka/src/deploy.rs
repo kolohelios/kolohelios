@@ -6,10 +6,15 @@
 //!   `cloudflare-worker` target is implemented; future targets (`fly`,
 //!   `hetzner`, ...) extend the schema disjunction and the emitter in
 //!   `generate_tf.rs`.
+//! - `generate-wrangler` turns each project's `wrangler:` block (the
+//!   `#Wrangler` schema) into a `wrangler.toml` written next to its
+//!   `project.cue`. Only projects declaring a `wrangler:` block are
+//!   managed; see `generate_wrangler.rs`.
 //! - `sweep-previews` reaps orphaned per-PR preview Workers (see
 //!   `sweep_previews.rs`).
 
 pub mod generate_tf;
+pub mod generate_wrangler;
 pub mod sweep_previews;
 
 use clap::Subcommand;
@@ -23,6 +28,16 @@ pub enum DeployCommand {
     GenerateTf {
         /// Fail on drift instead of writing. Used by `shaka preflight`
         /// to keep committed TF in lockstep with project.cue.
+        #[arg(long)]
+        check: bool,
+    },
+    /// Generate `wrangler.toml` for each project's `wrangler:` block,
+    /// written next to its `project.cue`. Only projects that declare a
+    /// `wrangler:` block are managed; a project without one keeps any
+    /// hand-maintained `wrangler.toml` untouched.
+    GenerateWrangler {
+        /// Fail on drift instead of writing. Used by `shaka preflight`
+        /// to keep committed wrangler.toml in lockstep with project.cue.
         #[arg(long)]
         check: bool,
     },
@@ -41,6 +56,7 @@ pub enum DeployCommand {
 pub fn run(cmd: DeployCommand) {
     match cmd {
         DeployCommand::GenerateTf { check } => generate_tf::run(check),
+        DeployCommand::GenerateWrangler { check } => generate_wrangler::run(check),
         DeployCommand::SweepPreviews { dry_run } => sweep_previews::run(dry_run),
     }
 }
