@@ -15,15 +15,17 @@ geometry:
   - includefoot
 ---
 
+<!-- BEGIN generated profile (shaka profile generate) -->
+
 # Jonathan (Jon) Kolohe Edwards
 
 **Principal Software Engineer/Engineering Manager**
 
-\(360\) 509-8185 • jkedwards@me.com • US Person • Bainbridge Island, WA • [LinkedIn](https://www.linkedin.com/in/kolohelios) • [GitHub](https://github.com/kolohelios)
+(360) 509-8185 • jkedwards@me.com • US Person • Bainbridge Island, WA • [LinkedIn](https://www.linkedin.com/in/kolohelios) • [GitHub](https://github.com/kolohelios)
 
 ## Summary
 
-Business-minded software-engineering leader practicing end-to-end product engineering on streaming data platforms over datasets in the hundreds of millions of records and modernizing developer platforms with Nix and monorepo tooling. In the past year, shipped a Flow-Based Programming data graph (~2.5M events/day and growing), a Property and People data delivery platform that unlocked $1M in net new revenue and, and Scala load shedding for a high-traffic search layer. 11+ years bridging deep IC and engineering leadership; has managed teams of up to 12 ICs.
+Business-minded software-engineering leader practicing end-to-end product engineering on streaming data platforms over datasets in the hundreds of millions of records and modernizing developer platforms with Nix and monorepo tooling. In the past year, shipped a Flow-Based Programming data graph (~2.5M events/day and growing), a Property and People data delivery platform that unlocked $1M in net new revenue, and Scala load shedding for a high-traffic search layer. 11+ years bridging deep IC and engineering leadership; has managed teams of up to 12 ICs.
 
 ## Skills
 
@@ -34,6 +36,8 @@ Business-minded software-engineering leader practicing end-to-end product engine
 - **Data & AI:** Databricks, Delta Lake, Parquet, PostgreSQL, MS SQL, Redis, Elasticsearch, MCP
 - **Data Streaming:** NATS, Pulsar, AWS SQS, Kinesis, MQTT, Azure Event Hub
 - **Frontend & Mobile:** React, Vue, React Native, Angular 2+, Cordova, native iOS and Android
+
+<!-- END generated profile -->
 
 ## Work Experience
 
@@ -90,8 +94,12 @@ Two decades of cross-functional leadership (engineering, operations, sales, GM) 
 
 Inventor / builder habit, outside software: co-inventor on US patent 7,610,734 for siding installation tools, plus two related fiber-cement cutting applications, developed through 3D CAD, CNC prototyping, and 3D printing.
 
+<!-- BEGIN generated education (shaka profile generate) -->
+
 ## Education
 
 ### Olympic College
 
 Associates Degree (A.A.S.), General Studies — 3.75 GPA / Phi Theta Kappa
+
+<!-- END generated education -->
