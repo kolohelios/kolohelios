@@ -119,6 +119,7 @@ struct RustCoverageThresholdNonzero;
 struct RustLicenseDual;
 struct RustVersionPinned;
 struct RustCargoRequiredFields;
+struct RustClippyLintsDeclared;
 struct KoloheliosNixViaFlakehub;
 struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
@@ -295,6 +296,42 @@ impl Rule for RustCargoRequiredFields {
             RuleResult::Fail(format!(
                 "Cargo.toml `[package]` missing or empty required field(s): {} ({})",
                 missing.join(", "),
+                cargo.display()
+            ))
+        }
+    }
+}
+
+// Every rust crate must pin its clippy lint levels rather than relying on
+// whatever clippy defaults a given toolchain ships. The repo convention
+// (written by `shaka project new`) is a `[lints.clippy]` table in
+// `Cargo.toml`; a root `clippy.toml`/`.clippy.toml` also counts. rustfmt is
+// intentionally *not* checked here — the repo runs `cargo fmt` on defaults
+// with no `rustfmt.toml`, so there is no artifact to assert. Cargo-workspace
+// inheritance (`lints.workspace = true`) is not honored: no project in the
+// repo is a workspace, so the walk-up would be dead code (cf. the single-
+// crate scope of `rust-cargo-required-fields`).
+impl Rule for RustClippyLintsDeclared {
+    fn name(&self) -> &'static str {
+        "rust-clippy-lints-declared"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind.is_rust_flavored()
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        if project_dir.join("clippy.toml").is_file() || project_dir.join(".clippy.toml").is_file() {
+            return RuleResult::Pass;
+        }
+        let cargo = project_dir.join("Cargo.toml");
+        let contents = match std::fs::read_to_string(&cargo) {
+            Ok(c) => c,
+            Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
+        };
+        if cargo_has_table(&contents, "[lints.clippy]") {
+            RuleResult::Pass
+        } else {
+            RuleResult::Fail(format!(
+                "no clippy config: declare `[lints.clippy]` in Cargo.toml or add a clippy.toml ({})",
                 cargo.display()
             ))
         }
@@ -482,6 +519,20 @@ fn cargo_package_field(contents: &str, key: &str) -> Option<String> {
     None
 }
 
+// True if `contents` declares the exact TOML table header `header` (for
+// example `[lints.clippy]`) on its own line, tolerating leading indentation
+// and a trailing comment. Commented-out headers and sub-tables
+// (`[lints.clippy.foo]`) don't match.
+fn cargo_has_table(contents: &str, header: &str) -> bool {
+    contents.lines().any(|line| {
+        let Some(rest) = line.trim_start().strip_prefix(header) else {
+            return false;
+        };
+        let rest = rest.trim_start();
+        rest.is_empty() || rest.starts_with('#')
+    })
+}
+
 // Parses an inline `<input_name>.url = "<url>";` declaration, accepting
 // both the in-block form (inside `inputs = { ... }`) and the top-level
 // `inputs.<input_name>.url = "..."` form. Returns the URL if found,
@@ -580,6 +631,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustLicenseDual),
         Box::new(RustVersionPinned),
         Box::new(RustCargoRequiredFields),
+        Box::new(RustClippyLintsDeclared),
         Box::new(KoloheliosNixViaFlakehub),
         Box::new(KoloheliosHomeViaFlakehub),
         Box::new(ValidateRecipeMeaningful),
@@ -1669,6 +1721,77 @@ mod tests {
     #[test]
     fn rust_cargo_required_fields_does_not_apply_to_non_rust() {
         assert!(!RustCargoRequiredFields.applies(&infra_meta()));
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_passes_with_lints_clippy_table() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\n\n[lints.clippy]\nmod_module_files = \"deny\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustClippyLintsDeclared.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_passes_with_clippy_toml_and_no_table() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        fs::write(
+            tmp.path().join("clippy.toml"),
+            "too-many-arguments-threshold = 10\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustClippyLintsDeclared.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_fails_when_neither_present() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        match RustClippyLintsDeclared.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("[lints.clippy]"), "got: {msg}");
+                assert!(msg.contains("clippy.toml"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_ignores_commented_and_sub_tables() {
+        let tmp = TempDir::new().unwrap();
+        // A commented header and a sub-table must not satisfy the rule.
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\n# [lints.clippy]\n[lints.clippy.foo]\nbar = 1\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            RustClippyLintsDeclared.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_fails_when_cargo_toml_missing() {
+        let tmp = TempDir::new().unwrap();
+        match RustClippyLintsDeclared.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("missing Cargo.toml"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_does_not_apply_to_non_rust() {
+        assert!(!RustClippyLintsDeclared.applies(&infra_meta()));
     }
 
     #[test]
