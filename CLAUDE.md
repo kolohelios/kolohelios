@@ -231,8 +231,12 @@ up).
 
 ### Daily kolohelios-nix lock bump
 
-`.github/workflows/bump-kolohelios-nix.yaml` runs daily at 00:00 UTC
-(also `workflow_dispatch:` for manual triggers). It runs
+`.github/workflows/bump-kolohelios-nix.yaml` fires on a
+`repository_dispatch` (`kolohelios-nix-published`) that `build-nix-lib`
+emits right after publishing a fresh release — so a new `kolohelios-nix`
+(and the `nixpkgs` revision it carries) reaches consumers within minutes
+of its source landing on `main`, not on a clock. A daily 00:00 UTC
+`cron` and `workflow_dispatch:` remain as a backstop and manual trigger. It runs
 `shaka repo bump-locks --input kolohelios-nix --pr-branch
 bot/bump-kolohelios-nix`, which:
 

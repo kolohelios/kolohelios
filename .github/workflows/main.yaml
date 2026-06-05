@@ -216,6 +216,21 @@ jobs:
         name: kolohelios/kolohelios-nix
         rolling: true
         visibility: public
+    - uses: actions/create-github-app-token@v3
+      id: bot-token
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      with:
+        client-id: ${{ vars.KOLOHELIOS_BOT_CLIENT_ID }}
+        owner: kolohelios
+        private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
+        repositories: kolohelios
+    - name: Notify kolohelios of new kolohelios-nix publish
+      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      run: |
+        gh api -X POST repos/kolohelios/kolohelios/dispatches \
+          -f event_type=kolohelios-nix-published
+      env:
+        GH_TOKEN: ${{ steps.bot-token.outputs.token }}
   build-aof:
     name: Build aof
     needs:
