@@ -50,6 +50,17 @@ package project
 			"whois",
 			"dnsutils",
 		]
+		// Bundle the project schema + a `cue.mod` + a permissive stub
+		// registry so schema-dependent subcommands work from a nix-built
+		// `shaka` run outside the monorepo (#741). `cue-bundle/` carries
+		// the `cue.mod` and stub; `schema/` ships at its module-relative
+		// path so the schema's absolute imports resolve.
+		cueModule: {
+			include: [
+				{from: "cue-bundle", to: "."},
+				{from: "schema", to: "tools/shaka/schema"},
+			]
+		}
 	}
 	coverage: {
 		line: {
