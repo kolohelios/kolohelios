@@ -34,7 +34,15 @@ pub fn run(name: Option<&str>, issue: Option<u64>) {
         die(&format!("workspace already registered: {derived_name}"));
     }
 
-    if let Err(e) = jj::workspace_add(&derived_name, &path) {
+    // Parent the new workspace on the freshly-fetched `main@origin` so it
+    // never inherits a stale base from wherever the invoking tree's `@`
+    // happens to sit (#805). Fall back to jj's default when `main@origin`
+    // doesn't resolve (fresh repo / no remote) rather than local `main`,
+    // which could itself lag behind the remote.
+    let revision = jj::commit_id_of("main@origin")
+        .is_ok()
+        .then_some("main@origin");
+    if let Err(e) = jj::workspace_add(&derived_name, &path, revision) {
         die(&e.to_string());
     }
 

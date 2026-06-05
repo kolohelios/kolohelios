@@ -450,17 +450,20 @@ fn parse_workspace_list(out: &str) -> Vec<WorkspaceInfo> {
     result
 }
 
-/// Register a new workspace at `path` with the given name.
-pub fn workspace_add(name: &str, path: &Path) -> Result<(), JjError> {
-    run_streaming(&[
-        "workspace",
-        "add",
-        "--name",
-        name,
-        path.to_str().context(WorkspacePathInvalidUtf8Snafu {
-            path: path.display().to_string(),
-        })?,
-    ])
+/// Register a new workspace at `path` with the given name. When `revision`
+/// is `Some`, the workspace's working copy is created on top of that revset;
+/// otherwise `jj` parents it on the invoking workspace's position (its
+/// default).
+pub fn workspace_add(name: &str, path: &Path, revision: Option<&str>) -> Result<(), JjError> {
+    let path = path.to_str().context(WorkspacePathInvalidUtf8Snafu {
+        path: path.display().to_string(),
+    })?;
+    let mut args = vec!["workspace", "add", "--name", name, path];
+    if let Some(revision) = revision {
+        args.push("--revision");
+        args.push(revision);
+    }
+    run_streaming(&args)
 }
 
 /// De-register a workspace from the repo. Does not remove the workspace
