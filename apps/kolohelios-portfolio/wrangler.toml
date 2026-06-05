@@ -34,12 +34,12 @@ directory = "./dist"
 
 # Non-secret runtime config the worker reads via `env.var(...)`. These
 # are Kit form ids (safe to commit — they're embedded in public Kit
-# forms), one per submission `kind`. Replace the placeholders with the
-# real form ids; see README "Kit setup". KIT_API_KEY is a *secret*, set
-# out-of-band via `wrangler secret put KIT_API_KEY` (not committed here).
+# forms), one per submission `kind`; see README "Kit setup". KIT_API_KEY
+# is a *secret*, set out-of-band via `wrangler secret put KIT_API_KEY`
+# (not committed here).
 [vars]
-KIT_FORM_ID_CONTACT    = "REPLACE_WITH_CONTACT_FORM_ID"
-KIT_FORM_ID_NEWSLETTER = "REPLACE_WITH_NEWSLETTER_FORM_ID"
+KIT_FORM_ID_CONTACT    = "9525720"
+KIT_FORM_ID_NEWSLETTER = "9525721"
 
 # Cloudflare native rate limiting. The worker calls this binding
 # (`SUBSCRIBE_RATE_LIMITER`) per client IP in `handle_subscribe`; over
