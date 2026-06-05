@@ -1,0 +1,46 @@
+[package]
+edition      = "2021"
+license      = "MIT OR Apache-2.0"
+name         = "notes-editor"
+publish      = false
+rust-version = "1.95"
+version      = "0.1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Shared wire-protocol types — the same serde structs the Durable Object
+# speaks, so the editor and server can't drift.
+notes-protocol = { path = "../../packages/notes-protocol" }
+# Wire frames are JSON-encoded ClientMsg / ServerMsg over the WebSocket.
+serde_json = "1"
+# Browser bindings (cfg-gated to wasm32 in `dom`): WebSocket + the
+# textarea surface. The pure `client` logic is native-tested without them.
+# Pinned exactly to the nixpkgs `wasm-bindgen-cli` version — the two must
+# match (the .wasm schema is version-locked to the CLI).
+wasm-bindgen = "=0.2.121"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "BinaryType",
+  "CloseEvent",
+  "Document",
+  "Event",
+  "EventTarget",
+  "HtmlTextAreaElement",
+  "MessageEvent",
+  "Window",
+  "WebSocket",
+  "console",
+]
+
+[profile.release]
+codegen-units = 1
+lto           = true
+opt-level     = "s"
+strip         = true
+
+[lints.clippy]
+mod_module_files = "deny"
