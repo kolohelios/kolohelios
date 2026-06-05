@@ -133,6 +133,82 @@ whitespace-check:
 validate: fmt-check lint doc-check deny machete wasm-check coverage nix-fmt-check flake-check whitespace-check
 "#;
 
+// Browser-wasm application (`apps/`). Native gates for the pure logic,
+// plus `wasm-build`: compile to wasm32-unknown-unknown for the browser,
+// run wasm-bindgen for the JS glue, and wasm-opt to shrink — the editor's
+// real build, confirming it links against web-sys/wasm-bindgen. The
+// emitted `dist/` is gitignored and (re)produced here and at deploy, so
+// there's no committed-artifact drift check. Coverage is optional (the
+// browser DOM/socket paths are invisible to cargo-llvm-cov).
+const WASM_APP_TEMPLATE: &str = r#"build:
+    cargo build --release --target wasm32-unknown-unknown
+
+test:
+    cargo test
+
+fmt:
+    cargo fmt
+
+fmt-check:
+    cargo fmt --check
+
+fmt-toml:
+    taplo fmt
+
+lint:
+    cargo clippy --all-targets -- -D warnings
+
+doc-check:
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+
+deny:
+    cargo deny check
+
+# Macro-only deps can register as false positives — allowlist via
+# `package.metadata.cargo-machete.ignored` in the offending Cargo.toml.
+machete:
+    cargo machete
+
+# Build the browser bundle: wasm32 compile -> wasm-bindgen JS glue ->
+# wasm-opt shrink. `dist/` is gitignored and rebuilt here and at deploy.
+wasm-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    crate=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name' | tr - _)
+    cargo build --release --target wasm32-unknown-unknown
+    mkdir -p dist
+    wasm-bindgen "target/wasm32-unknown-unknown/release/${crate}.wasm" --out-dir dist --target web
+    wasm-opt -Oz "dist/${crate}_bg.wasm" -o "dist/${crate}_bg.wasm"
+
+coverage:
+    #!/usr/bin/env bash
+    # Optional on wasm-app (cargo-llvm-cov can't see the browser DOM and
+    # socket paths); skip when not declared.
+    set -euo pipefail
+    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
+        echo "coverage: not declared (optional on wasm-app); skipping"
+        exit 0
+    fi
+    fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
+    measured=$(cargo llvm-cov --json --summary-only)
+    line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
+    printf 'coverage: line=%.1f%% (gate: line>=%s%%)\n' "$line" "$fail_line"
+    awk -v l="$line" -v fl="$fail_line" \
+        'BEGIN { exit (l < fl) ? 1 : 0 }'
+
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
+    nix flake check
+
+whitespace-check:
+    ../../tools/shaka/bin/shaka whitespace check
+
+validate: fmt-check lint doc-check deny machete wasm-build coverage nix-fmt-check flake-check whitespace-check
+"#;
+
 const NIX_LIB_TEMPLATE: &str = r#"fmt-toml:
     taplo fmt
 
@@ -504,6 +580,7 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
             .to_string(),
         ),
         "rust-lib" => Some(RUST_LIB_TEMPLATE.to_string()),
+        "wasm-app" => Some(WASM_APP_TEMPLATE.to_string()),
         "nix-lib" => Some(NIX_LIB_TEMPLATE.to_string()),
         "document" => Some(DOCUMENT_TEMPLATE.to_string()),
         _ => None,
@@ -764,6 +841,25 @@ mod tests {
     fn rust_lib_template_has_no_worker_build() {
         // A lib produces no artifact of its own — no worker-build step.
         assert!(!RUST_LIB_TEMPLATE.contains("worker-build"));
+    }
+
+    #[test]
+    fn template_for_wasm_app_returns_wasm_app_template() {
+        let dir = tmp_project("wasm-app");
+        assert_eq!(
+            template_for("wasm-app", dir.path()).as_deref(),
+            Some(WASM_APP_TEMPLATE)
+        );
+    }
+
+    #[test]
+    fn wasm_app_template_gates_validate_on_wasm_build() {
+        // A browser-wasm app's `validate` must build the bundle.
+        assert!(WASM_APP_TEMPLATE.contains("wasm-build:\n"));
+        assert!(WASM_APP_TEMPLATE.contains("wasm-bindgen"));
+        assert!(WASM_APP_TEMPLATE
+            .lines()
+            .any(|l| l.starts_with("validate:") && l.contains("wasm-build")));
     }
 
     #[test]

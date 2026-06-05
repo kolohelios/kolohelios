@@ -40,6 +40,7 @@ pub enum ProjectKind {
     RustCli,
     RustWorker,
     RustLib,
+    WasmApp,
     Infra,
     NixLib,
     Document,
@@ -51,7 +52,10 @@ impl ProjectKind {
     fn is_rust_flavored(self) -> bool {
         matches!(
             self,
-            ProjectKind::RustCli | ProjectKind::RustWorker | ProjectKind::RustLib
+            ProjectKind::RustCli
+                | ProjectKind::RustWorker
+                | ProjectKind::RustLib
+                | ProjectKind::WasmApp
         )
     }
 }
