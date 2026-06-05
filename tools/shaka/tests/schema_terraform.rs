@@ -3,10 +3,7 @@
 //! Walks fixtures under `tests/fixtures/terraform/valid/<case>/cue/` and
 //! `tests/fixtures/terraform/invalid/schema/<case>/cue/` and asserts that
 //! `cue vet -c` accepts every valid one and rejects every schema-level
-//! invalid one. Fixtures under `invalid/walker/` (rejected by the IR
-//! walker, not the schema — e.g. malformed `$ref` strings the schema is
-//! too permissive to catch) are excluded; they are exercised by
-//! `tests/terraform_emit.rs`.
+//! invalid one.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

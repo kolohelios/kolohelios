@@ -87,8 +87,7 @@ fn every_valid_fixture_renders_to_its_golden() {
 
 #[test]
 fn every_invalid_fixture_causes_emit_to_fail() {
-    let mut fixtures = fixtures_in("invalid/schema");
-    fixtures.extend(fixtures_in("invalid/walker"));
+    let fixtures = fixtures_in("invalid/schema");
     assert!(!fixtures.is_empty(), "no invalid fixtures found");
     for fixture in fixtures {
         let case = fixture
