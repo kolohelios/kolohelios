@@ -7,7 +7,6 @@
 //! global protection.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
@@ -71,14 +70,14 @@ struct ObjectStorageBlock {
 /// Walk every project.cue under `root` and collect declared namespaces.
 /// Returns entries sorted by `(kind, name, project)` for stable output.
 pub fn collect(root: &Path) -> Result<Vec<Entry>, RegistryError> {
-    let schema_path = schema_check::write_schema().context(WriteSchemaSnafu)?;
+    schema_check::project_schema_path().context(WriteSchemaSnafu)?;
     let mut entries = Vec::new();
     for project_dir in schema_check::discover(root) {
         let project_file = project_dir.join("project.cue");
         if !project_file.exists() {
             continue;
         }
-        let parsed = read_project(&schema_path, &project_file)?;
+        let parsed = read_project(&project_file)?;
         let Some(block) = parsed.object_storage else {
             continue;
         };
@@ -99,28 +98,20 @@ pub fn collect(root: &Path) -> Result<Vec<Entry>, RegistryError> {
     Ok(entries)
 }
 
-fn read_project(schema: &Path, file: &Path) -> Result<ProjectFile, RegistryError> {
+fn read_project(file: &Path) -> Result<ProjectFile, RegistryError> {
     // `cue export` needs both the schema (for #Project) and the project
     // file unified together. Schema-check has already enforced structure,
     // so any export failure here is a real problem and bubbles up.
     //
-    // `current_dir(file.parent())` anchors cue's module-resolution walk
-    // at the project dir. The project schema imports the domain
-    // registry, so cue needs to find `cue.mod/module.cue` somewhere
-    // up the tree. Inheriting the caller's cwd works in
-    // `cargo test`/`cargo run` (cwd = repo root) but breaks under
-    // `nix build`'s sandbox (cwd = `/build/.tmpXXX/`, no cue.mod). The
-    // file's parent always sits inside the project tree containing
-    // `cue.mod`, so the walk succeeds in both worlds.
-    let project_dir = file.parent().expect("project file has a parent dir");
-    let output = Command::new("cue")
-        .args(["export", "--out", "json"])
-        .arg(schema)
-        .arg(file)
-        .current_dir(project_dir)
-        .output()
-        .with_context(|_| SpawnCueExportSnafu {
-            file: file.display().to_string(),
+    // `cue_project` anchors cue's cwd at the CUE module root so the
+    // schema's domain-registry import resolves — the bundled module for a
+    // nix-packaged binary, or the enclosing `cue.mod` for an in-repo run
+    // (or a temp fixture that plants one).
+    let output =
+        schema_check::cue_project(&["export", "--out", "json"], file).with_context(|_| {
+            SpawnCueExportSnafu {
+                file: file.display().to_string(),
+            }
         })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -36,18 +35,15 @@ struct CiApply {
 }
 
 pub fn run(check: bool) {
-    let schema_path = match schema_check::write_schema() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} could not write schema: {e}");
-            std::process::exit(1);
-        }
-    };
+    if let Err(e) = schema_check::project_schema_path() {
+        eprintln!("{RED}{BOLD}error:{RESET} could not resolve project schema: {e}");
+        std::process::exit(1);
+    }
 
     let mut items: Vec<(PathBuf, String)> = Vec::new();
     let mut build_specs: Vec<super::main_workflow::MainBuildSpec> = Vec::new();
     for project_dir in schema_check::discover(Path::new(".")) {
-        let meta = match read_meta(&schema_path, &project_dir) {
+        let meta = match read_meta(&project_dir) {
             Ok(m) => m,
             Err(e) => {
                 eprintln!(
@@ -185,16 +181,12 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
     }
 }
 
-fn read_meta(schema_path: &Path, project_dir: &Path) -> Result<ProjectMeta, String> {
+fn read_meta(project_dir: &Path) -> Result<ProjectMeta, String> {
     let project_file = project_dir.join("project.cue");
     if !project_file.exists() {
         return Err("missing project.cue".into());
     }
-    let output = Command::new("cue")
-        .arg("export")
-        .arg(schema_path)
-        .arg(&project_file)
-        .output()
+    let output = schema_check::cue_project(&["export"], &project_file)
         .map_err(|e| format!("failed to spawn cue: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -336,7 +328,7 @@ mod tests {
         let dir = std::env::temp_dir().join("shaka-ci-generate-no-cue");
         // No project.cue here — read_meta should short-circuit before
         // ever spawning `cue`.
-        let err = match read_meta(Path::new("/nonexistent-schema.cue"), &dir) {
+        let err = match read_meta(&dir) {
             Err(e) => e,
             Ok(_) => panic!("missing project.cue must error"),
         };

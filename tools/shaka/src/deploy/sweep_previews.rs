@@ -27,7 +27,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::project::schema_check::{discover, write_schema as project_schema_path};
+use crate::project::schema_check::{cue_project, discover, project_schema_path};
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 #[derive(Debug, Snafu)]
@@ -159,7 +159,7 @@ fn env_var(name: &str) -> Result<String, SweepError> {
 /// Walk every project and collect the `ci.deploy.previewScriptPrefix`
 /// of each Worker app, sorted and deduplicated.
 fn collect_prefixes(root: &Path) -> Result<Vec<String>, SweepError> {
-    let schema_path = project_schema_path().map_err(|e| {
+    project_schema_path().map_err(|e| {
         SchemaSnafu {
             message: e.to_string(),
         }
@@ -171,12 +171,8 @@ fn collect_prefixes(root: &Path) -> Result<Vec<String>, SweepError> {
         if !project_file.exists() {
             continue;
         }
-        let output = Command::new("cue")
-            .arg("export")
-            .arg(&schema_path)
-            .arg(&project_file)
-            .output()
-            .context(SpawnSnafu { cmd: "cue export" })?;
+        let output =
+            cue_project(&["export"], &project_file).context(SpawnSnafu { cmd: "cue export" })?;
         if !output.status.success() {
             return CueExportSnafu {
                 path: project_file.display().to_string(),
