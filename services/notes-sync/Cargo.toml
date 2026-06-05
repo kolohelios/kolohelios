@@ -13,14 +13,19 @@ crate-type = ["cdylib", "rlib"]
 # Base64-encode the note body for the GitHub contents API (cold-tier
 # commit). Pure-rust, builds on wasm32-unknown-unknown.
 base64 = "0.22"
+# HMAC-SHA256 for the signed session cookie.
+hmac = "0.12"
 # Shared wire-protocol types (ClientMsg / ServerMsg / Delta), used by
 # both the Durable Object here and the WASM editor.
 notes-protocol = { path = "../../packages/notes-protocol" }
 # Per-connection hibernation attachment is (de)serialized through serde.
 serde = { version = "1", features = ["derive"] }
 # Wire frames are JSON-encoded ClientMsg / ServerMsg over the WebSocket;
-# also used to (de)serialize GitHub contents-API request/response bodies.
+# also used to (de)serialize GitHub contents-API and OAuth bodies, plus
+# the session-cookie claims.
 serde_json = "1"
+# SHA-256 for the PKCE S256 challenge and the session-cookie HMAC.
+sha2 = "0.10"
 # workers-rs runtime: Durable Objects + the WebSocket Hibernation API.
 worker = "0.8"
 
