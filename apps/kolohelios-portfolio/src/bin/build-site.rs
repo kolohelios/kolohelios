@@ -1,10 +1,15 @@
 //! Static site generator for the kolohelios portfolio.
 //!
-//! Reads `data/work-history.json`, renders the askama templates under
-//! `templates/`, invokes the system `tailwindcss` CLI against the
-//! rendered HTML, and writes the resulting files to `dist/`. The
-//! resulting `dist/` is what Workers Static Assets uploads to
-//! Cloudflare.
+//! Reads `data/work-history.json` and `data/profile.json`, renders the
+//! askama templates under `templates/`, invokes the system `tailwindcss`
+//! CLI against the rendered HTML, and writes the resulting files to
+//! `dist/`. The resulting `dist/` is what Workers Static Assets uploads
+//! to Cloudflare.
+//!
+//! `data/profile.json` is generated from `tools/resume/profile.cue` by
+//! `shaka profile generate` — the same canonical source the résumé's
+//! profile sections render from — so the about page never hand-duplicates
+//! profile prose (#785).
 //!
 //! The `/resume` page is rendered from `tools/resume/resume.md` (the
 //! same source that project renders to the downloadable PDF/DOCX), and
@@ -47,13 +52,43 @@ struct WorkHistory {
     entries: Vec<WorkEntry>,
 }
 
+/// Profile prose shared with the résumé, generated from
+/// `tools/resume/profile.cue` into `data/profile.json` by
+/// `shaka profile generate`. Only the fields the about page renders are
+/// modelled; serde ignores the rest (name/title/contact, used by the
+/// résumé). See #785.
+#[derive(Deserialize)]
+struct Profile {
+    summary: String,
+    skills: Vec<SkillGroup>,
+    education: Education,
+}
+
+#[derive(Deserialize)]
+struct SkillGroup {
+    category: String,
+    items: String,
+}
+
+#[derive(Deserialize)]
+struct Education {
+    institution: String,
+    degree: String,
+    gpa: String,
+    honors: String,
+}
+
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate;
 
 #[derive(Template)]
 #[template(path = "about.html")]
-struct AboutTemplate;
+struct AboutTemplate {
+    summary: String,
+    skills: Vec<SkillGroup>,
+    education: Education,
+}
 
 #[derive(Template)]
 #[template(path = "work.html")]
@@ -191,6 +226,16 @@ fn load_work_history() -> Result<WorkHistory, String> {
     serde_json::from_slice(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
+/// Load the generated profile prose for the about page. `profile.json`
+/// is produced from `tools/resume/profile.cue` by `shaka profile
+/// generate` and committed; `shaka preflight` gates it against the
+/// canonical CUE.
+fn load_profile() -> Result<Profile, String> {
+    let path = Path::new("data/profile.json");
+    let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))
+}
+
 /// (relative path, rendered HTML). Each entry's relative path
 /// includes the `index.html` suffix so the dist tree mirrors
 /// Workers Static Assets' clean-URL expectations:
@@ -203,11 +248,16 @@ fn render_pages(entries: &[WorkEntry]) -> Result<Vec<(PathBuf, String)>, String>
             .render()
             .map_err(|e| format!("render index: {e}"))?,
     ));
+    let profile = load_profile()?;
     out.push((
         PathBuf::from("about/index.html"),
-        AboutTemplate
-            .render()
-            .map_err(|e| format!("render about: {e}"))?,
+        AboutTemplate {
+            summary: profile.summary,
+            skills: profile.skills,
+            education: profile.education,
+        }
+        .render()
+        .map_err(|e| format!("render about: {e}"))?,
     ));
     out.push((
         PathBuf::from("work/index.html"),

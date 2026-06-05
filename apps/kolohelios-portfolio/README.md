@@ -12,6 +12,12 @@ is a `fallthrough` stub for paths not matched by a static asset.
 - `data/work-history.json` — structured work-history entries that
   `templates/work.html` iterates over. Same file feeds #192's `wasm`
   chart when it lands.
+- `data/profile.json` — **generated**, committed. Profile prose
+  (summary, skills, education) that `templates/about.html` renders. It
+  is produced from `tools/resume/profile.cue` by `shaka profile
+  generate` — the same canonical source the résumé renders from — so the
+  about page never hand-duplicates profile content. See
+  [Résumé dependency](#résumé-dependency).
 - `templates/resume.html` — the `/resume` page. Its body is
   `tools/resume/resume.md` rendered to HTML at build time (see
   `build-site.rs`), so the page never hand-duplicates résumé content;
@@ -71,6 +77,14 @@ only runs when this project's files change). Because `tools/resume`'s
 own drift check ties `resume.md` to its rendered `PDF`/`DOCX`, the
 markdown can't change without those changing — so guarding the
 `PDF`/`DOCX` copies also guards the rendered page.
+
+The about page's profile prose is shared the same way: `data/profile.json`
+is generated from `tools/resume/profile.cue` by `shaka profile generate`,
+and a repo-level `shaka profile generate --check` gates it against the
+canonical CUE so a `profile.cue` edit that isn't propagated here fails CI.
+`build-site` reads the committed JSON directly (no `cue` at build time),
+so `build-check` covers `about.html` drift the same way it covers every
+other rendered page.
 
 ## Deploy
 

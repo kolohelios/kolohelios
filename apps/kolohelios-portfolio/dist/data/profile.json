@@ -1,0 +1,49 @@
+{
+  "name": "Jonathan (Jon) Kolohe Edwards",
+  "title": "Principal Software Engineer/Engineering Manager",
+  "contact": {
+    "phone": "(360) 509-8185",
+    "email": "jkedwards@me.com",
+    "citizenship": "US Person",
+    "location": "Bainbridge Island, WA",
+    "linkedin": "https://www.linkedin.com/in/kolohelios",
+    "github": "https://github.com/kolohelios"
+  },
+  "summary": "Business-minded software-engineering leader practicing end-to-end product engineering on streaming data platforms over datasets in the hundreds of millions of records and modernizing developer platforms with Nix and monorepo tooling. In the past year, shipped a Flow-Based Programming data graph (~2.5M events/day and growing), a Property and People data delivery platform that unlocked $1M in net new revenue, and Scala load shedding for a high-traffic search layer. 11+ years bridging deep IC and engineering leadership; has managed teams of up to 12 ICs.",
+  "skills": [
+    {
+      "category": "Leadership",
+      "items": "team management, mentorship, high-volume substantive code review, system design, architectural direction"
+    },
+    {
+      "category": "Languages",
+      "items": "Python, TypeScript/JavaScript, CUE, Rust, Scala 2; prior production: Java, C#, Kotlin, Swift"
+    },
+    {
+      "category": "Cloud & Infrastructure",
+      "items": "AWS, Azure, Linode, Cloudflare, Terraform"
+    },
+    {
+      "category": "Build & Deploy",
+      "items": "Nix, Kubernetes, Helm, Docker, monorepos, CI/CD pipelines (GitHub Actions, Jenkins)"
+    },
+    {
+      "category": "Data & AI",
+      "items": "Databricks, Delta Lake, Parquet, PostgreSQL, MS SQL, Redis, Elasticsearch, MCP"
+    },
+    {
+      "category": "Data Streaming",
+      "items": "NATS, Pulsar, AWS SQS, Kinesis, MQTT, Azure Event Hub"
+    },
+    {
+      "category": "Frontend & Mobile",
+      "items": "React, Vue, React Native, Angular 2+, Cordova, native iOS and Android"
+    }
+  ],
+  "education": {
+    "institution": "Olympic College",
+    "degree": "Associates Degree (A.A.S.), General Studies",
+    "gpa": "3.75",
+    "honors": "Phi Theta Kappa"
+  }
+}
