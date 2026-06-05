@@ -39,13 +39,19 @@ static server-side secret in 1Password.
 
 Phased build tracked in issue #757.
 
-- **Phase 1 (this scaffold).** Hello-world `hibernatable` WebSocket echo
-  Durable Object that de-risks the hibernation eviction-and-wake cycle on
-  the `worker` crate. A `/note/<id>/ws` upgrade is forwarded to that
-  note's object, which echoes each message and bumps a storage-backed
-  `seq` counter; per-connection state rides the socket attachment so it
-  survives hibernation. See [`docs/hibernation.md`](docs/hibernation.md)
-  for the eviction-and-wake verification procedure.
+- **Phase 1 — hibernation de-risk.** Stood up the `hibernatable`
+  WebSocket Durable Object and confirmed the eviction-and-wake lifecycle
+  on the `worker` crate: durable state lives in DO storage and
+  per-connection state in the socket attachment, never in struct fields.
+  See [`docs/hibernation.md`](docs/hibernation.md) for the verification
+  procedure.
+- **Phase 2 — edit log (this).** The editor speaks the `notes-protocol`
+  wire types over the socket. On `Open` the object replies with a `Sync`
+  of the current `seq` and `text`; an `Edit` whose `base_seq` matches is
+  applied, appended to the append-only log in DO storage, and `Ack`ed,
+  while a stale edit (or one that can't apply) is rejected with a fresh
+  `Sync`. The body is rebuilt by replaying the log, so an evicted object
+  reconstructs without loss.
 
 ## Local development
 

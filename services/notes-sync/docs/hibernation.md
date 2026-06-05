@@ -85,14 +85,17 @@ cd services/notes-sync
 wrangler dev            # local workerd; no Cloudflare login needed
 # in another shell, drive the socket (any WS client):
 websocat ws://127.0.0.1:8787/note/demo/ws
-> hello
-< echo[demo#1]: hello
-> world
-< echo[demo#2]: world
+> {"type":"open","since_seq":0}
+< {"type":"sync","seq":0,"text":""}
+> {"type":"edit","base_seq":0,"delta":{"kind":"whole","text":"hello"}}
+< {"type":"ack","seq":1}
+> {"type":"open","since_seq":1}
+< {"type":"sync","seq":1,"text":"hello"}
 ```
 
-`seq` incrementing across messages shows the storage round-trip; the
-`note_id` in the reply shows the attachment round-trip.
+The `seq` advancing and the second `Sync` returning the accumulated
+`text` show that accepted edits persist in DO storage across a fresh
+connection.
 
 ### Observing a true eviction
 
@@ -103,13 +106,13 @@ eviction-and-wake is observed against a deployed Worker:
 1. `wrangler deploy` (needs the Cloudflare account; credentials come from
    1Password via `op`, never committed).
 2. `wrangler tail` in one shell.
-3. Open the socket, send a message (`seq` → N), then leave it idle long
-   enough for the runtime to evict the object.
-4. Send another message. In `wrangler tail` the
+3. Send a few `edit`s (the object `Ack`s up to `seq` N), then leave the
+   socket idle long enough for the runtime to evict the object.
+4. Send `{"type":"open","since_seq":N}`. In `wrangler tail` the
    `NoteDurableObject constructed …` line reappears — that is the wake —
-   and the reply is `echo[…#N+1]`, proving `seq` survived the eviction in
-   storage and the `note_id` survived in the attachment.
+   and the `Sync` reply carries `seq` N and the full body, proving the
+   edit log survived the eviction in storage.
 
-If the counter ever resets to 1 after a wake, state is leaking into struct
-fields instead of the durable tier — the regression this phase exists to
-prevent.
+If `seq` ever resets or the body comes back empty after a wake, state is
+leaking into struct fields instead of the durable tier — the regression
+this phase exists to prevent.
