@@ -210,6 +210,25 @@ workflow run goes red.
 - See also #147 (`shaka repo rebase-wip`), the local-side companion
   for branches you're actively iterating on.
 
+### Daily `nixpkgs` lock bump
+
+`.github/workflows/bump-nixpkgs.yaml` runs daily at 00:00 UTC (also
+`workflow_dispatch:`). It runs `shaka repo bump-locks --input nixpkgs
+--pr-branch bot/bump-nixpkgs --auto-merge`, which re-locks the **one**
+project that declares `nixpkgs.url` directly — `nix/kolohelios-nix` — and
+opens (or updates) a single PR titled `chore(deps): bump nixpkgs flake
+input`. Consumers declare `nixpkgs.follows = "kolohelios-nix/nixpkgs"`
+rather than a direct `nixpkgs.url`, so the bumper's grep-based discovery
+skips them; this job moves only the shared source-of-truth lock.
+
+This is the **only** clock-based poll in the lock chain, and it has to be:
+upstream `NixOS/nixpkgs` releases have no event we can subscribe to.
+Downstream is event-driven — see the kolohelios-nix bump below. Without
+this job, `nix/kolohelios-nix/flake.lock` only advances on a manual
+`nix flake update nixpkgs`; that staleness caused #593 (the crates.io
+`importCargoLock` fix existed upstream for a month before our lock caught
+up).
+
 ### Daily kolohelios-nix lock bump
 
 `.github/workflows/bump-kolohelios-nix.yaml` runs daily at 00:00 UTC
