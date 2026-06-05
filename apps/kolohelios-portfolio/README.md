@@ -8,10 +8,15 @@ is a `fallthrough` stub for paths not matched by a static asset.
 ## Layout
 
 - `templates/` — `askama` templates. `layout.html` is the shared base
-  (nav + footer); the four page templates extend it.
+  (nav + footer); the five page templates extend it.
 - `data/work-history.json` — structured work-history entries that
   `templates/work.html` iterates over. Same file feeds #192's `wasm`
   chart when it lands.
+- `templates/resume.html` — the `/resume` page. Its body is
+  `tools/resume/resume.md` rendered to HTML at build time (see
+  `build-site.rs`), so the page never hand-duplicates résumé content;
+  it also links the downloadable `resume.pdf` / `resume.docx` copied
+  from that project. See [Résumé dependency](#résumé-dependency).
 - `styles/input.css` — Tailwind v3 entrypoint (just the `@tailwind`
   directives). The compiler scans rendered HTML for class names and
   emits a minimized `dist/style.css`.
@@ -23,7 +28,8 @@ is a `fallthrough` stub for paths not matched by a static asset.
   paths the static assets don't match. Dynamic routes (for example,
   `/api/*` for #193's contact form) land here.
 - `dist/` — generated, committed. The `build-check` validate step
-  re-runs the pipeline in CI and fails on drift.
+  re-runs the pipeline in CI and fails on drift. Includes the
+  `resume.{pdf,docx}` copies and the rendered `resume/index.html`.
 - `wrangler.toml` — Worker name, `worker-build` invocation, and the
   `[assets]` block that wires `dist/` into Workers Static Assets.
 
@@ -47,6 +53,24 @@ Updates `dist/` in place. Commit the result; CI rejects drift.
 
 `just validate` runs `build-check` which exercises the same pipeline
 in `--check` mode against a temp directory.
+
+## Résumé dependency
+
+The `/resume` page and the `resume.{pdf,docx}` downloads are sourced
+from the sibling `tools/resume` project: `build-site.rs` reads
+`../../tools/resume/resume.md` (rendered to HTML for the page) and
+copies that project's committed `resume.pdf` / `resume.docx` into
+`dist/`. So a résumé change requires rebuilding and committing this
+project's `dist/` too.
+
+That cross-project staleness is gated outside this project's own
+`build-check`: a repo-level `shaka preflight` check byte-compares
+`tools/resume/resume.{pdf,docx}` against the copies committed here, and
+fires whenever *either* side changes (the per-project `build-check`
+only runs when this project's files change). Because `tools/resume`'s
+own drift check ties `resume.md` to its rendered `PDF`/`DOCX`, the
+markdown can't change without those changing — so guarding the
+`PDF`/`DOCX` copies also guards the rendered page.
 
 ## Deploy
 

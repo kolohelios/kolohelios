@@ -19,8 +19,14 @@ path              = "src/bin/build-site.rs"
 required-features = ["build-site"]
 
 [features]
-build-site = ["dep:askama", "dep:serde", "dep:serde_json", "dep:tempfile"]
-default    = []
+build-site = [
+  "dep:askama",
+  "dep:pulldown-cmark",
+  "dep:serde",
+  "dep:serde_json",
+  "dep:tempfile",
+]
+default = []
 
 [dependencies]
 worker = "0.8"
@@ -29,6 +35,9 @@ worker = "0.8"
 # above so the wasm worker compile doesn't even resolve them.
 askama = { version = "0.12", default-features = false, features = [
   "config",
+], optional = true }
+pulldown-cmark = { version = "0.12", default-features = false, features = [
+  "html",
 ], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }

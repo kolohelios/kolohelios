@@ -61,3 +61,27 @@
 .ca-track-ic { stroke: light-dark(#44403c, #d6d3d1); fill: light-dark(#44403c, #d6d3d1); }
 .ca-track-lead { stroke: light-dark(#d97706, #f59e0b); fill: light-dark(#d97706, #f59e0b); }
 .ca-track-mgr { stroke: light-dark(#a855f7, #c084fc); fill: light-dark(#a855f7, #c084fc); }
+
+/* Typography for the /resume page, whose body is markdown rendered to
+ * raw HTML elements (build-site.rs converts tools/resume/resume.md).
+ * Tailwind's preflight resets heading sizes, list markers, and
+ * margins, so without these rules the rendered résumé would collapse
+ * to unstyled text. Kept outside @layer (like the .ca-* rules above)
+ * so the content scanner — which only walks rendered class names —
+ * can't tree-shake them out. Colors come from the wrapper's
+ * `var(--fg)` utility; only structure/spacing and the section rule
+ * (`var(--border)`, light/dark via `color-scheme`) live here. */
+.resume-prose h1 { font-size: 1.875rem; font-weight: 600; letter-spacing: -0.025em; }
+.resume-prose h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.resume-prose h3 { font-size: 1.05rem; font-weight: 600; margin-top: 1.25rem; }
+.resume-prose p { margin-top: 0.5rem; line-height: 1.625; }
+.resume-prose ul { list-style: disc; padding-left: 1.5rem; margin-top: 0.5rem; }
+.resume-prose li { margin-top: 0.25rem; line-height: 1.625; }
+.resume-prose strong { font-weight: 600; }
+.resume-prose a { text-decoration: underline; }

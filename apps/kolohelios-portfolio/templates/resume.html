@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block title %}résumé — kolohelios{% endblock %}
+{% block content %}
+<article class="space-y-8">
+  <div class="flex flex-wrap gap-3 text-sm">
+    <a href="/resume.pdf" class="rounded border border-[color:var(--border)] px-3 py-1.5 hover:bg-[var(--surface)]">Download PDF</a>
+    <a href="/resume.docx" class="rounded border border-[color:var(--border)] px-3 py-1.5 hover:bg-[var(--surface)]">Download Word (.docx)</a>
+  </div>
+  <div class="resume-prose text-[color:var(--fg)]">
+{{ body|safe }}
+  </div>
+</article>
+{% endblock %}

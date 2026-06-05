@@ -6,6 +6,11 @@
 //! resulting `dist/` is what Workers Static Assets uploads to
 //! Cloudflare.
 //!
+//! The `/resume` page is rendered from `tools/resume/resume.md` (the
+//! same source that project renders to the downloadable PDF/DOCX), and
+//! those PDF/DOCX artifacts are copied into `dist/` for download — see
+//! `copy_resume`.
+//!
 //! Two modes:
 //!
 //!   * Default: write the build into `dist/`. Local iteration runs this
@@ -20,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use askama::Template;
+use pulldown_cmark::{html, Options, Parser};
 use serde::Deserialize;
 
 #[derive(Deserialize, Clone)]
@@ -58,6 +64,15 @@ struct WorkTemplate {
 #[derive(Template)]
 #[template(path = "projects.html")]
 struct ProjectsTemplate;
+
+#[derive(Template)]
+#[template(path = "resume.html")]
+struct ResumeTemplate {
+    /// The résumé body, already rendered from `tools/resume/resume.md`
+    /// to HTML. Emitted with the `safe` filter in the template since
+    /// it's trusted markup we generated, not user input.
+    body: String,
+}
 
 fn main() {
     let check = std::env::args().any(|a| a == "--check");
@@ -113,11 +128,35 @@ fn run(check: bool) -> Result<(), String> {
 
 /// Copy `chart/` (D3 vendor bundle + the timeline JS) and every
 /// JSON under `data/` into the dist tree so the served paths
-/// `/chart/*` and `/data/*` resolve. Plain `cp -r` semantics —
-/// content drives drift, not mtimes.
+/// `/chart/*` and `/data/*` resolve, plus the rendered résumé
+/// artifacts from `tools/resume`. Plain `cp -r` semantics — content
+/// drives drift, not mtimes.
 fn copy_static_assets(root: &Path) -> Result<(), String> {
     copy_tree(Path::new("chart"), &root.join("chart"))?;
     copy_tree(Path::new("data"), &root.join("data"))?;
+    copy_resume(root)?;
+    Ok(())
+}
+
+/// The sibling `tools/resume` project renders `resume.md` to committed,
+/// reproducible `resume.{pdf,docx}` artifacts. We copy them into the
+/// dist root so they're served at `/resume.pdf` and `/resume.docx`.
+///
+/// This is a cross-project source dependency: the path reaches out of
+/// the project tree to `tools/resume`. A repo-level `shaka preflight`
+/// check byte-compares those source artifacts against the copies
+/// committed here, so a résumé re-render that isn't mirrored into this
+/// project's `dist/` fails CI regardless of which project a PR touches.
+const RESUME_SRC_DIR: &str = "../../tools/resume";
+const RESUME_FILES: &[&str] = &["resume.pdf", "resume.docx"];
+
+fn copy_resume(root: &Path) -> Result<(), String> {
+    for name in RESUME_FILES {
+        let from = Path::new(RESUME_SRC_DIR).join(name);
+        let to = root.join(name);
+        std::fs::copy(&from, &to)
+            .map_err(|e| format!("copy {} -> {}: {e}", from.display(), to.display()))?;
+    }
     Ok(())
 }
 
@@ -180,7 +219,41 @@ fn render_pages(entries: &[WorkEntry]) -> Result<Vec<(PathBuf, String)>, String>
             .render()
             .map_err(|e| format!("render projects: {e}"))?,
     ));
+    out.push((
+        PathBuf::from("resume/index.html"),
+        ResumeTemplate {
+            body: load_resume_html()?,
+        }
+        .render()
+        .map_err(|e| format!("render resume: {e}"))?,
+    ));
     Ok(out)
+}
+
+/// Read `tools/resume/resume.md`, strip the leading pandoc YAML
+/// frontmatter (LaTeX/geometry directives that only apply to the
+/// PDF/DOCX render), and convert the markdown body to HTML. This is
+/// the same source `tools/resume` renders to the downloadable
+/// PDF/DOCX, so the page never duplicates résumé content by hand.
+fn load_resume_html() -> Result<String, String> {
+    let path = Path::new(RESUME_SRC_DIR).join("resume.md");
+    let md = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    Ok(render_markdown(strip_frontmatter(&md)))
+}
+
+/// Strip a leading `---`-delimited YAML frontmatter block, if present.
+/// Returns the input unchanged when there's no frontmatter.
+fn strip_frontmatter(md: &str) -> &str {
+    md.strip_prefix("---\n")
+        .and_then(|rest| rest.find("\n---\n").map(|end| &rest[end + 5..]))
+        .unwrap_or(md)
+}
+
+fn render_markdown(md: &str) -> String {
+    let parser = Parser::new_ext(md, Options::empty());
+    let mut out = String::new();
+    html::push_html(&mut out, parser);
+    out
 }
 
 fn write_pages(root: &Path, pages: &[(PathBuf, String)]) -> Result<(), String> {
