@@ -1,0 +1,25 @@
+[package]
+edition      = "2021"
+license      = "MIT OR Apache-2.0"
+name         = "notes-web"
+publish      = false
+rust-version = "1.95"
+version      = "0.1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The HTMX shell and the editor bundle are served as static assets;
+# the Worker is a stub fallthrough. workers-rs is here so the project
+# builds as a Cloudflare Worker like the other asset-serving apps.
+worker = "0.8"
+
+[profile.release]
+codegen-units = 1
+lto           = true
+opt-level     = "s"
+strip         = true
+
+[lints.clippy]
+mod_module_files = "deny"
