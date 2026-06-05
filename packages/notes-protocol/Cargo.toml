@@ -1,0 +1,20 @@
+[package]
+edition      = "2021"
+license      = "MIT OR Apache-2.0"
+name         = "notes-protocol"
+publish      = false
+rust-version = "1.95"
+version      = "0.1.0"
+
+[dependencies]
+# The whole point of this crate: one set of serde structs shared by the
+# Durable Object and the WASM editor. Pure-rust, builds natively and on
+# wasm32-unknown-unknown.
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Round-trip tests assert the wire JSON shape both sides agree on.
+serde_json = "1"
+
+[lints.clippy]
+mod_module_files = "deny"
