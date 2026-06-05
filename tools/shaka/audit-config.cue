@@ -8,6 +8,7 @@ package audit
 		{name: "rust-coverage-threshold-nonzero", severity: "fail"},
 		{name: "rust-license-dual", severity: "fail"},
 		{name: "rust-version-pinned", severity: "fail"},
+		{name: "rust-cargo-required-fields", severity: "fail"},
 		{name: "kolohelios-nix-via-flakehub", severity: "fail"},
 		{name: "kolohelios-home-via-flakehub", severity: "fail"},
 		{name: "validate-recipe-meaningful", severity: "fail"},

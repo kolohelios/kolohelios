@@ -118,12 +118,14 @@ struct RustHasTests;
 struct RustCoverageThresholdNonzero;
 struct RustLicenseDual;
 struct RustVersionPinned;
+struct RustCargoRequiredFields;
 struct KoloheliosNixViaFlakehub;
 struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
 struct RustCliPackageTrueRequiresCiBuild;
 struct RustCliPackageFalseRequiresOverride;
 
+const REQUIRED_CARGO_FIELDS: [&str; 3] = ["name", "version", "edition"];
 const REQUIRED_RUST_LICENSE: &str = "MIT OR Apache-2.0";
 const REQUIRED_RUST_VERSION: &str = "1.95";
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
@@ -261,6 +263,40 @@ impl Rule for RustVersionPinned {
             None => RuleResult::Fail(format!(
                 "Cargo.toml must declare `[package].rust-version = \"{REQUIRED_RUST_VERSION}\"`"
             )),
+        }
+    }
+}
+
+// Every rust crate's `Cargo.toml` must declare the three fields cargo
+// itself requires to build a package: `name`, `version`, `edition`. Only
+// the single root crate is checked — no project in the repo is a cargo
+// workspace, so member traversal would be dead code.
+impl Rule for RustCargoRequiredFields {
+    fn name(&self) -> &'static str {
+        "rust-cargo-required-fields"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind.is_rust_flavored()
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let cargo = project_dir.join("Cargo.toml");
+        let contents = match std::fs::read_to_string(&cargo) {
+            Ok(c) => c,
+            Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
+        };
+        let missing: Vec<&str> = REQUIRED_CARGO_FIELDS
+            .iter()
+            .copied()
+            .filter(|field| cargo_package_field(&contents, field).is_none_or(|v| v.is_empty()))
+            .collect();
+        if missing.is_empty() {
+            RuleResult::Pass
+        } else {
+            RuleResult::Fail(format!(
+                "Cargo.toml `[package]` missing or empty required field(s): {} ({})",
+                missing.join(", "),
+                cargo.display()
+            ))
         }
     }
 }
@@ -543,6 +579,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustCoverageThresholdNonzero),
         Box::new(RustLicenseDual),
         Box::new(RustVersionPinned),
+        Box::new(RustCargoRequiredFields),
         Box::new(KoloheliosNixViaFlakehub),
         Box::new(KoloheliosHomeViaFlakehub),
         Box::new(ValidateRecipeMeaningful),
@@ -1571,6 +1608,67 @@ mod tests {
             RuleResult::Fail(msg) => assert!(msg.contains("must declare"), "got: {msg}"),
             other => panic!("expected Fail, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_passes_when_all_present() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            RustCargoRequiredFields.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_fails_when_cargo_toml_missing() {
+        let tmp = TempDir::new().unwrap();
+        match RustCargoRequiredFields.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("missing Cargo.toml"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_names_each_missing_field() {
+        let tmp = TempDir::new().unwrap();
+        // Only `name` present — `version` and `edition` absent.
+        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        match RustCargoRequiredFields.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("version"), "got: {msg}");
+                assert!(msg.contains("edition"), "got: {msg}");
+                assert!(!msg.contains("name"), "name was present, got: {msg}");
+                assert!(msg.contains("Cargo.toml"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_treats_empty_value_as_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        match RustCargoRequiredFields.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("version"), "got: {msg}");
+                assert!(!msg.contains("edition"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_does_not_apply_to_non_rust() {
+        assert!(!RustCargoRequiredFields.applies(&infra_meta()));
     }
 
     #[test]
