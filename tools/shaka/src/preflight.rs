@@ -190,6 +190,24 @@ const CHECKS: &[Check] = &[
         run: shaka_project_audit,
     },
     Check {
+        // Cross-project drift gate: tools/resume/profile.cue is the
+        // canonical profile prose; `shaka profile generate` renders it
+        // into resume.md's managed regions and the portfolio's
+        // data/profile.json. A profile.cue edit triggers tools/resume's
+        // validate but not the portfolio's (per-project scoping), so this
+        // repo-level check regenerates both and fails on drift regardless
+        // of which side a PR touches.
+        name: "shaka profile generate --check",
+        paths: &[
+            "tools/shaka/**",
+            "tools/resume/profile.cue",
+            "tools/resume/schema/profile.cue",
+            "tools/resume/resume.md",
+            "apps/kolohelios-portfolio/data/profile.json",
+        ],
+        run: shaka_profile_generate_check,
+    },
+    Check {
         // Cross-project drift gate: kolohelios-portfolio serves the
         // résumé via copies of tools/resume's rendered artifacts under
         // its committed dist/. The portfolio's own build-check only runs
@@ -581,6 +599,10 @@ fn shaka_ci_audit_workflows() -> CheckResult {
 
 fn shaka_project_audit() -> CheckResult {
     spawn_self(&["project", "audit"])
+}
+
+fn shaka_profile_generate_check() -> CheckResult {
+    spawn_self(&["profile", "generate", "--check"])
 }
 
 /// Source → committed-copy artifact pairs guarded by

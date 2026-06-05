@@ -14,6 +14,7 @@ mod jj;
 mod object_store;
 mod output;
 mod preflight;
+mod profile;
 mod project;
 mod repo;
 mod term;
@@ -85,6 +86,11 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Canonical profile generation (résumé + portfolio about page)
+    Profile {
+        #[command(subcommand)]
+        command: profile::ProfileCommand,
+    },
     /// Project tooling (schema validation, justfile generation, etc.)
     Project {
         #[command(subcommand)]
@@ -141,6 +147,7 @@ fn main() {
             since,
             json,
         } => preflight::run(keep_going, since, json),
+        Commands::Profile { command } => profile::run(command),
         Commands::Project { command } => project::run(command),
         Commands::Repo { command } => repo::run(command),
         Commands::Terraform { command } => terraform::run(command),
