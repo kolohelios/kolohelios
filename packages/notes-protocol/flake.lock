@@ -1,0 +1,67 @@
+{
+  "nodes": {
+    "kolohelios-nix": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1780591852,
+        "narHash": "sha256-KXBQLeyG2bPdV5ZNRmJp1ZyvQyY1o/Gm7Pe/2PaeiQQ=",
+        "rev": "0bafb850a691efec577fd11e254a6d6e974e5b93",
+        "revCount": 512,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/kolohelios-nix/0.1.512%2Brev-0bafb850a691efec577fd11e254a6d6e974e5b93/019e938e-ca09-7fc1-8422-a32f0b32c885/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/kolohelios/kolohelios-nix/%2A.tar.gz"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1780203844,
+        "narHash": "sha256-K5sT4jTpGs15ADhviMKNBH38REpPf5Q6mM1+N6cArVE=",
+        "rev": "b51242d7d43689db2f3be91bd05d5b24fbb469c4",
+        "revCount": 1005180,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.2605.1005180%2Brev-b51242d7d43689db2f3be91bd05d5b24fbb469c4/019e820b-3e9f-7ad0-acdd-dab08fdf665f/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/NixOS/nixpkgs/0"
+      }
+    },
+    "root": {
+      "inputs": {
+        "kolohelios-nix": "kolohelios-nix",
+        "nixpkgs": [
+          "kolohelios-nix",
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1780543271,
+        "narHash": "sha256-oPJ7eJN1sM37v92Rp/eyQL7/rUm0BOvXEBAoq/zN0cM=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "c30ca201c5093540cf792f6982f81ba1aa0f3514",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
