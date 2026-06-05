@@ -19,8 +19,14 @@ path              = "src/bin/build-site.rs"
 required-features = ["build-site"]
 
 [features]
-build-site = ["dep:askama", "dep:pulldown-cmark", "dep:serde", "dep:serde_json", "dep:tempfile"]
-default    = []
+build-site = [
+  "dep:askama",
+  "dep:pulldown-cmark",
+  "dep:serde",
+  "dep:serde_json",
+  "dep:tempfile",
+]
+default = []
 
 [dependencies]
 worker = "0.8"
