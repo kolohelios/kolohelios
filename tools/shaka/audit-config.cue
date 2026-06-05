@@ -9,6 +9,7 @@ package audit
 		{name: "rust-license-dual", severity: "fail"},
 		{name: "rust-version-pinned", severity: "fail"},
 		{name: "rust-cargo-required-fields", severity: "fail"},
+		{name: "rust-clippy-lints-declared", severity: "fail"},
 		{name: "kolohelios-nix-via-flakehub", severity: "fail"},
 		{name: "kolohelios-home-via-flakehub", severity: "fail"},
 		{name: "validate-recipe-meaningful", severity: "fail"},
