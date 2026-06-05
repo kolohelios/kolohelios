@@ -27,6 +27,7 @@ const HAND_AUTHORED: &[&str] = &[
     // Repo-event-driven
     "auto-rebase-prs.yaml",
     "bump-kolohelios-nix.yaml",
+    "bump-nixpkgs.yaml",
     "codeql.yml",
     // Repo-wide backstop: deletes any preview Worker whose PR has
     // closed. Runs on `push: main` + a daily cron + manual dispatch

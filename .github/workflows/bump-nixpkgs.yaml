@@ -1,0 +1,84 @@
+name: Bump nixpkgs lock
+
+# Daily bump of `nix/kolohelios-nix`'s own `nixpkgs` flake input — the
+# single source of truth every consumer follows via
+# `nixpkgs.follows = "kolohelios-nix/nixpkgs"`. Nothing else moves this
+# lock; without this job it only advances on a manual
+# `nix flake update nixpkgs` (the staleness that caused #593).
+#
+# `shaka repo bump-locks --input nixpkgs` walks every project but only
+# re-locks the one that declares `nixpkgs.url` — `nix/kolohelios-nix` —
+# since consumers' `.follows` form is not a direct input. When the lock
+# changes it opens a single PR (`bot/bump-nixpkgs`); a force-push updates
+# any already-open PR rather than duplicating.
+#
+# Unlike the upstream-input case, the downstream propagation is NOT
+# time-based: merging this PR triggers `build-nix-lib` (paths-filtered to
+# `nix/kolohelios-nix/**`) to publish a fresh `kolohelios-nix` release and
+# dispatch `kolohelios-nix-published`, which fires `bump-kolohelios-nix`
+# immediately. This daily cron is the only clock-based poll in the chain
+# — upstream nixpkgs releases have no event we can subscribe to.
+#
+# `--auto-merge` queues GitHub auto-merge (rebase strategy); the `Gate`
+# required check gates it. Authenticates as the `kolohelios-bot` GitHub
+# App so the resulting push re-triggers the PR's normal CI (which pushes
+# via the default `GITHUB_TOKEN` do not).
+on:
+  schedule:
+    # 00:00 UTC daily. Picks up new upstream nixpkgs releases ≤24h later.
+    - cron: "0 0 * * *"
+  # Manual trigger for ad-hoc bumps and verification after rotating the
+  # bot's credentials.
+  workflow_dispatch:
+
+# A second invocation that lands while we're still bumping would race on
+# the bot branch. Cancel any in-flight run; the new one will see the
+# latest state.
+concurrency:
+  group: bump-nixpkgs
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # `id-token: write` lets DeterminateSystems/nix-installer-action mint
+    # an OIDC token for FlakeHub. `nix run ./tools/shaka` substitutes the
+    # wrapped shaka closure from FlakeHub Cache (published by the
+    # `build-shaka` job in `main.yaml`); `nix flake update nixpkgs` called
+    # by shaka itself also needs the token to fetch the private
+    # `kolohelios-nix` flake.
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.KOLOHELIOS_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: Configure git identity
+        # The numeric App ID (3591292) is part of GitHub's noreply email
+        # format `<app-id>+<bot-name>[bot]@users.noreply.github.com`,
+        # which is what makes commits attributable to the App. The Client
+        # ID (used above for token minting) doesn't fit this slot.
+        run: |
+          git config --global user.name 'kolohelios-bot[bot]'
+          git config --global user.email '3591292+kolohelios-bot[bot]@users.noreply.github.com'
+      - name: Bump nixpkgs and open or update PR
+        run: |
+          nix run ./tools/shaka -- repo bump-locks \
+            --input nixpkgs \
+            --pr-branch bot/bump-nixpkgs \
+            --auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
