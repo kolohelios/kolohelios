@@ -14,11 +14,10 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Deserialize;
 
-use crate::project::schema_check::{discover, write_schema as project_schema_path};
+use crate::project::schema_check::{cue_project, discover, project_schema_path};
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 use crate::terraform::emit;
 use crate::terraform::ir::{DataSource, Expr, Module, Resource, Variable};
@@ -88,9 +87,8 @@ pub fn run(check: bool) {
 }
 
 fn run_at(root: &Path, check: bool) -> Result<(), String> {
-    let schema_path =
-        project_schema_path().map_err(|e| format!("could not resolve schema: {e}"))?;
-    let deploys = collect_deploys(root, &schema_path)?;
+    project_schema_path().map_err(|e| format!("could not resolve schema: {e}"))?;
+    let deploys = collect_deploys(root)?;
     let outputs = render_all(&deploys)?;
 
     if check {
@@ -102,14 +100,14 @@ fn run_at(root: &Path, check: bool) -> Result<(), String> {
 
 /// Walk every project, read its CUE export, and return only those
 /// projects that declare a `deploy:` block, sorted by project name.
-fn collect_deploys(root: &Path, schema_path: &Path) -> Result<Vec<(String, Deploy)>, String> {
+fn collect_deploys(root: &Path) -> Result<Vec<(String, Deploy)>, String> {
     let mut out = Vec::new();
     for project_dir in discover(root) {
         let project_file = project_dir.join("project.cue");
         if !project_file.exists() {
             continue;
         }
-        let export = export_project(schema_path, &project_file)?;
+        let export = export_project(&project_file)?;
         if let Some(deploy) = export.deploy {
             out.push((export.name, deploy));
         }
@@ -474,13 +472,9 @@ fn remove_orphans(dir: &Path, expected: &std::collections::HashSet<PathBuf>) -> 
     Ok(())
 }
 
-fn export_project(schema_path: &Path, project_file: &Path) -> Result<ProjectExport, String> {
-    let output = Command::new("cue")
-        .arg("export")
-        .arg(schema_path)
-        .arg(project_file)
-        .output()
-        .map_err(|e| format!("failed to spawn cue: {e}"))?;
+fn export_project(project_file: &Path) -> Result<ProjectExport, String> {
+    let output =
+        cue_project(&["export"], project_file).map_err(|e| format!("failed to spawn cue: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(format!(

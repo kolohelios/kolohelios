@@ -1,24 +1,119 @@
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
-/// In-tree path to the project schema. Returned by `write_schema`
-/// (the name is historical — `write_schema` no longer writes anything
-/// to disk). Kept as a path rather than a string so callers can pass
-/// it to `Command::arg` without conversion.
-///
-/// The schema imports `kolohelios.com/infra/cloudflare-dns/domains`
-/// to constrain hostname fields against the registry. CUE resolves
-/// that import by walking up from `cue`'s cwd to find
-/// `cue.mod/module.cue`. shaka invokes `cue` inheriting the caller's
-/// cwd: prod uses the repo root (real `cue.mod`); tests are
-/// responsible for setting up a `cue.mod` + minimal registry in
-/// their temp dir before spawning shaka. Anchoring the schema to
-/// `CARGO_MANIFEST_DIR` keeps it findable regardless of cwd.
-const SCHEMA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/schema/project-schema.cue");
+/// Environment variable a nix-packaged `shaka` uses to point at its
+/// bundled CUE module closure (the schema, its `cue.mod`, and the
+/// imported domain registry). Set by `wrapProgram` in the generated
+/// flake (see `generate_flakes`); unset for the in-repo dev wrapper,
+/// which builds in-tree.
+const MODULE_DIR_ENV: &str = "SHAKA_CUE_MODULE_DIR";
+
+/// Path of the project schema *relative to the CUE module root* — the
+/// layout preserved when the closure is shipped under
+/// `$out/share/shaka/cue/` by the packaged binary.
+const PROJECT_SCHEMA_REL: &str = "tools/shaka/schema/project-schema.cue";
 
 use super::SLOTS;
+
+/// Absolute path to the project schema file.
+///
+/// A nix-packaged `shaka` finds it under `$SHAKA_CUE_MODULE_DIR`; the
+/// in-repo dev wrapper falls back to the in-tree copy next to the
+/// sources (`CARGO_MANIFEST_DIR`). Both are verified to exist so a
+/// stale env var or a binary built outside the repo fails with a clear
+/// message instead of a downstream `cue` "file not found".
+pub fn project_schema_path() -> io::Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(MODULE_DIR_ENV) {
+        let path = PathBuf::from(dir).join(PROJECT_SCHEMA_REL);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "{MODULE_DIR_ENV} is set but {} does not exist",
+                path.display()
+            ),
+        ));
+    }
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("schema/project-schema.cue");
+    if path.is_file() {
+        return Ok(path);
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "project schema not found at {}; set {MODULE_DIR_ENV} for a packaged binary",
+            path.display()
+        ),
+    ))
+}
+
+/// The directory `cue` must run in so the schema's
+/// `import "kolohelios.com/infra/cloudflare-dns/domains:domain"` (and
+/// the rest of the closure) resolves. CUE locates imports via the
+/// `cue.mod/module.cue` found by walking up from its cwd.
+///
+/// Walk up from the project file to its enclosing module root first, so
+/// a `project.cue` inside any checkout is validated against *that*
+/// checkout's registry — the live monorepo for the dev wrapper or a
+/// nix-built binary run in-repo (#647), or a temp fixture that plants a
+/// `cue.mod`. Only when the project sits outside any CUE module (a
+/// nix-packaged `shaka` run in a non-module cwd) fall back to the
+/// bundled closure at `$SHAKA_CUE_MODULE_DIR`.
+fn cue_module_root(project_file: &Path) -> io::Result<PathBuf> {
+    let abs = std::fs::canonicalize(project_file)?;
+    let mut cursor = abs.parent();
+    while let Some(dir) = cursor {
+        if dir.join("cue.mod/module.cue").is_file() {
+            return Ok(dir.to_path_buf());
+        }
+        cursor = dir.parent();
+    }
+    if let Some(dir) = std::env::var_os(MODULE_DIR_ENV) {
+        let dir = PathBuf::from(dir);
+        if dir.join("cue.mod/module.cue").is_file() {
+            return Ok(dir);
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "{MODULE_DIR_ENV} is set but {} has no cue.mod",
+                dir.display()
+            ),
+        ));
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "no cue.mod/module.cue found above {}; set {MODULE_DIR_ENV} for a packaged binary",
+            project_file.display()
+        ),
+    ))
+}
+
+/// Run `cue <args> <project-schema> <project-file>` with cwd anchored at
+/// the CUE module root so the schema's import closure resolves no matter
+/// where the project file lives — including a nix-packaged `shaka` run in
+/// a repo with no `cue.mod` of its own. The project file is passed by
+/// absolute path because cue's cwd is the module root, not the caller's.
+///
+/// `args` carries the verb and its flags, e.g. `["vet", "-c"]` or
+/// `["export", "--out", "json"]`.
+pub fn cue_project(args: &[&str], project_file: &Path) -> io::Result<Output> {
+    let schema = project_schema_path()?;
+    let module_root = cue_module_root(project_file)?;
+    let project_abs = std::fs::canonicalize(project_file)?;
+    Command::new("cue")
+        .args(args)
+        .arg(&schema)
+        .arg(&project_abs)
+        .current_dir(&module_root)
+        .output()
+}
 
 enum ProjectResult {
     Pass,
@@ -28,13 +123,10 @@ enum ProjectResult {
 }
 
 pub fn run() {
-    let schema_path = match write_schema() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} could not write schema: {e}");
-            std::process::exit(1);
-        }
-    };
+    if let Err(e) = project_schema_path() {
+        eprintln!("{RED}{BOLD}error:{RESET} could not resolve project schema: {e}");
+        std::process::exit(1);
+    }
 
     let root = Path::new(".");
     let strays = find_stray_project_cues(root);
@@ -65,7 +157,7 @@ pub fn run() {
     let mut failures = 0;
     for project in &projects {
         let display = project.display();
-        match validate_project(&schema_path, project) {
+        match validate_project(project) {
             ProjectResult::Pass => println!("  {GREEN}{BOLD}ok{RESET}    {display}"),
             ProjectResult::MissingFile => {
                 println!("  {RED}{BOLD}FAIL{RESET}  {display} ({DIM}missing project.cue{RESET})");
@@ -163,19 +255,13 @@ fn is_noise_dir(name: &str) -> bool {
         || name.starts_with("result")
 }
 
-fn validate_project(schema_path: &Path, project_dir: &Path) -> ProjectResult {
+fn validate_project(project_dir: &Path) -> ProjectResult {
     let project_file = project_dir.join("project.cue");
     if !project_file.exists() {
         return ProjectResult::MissingFile;
     }
 
-    match Command::new("cue")
-        .arg("vet")
-        .arg("-c")
-        .arg(schema_path)
-        .arg(&project_file)
-        .output()
-    {
+    match cue_project(&["vet", "-c"], &project_file) {
         Ok(out) if out.status.success() => ProjectResult::Pass,
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -185,12 +271,6 @@ fn validate_project(schema_path: &Path, project_dir: &Path) -> ProjectResult {
         }
         Err(e) => ProjectResult::Error(format!("failed to spawn cue: {e}")),
     }
-}
-
-pub fn write_schema() -> std::io::Result<PathBuf> {
-    // No I/O — the in-tree schema path is the working answer now that
-    // the schema imports the domain registry (see SCHEMA_PATH).
-    Ok(PathBuf::from(SCHEMA_PATH))
 }
 
 #[cfg(test)]
@@ -303,10 +383,7 @@ mod tests {
     fn validate_project_reports_missing_project_file() {
         let tmp = TempDir::new().unwrap();
         mkdir(tmp.path(), "apps/foo");
-        let result = validate_project(
-            Path::new("/nonexistent-schema.cue"),
-            &tmp.path().join("apps/foo"),
-        );
+        let result = validate_project(&tmp.path().join("apps/foo"));
         assert!(matches!(result, ProjectResult::MissingFile));
     }
 

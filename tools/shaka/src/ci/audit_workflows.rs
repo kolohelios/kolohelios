@@ -5,7 +5,6 @@
 //! drift check can't see.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Deserialize;
 
@@ -135,14 +134,13 @@ fn audit() -> Result<(), Vec<PathBuf>> {
 /// Sourced from each project.cue's `ci:` block; extend as new
 /// generated-workflow kinds land (e.g. `ci.deploy` → `<name>-deploy.yml`).
 fn generated_filenames() -> Vec<String> {
-    let schema_path = match schema_check::write_schema() {
-        Ok(p) => p,
-        Err(_) => return Vec::new(),
-    };
+    if schema_check::project_schema_path().is_err() {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     let mut any_build = false;
     for project_dir in schema_check::discover(Path::new(".")) {
-        if let Ok(meta) = read_meta(&schema_path, &project_dir) {
+        if let Ok(meta) = read_meta(&project_dir) {
             if let Some(ci) = meta.ci {
                 if ci.apply.is_some() {
                     out.push(format!("{}-apply.yml", meta.name));
@@ -168,17 +166,12 @@ fn generated_filenames() -> Vec<String> {
     out
 }
 
-fn read_meta(schema_path: &Path, project_dir: &Path) -> Result<ProjectMeta, ()> {
+fn read_meta(project_dir: &Path) -> Result<ProjectMeta, ()> {
     let project_file = project_dir.join("project.cue");
     if !project_file.exists() {
         return Err(());
     }
-    let output = Command::new("cue")
-        .arg("export")
-        .arg(schema_path)
-        .arg(&project_file)
-        .output()
-        .map_err(|_| ())?;
+    let output = schema_check::cue_project(&["export"], &project_file).map_err(|_| ())?;
     if !output.status.success() {
         return Err(());
     }

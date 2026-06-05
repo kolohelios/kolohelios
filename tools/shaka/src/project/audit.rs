@@ -689,13 +689,10 @@ fn rules() -> Vec<Box<dyn Rule>> {
 }
 
 pub fn run() {
-    let schema_path = match schema_check::write_schema() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("{RED}{BOLD}error:{RESET} could not write schema: {e}");
-            std::process::exit(1);
-        }
-    };
+    if let Err(e) = schema_check::project_schema_path() {
+        eprintln!("{RED}{BOLD}error:{RESET} could not resolve project schema: {e}");
+        std::process::exit(1);
+    }
 
     let rules = rules();
 
@@ -723,7 +720,7 @@ pub fn run() {
     let mut failures = 0usize;
 
     for project in &projects {
-        audit_project(project, &schema_path, &rules, &severities, &mut failures);
+        audit_project(project, &rules, &severities, &mut failures);
     }
 
     println!();
@@ -736,7 +733,6 @@ pub fn run() {
 
 fn audit_project(
     project: &Path,
-    schema_path: &Path,
     rules: &[Box<dyn Rule>],
     severities: &HashMap<String, Severity>,
     failures: &mut usize,
@@ -749,7 +745,7 @@ fn audit_project(
         return;
     }
 
-    let meta = match load_meta(schema_path, &cue_path) {
+    let meta = match load_meta(&cue_path) {
         Ok(m) => m,
         Err(e) => {
             println!("  {RED}{BOLD}ERROR{RESET} {display} ({DIM}{e}{RESET})");
@@ -807,14 +803,8 @@ fn audit_project(
     }
 }
 
-fn load_meta(schema_path: &Path, project_cue: &Path) -> Result<ProjectMeta, String> {
-    let output = Command::new("cue")
-        .arg("export")
-        .arg("--out")
-        .arg("json")
-        .arg(schema_path)
-        .arg(project_cue)
-        .output()
+fn load_meta(project_cue: &Path) -> Result<ProjectMeta, String> {
+    let output = schema_check::cue_project(&["export", "--out", "json"], project_cue)
         .map_err(|e| format!("failed to spawn cue: {e}"))?;
 
     if !output.status.success() {
