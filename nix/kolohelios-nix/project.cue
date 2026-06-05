@@ -114,6 +114,17 @@ package project
 				visibility: "public"
 				rolling:    true
 			}
+			// Self-notify on a fresh publish so bump-kolohelios-nix runs
+			// immediately rather than waiting for its daily cron. This
+			// closes the propagation chain: the nixpkgs bump merges here,
+			// build-nix-lib republishes kolohelios-nix, and consumers pick
+			// up the new nixpkgs revision within minutes instead of ≤24h.
+			dispatch: [
+				{
+					repo:      "kolohelios/kolohelios"
+					eventType: "kolohelios-nix-published"
+				},
+			]
 		}
 	}
 }

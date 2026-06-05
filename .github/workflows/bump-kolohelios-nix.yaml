@@ -19,9 +19,15 @@ name: Bump kolohelios-nix locks
 # re-triggers the PR's normal CI (which pushes via the default
 # `GITHUB_TOKEN` do not).
 on:
+  # Primary trigger: `build-nix-lib` dispatches `kolohelios-nix-published`
+  # right after publishing a fresh release, so consumers pick up a new
+  # `kolohelios-nix` (and the nixpkgs revision it carries) within minutes.
+  repository_dispatch:
+    types: [kolohelios-nix-published]
   schedule:
-    # 00:00 UTC daily. Picks up new `kolohelios-nix` releases ≤24h after
-    # publish.
+    # 00:00 UTC daily — backstop in case a dispatch is missed (e.g. a
+    # publish that didn't fire the notify step). Idempotent: a no-op when
+    # nothing changed.
     - cron: "0 0 * * *"
   # Manual trigger for ad-hoc bumps and verification after rotating the
   # bot's credentials.
