@@ -9,15 +9,6 @@ package project
 		// both invoked from wrangler.toml's [build] step.
 		extraDevShellPackages: ["tailwindcss", "cue"]
 	}
-	audit: {
-		overrides: [
-			{
-				rule:          "rust-has-tests"
-				severity:      "off"
-				justification: "Worker is a stub fallthrough; static assets serve all real content via wrangler [assets]. Meaningful tests land with dynamic paths (#193 contact form)."
-			},
-		]
-	}
 	serving: [
 		{
 			via:       "cloudflare-worker"
