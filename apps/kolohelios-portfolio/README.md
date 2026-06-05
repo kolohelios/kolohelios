@@ -75,9 +75,36 @@ markdown can't change without those changing — so guarding the
 ## Deploy
 
 `wrangler deploy` builds via `worker-build --release` and uploads
-both the (stub) `wasm` module and the committed `dist/` directory.
+both the `wasm` module and the committed `dist/` directory.
 CI runs the same command on push to main (see
 `.github/workflows/kolohelios-portfolio-deploy.yml`); the custom
 domain on `kolohelios.com` is managed by Terraform under
 `infra/cloudflare-deploy` — not by `wrangler.toml` — so the deploy
 and apply concerns stay separate.
+
+## Kit setup (contact + newsletter)
+
+The `/contact` page posts both forms to the worker's `/api/subscribe`,
+which proxies to [Kit](https://kit.com) so the API key never reaches the
+browser. Provisioning is a one-time manual step:
+
+1. In Kit, create two **forms** — one for contact, one for the
+   newsletter — and a **custom field** named `message` (the contact
+   form sends the message body into it).
+2. Copy each form's numeric id into `wrangler.toml`'s `[vars]`
+   (`KIT_FORM_ID_CONTACT`, `KIT_FORM_ID_NEWSLETTER`). Form ids are not
+   secret.
+3. Set the API key as a Worker secret (not committed):
+
+   ```
+   wrangler secret put KIT_API_KEY
+   ```
+
+   The deploy workflow does not push Worker secrets yet (#794), so set
+   it once against the production worker.
+4. Enable double opt-in on both Kit forms so Kit owns confirmation and
+   unsubscribe/compliance.
+
+Spam handling lives in the worker (honeypot field + per-IP rate limiting
+via the `SUBSCRIBE_RATE_LIMITER` binding + server-side email
+validation); Turnstile/hCaptcha is intentionally deferred.
