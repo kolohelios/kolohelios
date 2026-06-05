@@ -6,7 +6,7 @@ argument-hint: <issue-number>
 
 Pick up GitHub issue `$1` and set up a workspace to work on it. Walk the
 user through each step, surface anything that needs human judgment, and stop
-for confirmation before writing code.
+for confirmation only when the plan raises a genuine open question.
 
 ## Workflow
 
@@ -78,12 +78,21 @@ the new workspace path (`/Users/jedwards/code/kolohelios-i$1`):
 jj bookmark create <name> -r @
 ```
 
-### 4. Plan and confirm
+### 4. Plan, then proceed or confirm
 
 Outline an implementation approach in the response — files to modify,
 sequencing of commits (one logical change per commit, per project
-conventions), edge cases or open questions. Stop, and wait for the user
-to confirm or redirect before writing any code.
+conventions), edge cases or open questions. Always present the plan
+before editing; then branch on whether it leaves anything for the user
+to decide:
+
+- **The plan raises a genuine open question or ambiguous decision** —
+  multiple reasonable approaches, a missing requirement, or a
+  destructive trade-off. Stop and ask, framed around the specific
+  question, and wait for the user before writing code.
+- **The plan is unambiguous with no open questions** — state it briefly
+  and proceed directly into the first commit. Don't emit a
+  go-ahead prompt; the user can always redirect mid-flight.
 
 ## Conventions
 
@@ -93,8 +102,9 @@ to confirm or redirect before writing any code.
 - Bookmark `<type>` must match the conventional commit type used in the
   eventual commit(s).
 - Never use `git` for working-copy mutations — only `jj`.
-- The plan step is mandatory: don't start editing files in the same turn
-  that creates the bookmark.
+- The plan step is mandatory: always present a plan before editing, even
+  when proceeding without confirmation. Whether to then wait is
+  conditional (see step 4).
 
 ## Stop conditions
 
@@ -104,4 +114,5 @@ Halt and report to the user when:
 - `shaka issue brief` fails (issue doesn't exist, auth missing)
 - The issue title doesn't yield an obvious conventional type and labels
   don't disambiguate
-- The user has not confirmed the plan
+- The plan raises a genuine open question or ambiguous decision the user
+  must resolve
