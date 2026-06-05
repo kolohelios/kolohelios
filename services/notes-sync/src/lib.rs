@@ -19,8 +19,15 @@
 //! storage synchronously, while the note body is committed to git lazily
 //! — a debounce + backstop pair multiplexed onto the DO's single alarm,
 //! plus a commit on last-socket-disconnect, landing through the
-//! optimistic-retry [`git`] client. Auth lands next.
+//! optimistic-retry [`git`] client.
+//!
+//! Phase 4 (issue #765) adds sign-in: ATProto OAuth, authentication only.
+//! The security-critical, native-tested core lives in [`auth`] (the
+//! `sub`-vs-DID check, PKCE, and the signed session cookie that gates the
+//! WS); the wasm-only OAuth HTTP flow (resolution, PAR, DPoP, token
+//! exchange) lives in the runtime.
 
+pub mod auth;
 pub mod git;
 pub mod route;
 pub mod state;

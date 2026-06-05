@@ -18,6 +18,7 @@ use worker::{
     WebSocketPair,
 };
 
+use crate::auth::{cookie_value, verify_session};
 use crate::git::{commit_with_retry, CommitError, GitTarget, WorkerGitHubClient};
 use crate::route::parse_ws_note_id;
 use crate::state::{is_stale, next_alarm};
@@ -40,6 +41,12 @@ const MAX_COMMIT_RETRIES: u32 = 3;
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     if let Some(note_id) = parse_ws_note_id(&req.path()) {
+        // The session cookie gates the upgrade. The `sub`-vs-DID check at
+        // login is where identity is established; this only re-checks the
+        // signed cookie that login minted.
+        if !session_authorized(&req, &env) {
+            return Response::error("unauthorized", 401);
+        }
         let stub = env
             .durable_object("NOTE")?
             .id_from_name(note_id)?
@@ -48,6 +55,27 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
 
     Response::ok("notes-sync: ok")
+}
+
+/// Whether the request carries a valid session cookie. When
+/// `SESSION_SECRET` isn't configured yet, the gate is open — the OAuth
+/// login flow that issues cookies (and the secret) lands with auth; until
+/// then the WS stays reachable for the earlier phases' runtime checks.
+fn session_authorized(req: &Request, env: &Env) -> bool {
+    let secret = match env.secret("SESSION_SECRET") {
+        Ok(s) => s.to_string(),
+        Err(_) => return true,
+    };
+    let header = req
+        .headers()
+        .get("Cookie")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let now = Date::now().as_millis() as i64 / 1000;
+    cookie_value(&header, "session")
+        .and_then(|v| verify_session(v, secret.as_bytes(), now).ok())
+        .is_some()
 }
 
 /// Per-connection state persisted across hibernation via the socket
