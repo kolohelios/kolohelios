@@ -1,0 +1,8 @@
+package project
+
+// A rust-worker project that has not adopted a `wrangler:` block yet.
+// The generator must emit nothing for it (no wrangler.toml).
+#Project & {
+	name: "plain-worker"
+	kind: "rust-worker"
+}

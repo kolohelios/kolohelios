@@ -144,6 +144,17 @@ const CHECKS: &[Check] = &[
         run: shaka_deploy_generate_tf_check,
     },
     Check {
+        // Any change to a project.cue may add/remove/edit a wrangler
+        // block, and any change to the generator may drift a committed
+        // wrangler.toml away from what the generator would produce now.
+        // Only projects with a wrangler block are managed, so the
+        // hand-maintained wrangler.toml files stay out of scope until
+        // they adopt the block.
+        name: "shaka deploy generate-wrangler --check",
+        paths: &["tools/shaka/**", "*/*/project.cue", "*/*/wrangler.toml"],
+        run: shaka_deploy_generate_wrangler_check,
+    },
+    Check {
         // Drift between a project's `cue/` source and its committed
         // `terraform/module.tf`. Triggers on changes to the generator,
         // the schema, any project's CUE source, or any project's
@@ -530,6 +541,10 @@ fn shaka_project_generate_flakes_check() -> CheckResult {
 
 fn shaka_deploy_generate_tf_check() -> CheckResult {
     spawn_self(&["deploy", "generate-tf", "--check"])
+}
+
+fn shaka_deploy_generate_wrangler_check() -> CheckResult {
+    spawn_self(&["deploy", "generate-wrangler", "--check"])
 }
 
 fn shaka_terraform_check() -> CheckResult {
