@@ -45,6 +45,10 @@ pub fn write_test_module(root: &Path) {
     )
     .unwrap();
 
+    // Mirror the real repo: a single root LICENSE that every project inherits,
+    // so the `license-present` audit rule passes without per-project files.
+    std::fs::write(root.join("LICENSE"), "MIT OR Apache-2.0\n").unwrap();
+
     let registry_dir = root.join("infra/cloudflare-dns/domains");
     std::fs::create_dir_all(&registry_dir).unwrap();
     std::fs::write(

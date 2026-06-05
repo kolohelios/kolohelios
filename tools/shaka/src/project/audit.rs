@@ -124,6 +124,7 @@ struct RustLicenseDual;
 struct RustVersionPinned;
 struct RustCargoRequiredFields;
 struct RustClippyLintsDeclared;
+struct LicensePresent;
 struct KoloheliosNixViaFlakehub;
 struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
@@ -131,6 +132,7 @@ struct RustCliPackageTrueRequiresCiBuild;
 struct RustCliPackageFalseRequiresOverride;
 
 const REQUIRED_CARGO_FIELDS: [&str; 3] = ["name", "version", "edition"];
+const LICENSE_FILENAMES: [&str; 4] = ["LICENSE", "LICENSE.md", "LICENSE-MIT", "LICENSE-APACHE"];
 const REQUIRED_RUST_LICENSE: &str = "MIT OR Apache-2.0";
 const REQUIRED_RUST_VERSION: &str = "1.95";
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
@@ -342,6 +344,31 @@ impl Rule for RustClippyLintsDeclared {
     }
 }
 
+// Every project must be covered by a license. The repo keeps a single dual
+// `LICENSE-MIT`/`LICENSE-APACHE` pair at its root (matching the
+// `MIT OR Apache-2.0` each crate declares in Cargo.toml), inherited by every
+// project rather than duplicated per project — the lightweight solo-dev
+// choice. A project passes if it has its own LICENSE file or inherits one
+// from an ancestor up to the repo root.
+impl Rule for LicensePresent {
+    fn name(&self) -> &'static str {
+        "license-present"
+    }
+    fn applies(&self, _meta: &ProjectMeta) -> bool {
+        true
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        if license_in_self_or_ancestors(project_dir) {
+            RuleResult::Pass
+        } else {
+            RuleResult::Fail(format!(
+                "no license: add a LICENSE file or inherit one from the repo root ({})",
+                project_dir.display()
+            ))
+        }
+    }
+}
+
 impl Rule for KoloheliosNixViaFlakehub {
     fn name(&self) -> &'static str {
         "kolohelios-nix-via-flakehub"
@@ -537,6 +564,22 @@ fn cargo_has_table(contents: &str, header: &str) -> bool {
     })
 }
 
+// True if `dir` or any ancestor up to and including the repo root holds a
+// recognized LICENSE file. The walk stops once it has checked the repo root
+// (the first ancestor containing `.jj`/`.git`), so it never reaches a stray
+// license outside the tree.
+fn license_in_self_or_ancestors(dir: &Path) -> bool {
+    for ancestor in dir.ancestors() {
+        if LICENSE_FILENAMES.iter().any(|f| ancestor.join(f).is_file()) {
+            return true;
+        }
+        if ancestor.join(".jj").exists() || ancestor.join(".git").exists() {
+            break;
+        }
+    }
+    false
+}
+
 // Parses an inline `<input_name>.url = "<url>";` declaration, accepting
 // both the in-block form (inside `inputs = { ... }`) and the top-level
 // `inputs.<input_name>.url = "..."` form. Returns the URL if found,
@@ -636,6 +679,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustVersionPinned),
         Box::new(RustCargoRequiredFields),
         Box::new(RustClippyLintsDeclared),
+        Box::new(LicensePresent),
         Box::new(KoloheliosNixViaFlakehub),
         Box::new(KoloheliosHomeViaFlakehub),
         Box::new(ValidateRecipeMeaningful),
@@ -1796,6 +1840,51 @@ mod tests {
     #[test]
     fn rust_clippy_lints_declared_does_not_apply_to_non_rust() {
         assert!(!RustClippyLintsDeclared.applies(&infra_meta()));
+    }
+
+    #[test]
+    fn license_present_passes_with_own_license() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("LICENSE"), "MIT OR Apache-2.0\n").unwrap();
+        assert_eq!(
+            LicensePresent.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn license_present_passes_when_inherited_from_ancestor() {
+        // Root holds the dual license; the project dir inherits it.
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(root.path().join("LICENSE-MIT"), "MIT\n").unwrap();
+        fs::write(root.path().join("LICENSE-APACHE"), "Apache-2.0\n").unwrap();
+        let project = root.path().join("apps/demo");
+        fs::create_dir_all(&project).unwrap();
+        assert_eq!(
+            LicensePresent.check(&project, &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn license_present_fails_when_no_license_to_repo_root() {
+        // `.git` bounds the ancestor walk at the synthetic repo root, which
+        // carries no license — so the rule fails deterministically.
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        let project = root.path().join("apps/demo");
+        fs::create_dir_all(&project).unwrap();
+        match LicensePresent.check(&project, &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("no license"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn license_present_applies_to_every_kind() {
+        assert!(LicensePresent.applies(&rust_meta()));
+        assert!(LicensePresent.applies(&infra_meta()));
     }
 
     #[test]
