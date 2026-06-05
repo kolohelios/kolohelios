@@ -225,7 +225,12 @@ flake-check:
 whitespace-check:
     ../../tools/shaka/bin/shaka whitespace check
 
-validate: fmt-check lint doc-check deny machete coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
+# `test` runs the native unit tests: coverage is optional on rust-worker
+# (cargo-llvm-cov can't see the wasm request paths), so unlike rust-cli
+# and rust-lib — where `coverage` runs the tests — a worker's host-side
+# logic would otherwise never run in CI. The worker glue compiles on the
+# host even though it serves on wasm, so pure modules test natively.
+validate: fmt-check lint doc-check deny machete test coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
 "#;
 
 // Infra projects intentionally do NOT run `nix flake check` in `validate`.
@@ -771,6 +776,20 @@ mod tests {
         assert!(
             tpl.contains("validate: build-check fmt-check lint"),
             "build-check not folded into validate"
+        );
+    }
+
+    #[test]
+    fn rust_worker_template_runs_tests_in_validate() {
+        // Coverage is optional on rust-worker (cargo-llvm-cov can't see
+        // the wasm request paths), so `validate` must run the native
+        // unit tests directly or a worker's host-side logic never
+        // executes in CI.
+        assert!(
+            RUST_WORKER_TEMPLATE
+                .lines()
+                .any(|l| l.starts_with("validate:") && l.contains(" test ")),
+            "rust-worker validate must run the test recipe"
         );
     }
 
