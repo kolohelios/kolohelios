@@ -266,6 +266,22 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// Extra nixpkgs attrs dropped into the devShell, on top of
 		// the rust toolchain and `workflowPackages`.
 		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
+
+		// Bundle a CUE module closure into the package so schema-
+		// dependent subcommands work from a nix-built binary run
+		// outside the monorepo (the `cue.mod` + schema + a permissive
+		// stub registry aren't in `$PATH` or the build src otherwise).
+		// Each `include` copies a directory from the flake src into
+		// `$out/share/shaka/cue/<to>` preserving the module-relative
+		// layout, and the binary is wrapped with `SHAKA_CUE_MODULE_DIR`
+		// pointing there. Only shaka needs this (it ships the project
+		// schema it validates against); other CLIs omit the block.
+		cueModule?: {
+			include: [...{
+				from: string & !=""
+				to:   string & !=""
+			}]
+		}
 	}
 } | {
 	// Rust crate that compiles to wasm32-unknown-unknown and ships

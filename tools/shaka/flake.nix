@@ -78,6 +78,15 @@
                 --bash <($out/bin/shaka completions bash) \
                 --fish <($out/bin/shaka completions fish) \
                 --zsh  <($out/bin/shaka completions zsh)
+
+              # Bundle the CUE module closure so schema-dependent
+              # subcommands resolve the schema + registry from a packaged
+              # binary run outside the monorepo (SHAKA_CUE_MODULE_DIR; see
+              # tools/shaka/src/project/schema_check.rs).
+              mkdir -p $out/share/shaka/cue
+              cp -r cue-bundle/. $out/share/shaka/cue/
+              mkdir -p $out/share/shaka/cue/tools/shaka/schema
+              cp -r schema/. $out/share/shaka/cue/tools/shaka/schema/
             '';
             postFixup = ''
               wrapProgram $out/bin/shaka \
@@ -91,7 +100,8 @@
                     pkgs.just
                     pkgs.jq
                   ]
-                }
+                } \
+                --set SHAKA_CUE_MODULE_DIR $out/share/shaka/cue
             '';
           };
         }
