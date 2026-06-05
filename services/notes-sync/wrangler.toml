@@ -22,3 +22,16 @@ bindings = [{ name = "NOTE", class_name = "NoteDurableObject" }]
 [[migrations]]
 new_sqlite_classes = ["NoteDurableObject"]
 tag                = "v1"
+
+# Cold-tier git target (phase 3). The Durable Object commits each note's
+# body to `notes/<note_id>.md` in this repo on the lazy debounce/backstop
+# cadence. Non-secret, so it lives here.
+#
+# The commit credential is a static server-side secret (a GitHub App
+# installation token or a PAT) — unrelated to user login. Set it out of
+# band, never in this file:
+#   wrangler secret put GITHUB_TOKEN
+[vars]
+GITHUB_BRANCH = "main"
+GITHUB_OWNER  = "kolohelios"
+GITHUB_REPO   = "notes-store"

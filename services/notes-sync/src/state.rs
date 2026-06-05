@@ -27,6 +27,19 @@ pub fn is_stale(base_seq: Seq, current_seq: Seq) -> bool {
     base_seq != current_seq
 }
 
+/// The time the single DO alarm should fire next: the earliest of the
+/// (optional) commit deadlines. A Durable Object has one alarm primitive,
+/// so the lazy git commit multiplexes its `debounce` deadline (commit
+/// shortly after the last edit, coalescing a burst) and its `backstop`
+/// deadline (commit at least every N seconds under continuous editing)
+/// onto it. `None` when neither is pending — nothing to commit.
+pub fn next_alarm(debounce_due: Option<i64>, backstop_due: Option<i64>) -> Option<i64> {
+    match (debounce_due, backstop_due) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +84,22 @@ mod tests {
         assert!(is_stale(2, 3)); // behind
         assert!(is_stale(4, 3)); // ahead (also a mismatch)
         assert!(!is_stale(3, 3)); // exact match is fresh
+    }
+
+    #[test]
+    fn next_alarm_is_the_earlier_deadline() {
+        assert_eq!(next_alarm(Some(100), Some(250)), Some(100));
+        assert_eq!(next_alarm(Some(300), Some(250)), Some(250));
+    }
+
+    #[test]
+    fn next_alarm_uses_whichever_deadline_is_set() {
+        assert_eq!(next_alarm(Some(100), None), Some(100));
+        assert_eq!(next_alarm(None, Some(250)), Some(250));
+    }
+
+    #[test]
+    fn next_alarm_is_none_when_nothing_pending() {
+        assert_eq!(next_alarm(None, None), None);
     }
 }

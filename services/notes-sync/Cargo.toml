@@ -10,15 +10,24 @@ version      = "0.1.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Base64-encode the note body for the GitHub contents API (cold-tier
+# commit). Pure-rust, builds on wasm32-unknown-unknown.
+base64 = "0.22"
 # Shared wire-protocol types (ClientMsg / ServerMsg / Delta), used by
 # both the Durable Object here and the WASM editor.
 notes-protocol = { path = "../../packages/notes-protocol" }
 # Per-connection hibernation attachment is (de)serialized through serde.
 serde = { version = "1", features = ["derive"] }
-# Wire frames are JSON-encoded ClientMsg / ServerMsg over the WebSocket.
+# Wire frames are JSON-encoded ClientMsg / ServerMsg over the WebSocket;
+# also used to (de)serialize GitHub contents-API request/response bodies.
 serde_json = "1"
 # workers-rs runtime: Durable Objects + the WebSocket Hibernation API.
 worker = "0.8"
+
+[dev-dependencies]
+# Drives the async `commit_with_retry` tests on the host. The Worker
+# runtime has its own executor; this is native-test-only.
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [profile.release]
 codegen-units = 1

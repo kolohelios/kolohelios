@@ -45,13 +45,22 @@ Phased build tracked in issue #757.
   per-connection state in the socket attachment, never in struct fields.
   See [`docs/hibernation.md`](docs/hibernation.md) for the verification
   procedure.
-- **Phase 2 — edit log (this).** The editor speaks the `notes-protocol`
-  wire types over the socket. On `Open` the object replies with a `Sync`
-  of the current `seq` and `text`; an `Edit` whose `base_seq` matches is
-  applied, appended to the append-only log in DO storage, and `Ack`ed,
-  while a stale edit (or one that can't apply) is rejected with a fresh
-  `Sync`. The body is rebuilt by replaying the log, so an evicted object
+- **Phase 2 — edit log.** The editor speaks the `notes-protocol` wire
+  types over the socket. On `Open` the object replies with a `Sync` of the
+  current `seq` and `text`; an `Edit` whose `base_seq` matches is applied,
+  appended to the append-only log in DO storage, and `Ack`ed, while a
+  stale edit (or one that can't apply) is rejected with a fresh `Sync`.
+  The body is rebuilt by replaying the log, so an evicted object
   reconstructs without loss.
+- **Phase 3 — git cold tier (this).** Edits keep persisting to DO storage
+  synchronously; the body is committed to GitHub lazily — a `debounce`
+  (commit a few seconds after the last edit, coalescing a burst) and a
+  `backstop` (commit at least once a minute under continuous editing)
+  multiplexed onto the DO's single alarm, plus a commit when the last
+  socket disconnects. Each commit is a single-file write to the contents
+  API with an optimistic retry when the ref moves; a `BackedUp` is then
+  broadcast to connected editors. The repo/branch live in `wrangler.toml`;
+  the commit token is a `wrangler secret` (`GITHUB_TOKEN`).
 
 ## Local development
 

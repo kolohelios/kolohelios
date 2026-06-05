@@ -13,9 +13,15 @@
 //! Phase 2 (issue #763) adds the append-only edit log: the editor speaks
 //! the `notes-protocol` wire types over the socket, accepted edits are
 //! appended to DO storage, and the body rehydrates by replaying the log
-//! (see [`state`]). Two-alarm persistence, the lazy GitHub commit, and
-//! auth land in later phases.
+//! (see [`state`]).
+//!
+//! Phase 3 (issue #764) adds the cold tier: edits keep persisting to DO
+//! storage synchronously, while the note body is committed to git lazily
+//! — a debounce + backstop pair multiplexed onto the DO's single alarm,
+//! plus a commit on last-socket-disconnect, landing through the
+//! optimistic-retry [`git`] client. Auth lands next.
 
+pub mod git;
 pub mod route;
 pub mod state;
 
