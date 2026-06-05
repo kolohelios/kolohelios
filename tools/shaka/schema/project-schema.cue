@@ -335,6 +335,30 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 	}
 } | {
+	// Browser-wasm application: a Rust crate compiled to
+	// wasm32-unknown-unknown for the *browser* (web-sys / wasm-bindgen),
+	// not workerd. Built into a static bundle that a rust-worker serves
+	// via `[assets]`. `apps/notes-editor` is the first.
+	//
+	// Coverage is optional (like rust-worker): the DOM and socket paths
+	// run only in the browser, so cargo-llvm-cov can't measure them; any
+	// pure logic that is natively testable can still opt in.
+	kind: "wasm-app"
+	coverage?: {
+		line: {
+			fail: number & >=0 & <=100
+		}
+	}
+	wasmApp?: {
+		// Top-level flake `description`. Defaults to the project name.
+		description?: string & !=""
+
+		// Extra nixpkgs attrs dropped into the devShell, on top of the
+		// rust toolchain, wasm-bindgen-cli, binaryen, and
+		// `workflowPackages`.
+		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
+	}
+} | {
 	kind: "infra"
 	// CI/CD workflow configuration. Workflow files under
 	// `.github/workflows/` are generated from this block by
