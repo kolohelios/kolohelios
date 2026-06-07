@@ -1,0 +1,6 @@
+package project
+
+#Project & {
+	name: "flake-nix-no-home"
+	kind: "infra"
+}
