@@ -2,13 +2,14 @@ compatibility_date = "2026-05-14"
 main               = "build/worker/shim.mjs"
 name               = "notes-sync"
 
-# `worker-build` compiles the crate to wasm32-unknown-unknown and emits
-# `build/worker/shim.mjs` + the WASM module wrangler uploads. The
-# `cargo install` is a no-op on subsequent runs and matches the
-# workers-rs documented idiom; the devshell adds `~/.cargo/bin` to PATH
-# so the installed binary is visible to the build step.
-[build]
-command = "cargo install -q worker-build --locked && worker-build --release"
+# `worker-build` produces `build/worker/shim.mjs` and the wasm module
+# wrangler uploads. The build runs upstream of `wrangler deploy` (in
+# CI: a dedicated step in `cf-deploy.yml`; locally: same command in
+# the devshell). Wrangler is invoked with the artifact already in
+# place — no `[build]` block, no custom build subprocess. See #403 /
+# #423 for why the build is pulled out of the wrangler subprocess: a
+# wrangler-spawned build resolves `rustc` from a toolchain without the
+# `wasm32-unknown-unknown` target and fails.
 
 # Durable Object bindings: one per-note object (`NOTE`, the single writer
 # and source of truth), and one per-OAuth-flow object (`AUTH_FLOW`, keyed
