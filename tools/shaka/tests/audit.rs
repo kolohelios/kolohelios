@@ -158,6 +158,18 @@ fn flakehub_pinned_kolohelios_nix_passes_audit() {
     assert!(stdout.contains("audit passed"), "stdout: {stdout}");
 }
 
+// An external consumer (e.g. buzzingo) pins kolohelios-nix via FlakeHub but
+// never declares the `home` input. `kolohelios-home-via-flakehub` must be N/A
+// for it, not a failure — the rule only fires on projects that declare `home`.
+#[test]
+fn flakehub_kolohelios_nix_without_home_passes_audit() {
+    let staged = Staged::new(&["flake-nix-no-home"]);
+    let out = staged.run_audit();
+    let stdout = stdout_of(&out);
+    assert!(out.status.success(), "stdout: {stdout}");
+    assert!(stdout.contains("audit passed"), "stdout: {stdout}");
+}
+
 #[test]
 fn path_pinned_kolohelios_nix_fails_audit() {
     let staged = Staged::new(&["flake-path-input"]);

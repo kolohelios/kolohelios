@@ -14,6 +14,14 @@ const AUDIT_CONFIG_DATA: &str = include_str!("../../audit-config.cue");
 pub enum RuleResult {
     Pass,
     Fail(String),
+    /// The rule's precondition isn't met for this project, so it has
+    /// nothing to verify. Distinct from `Pass`: a rule that detects its
+    /// input is absent must not claim to have verified it. N/A results are
+    /// skipped by the runner and don't count toward a project's applied
+    /// rules. This lets input-scoped rules (e.g. the FlakeHub-input rules)
+    /// stay quiet on projects that legitimately don't declare the input,
+    /// including external repos.
+    NotApplicable,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -379,10 +387,10 @@ impl Rule for KoloheliosNixViaFlakehub {
     fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
         let flake = project_dir.join("flake.nix");
         let Ok(contents) = std::fs::read_to_string(&flake) else {
-            return RuleResult::Pass;
+            return RuleResult::NotApplicable;
         };
         match extract_input_url(&contents, "kolohelios-nix") {
-            None => RuleResult::Pass,
+            None => RuleResult::NotApplicable,
             Some(url) if url == REQUIRED_KOLOHELIOS_NIX_URL => RuleResult::Pass,
             Some(url) => RuleResult::Fail(format!(
                 "kolohelios-nix input must use FlakeHub URL `{REQUIRED_KOLOHELIOS_NIX_URL}` (found: `{url}`)"
@@ -401,10 +409,10 @@ impl Rule for KoloheliosHomeViaFlakehub {
     fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
         let flake = project_dir.join("flake.nix");
         let Ok(contents) = std::fs::read_to_string(&flake) else {
-            return RuleResult::Pass;
+            return RuleResult::NotApplicable;
         };
         match extract_input_url(&contents, "home-env") {
-            None => RuleResult::Pass,
+            None => RuleResult::NotApplicable,
             Some(url) if url == REQUIRED_KOLOHELIOS_HOME_URL => RuleResult::Pass,
             Some(url) => RuleResult::Fail(format!(
                 "home-env input must use FlakeHub URL `{REQUIRED_KOLOHELIOS_HOME_URL}` (found: `{url}`)"
@@ -785,6 +793,10 @@ fn audit_project(
         match rule.check(project, &meta) {
             RuleResult::Pass => {}
             RuleResult::Fail(msg) => project_failures.push((rule.name().to_string(), msg)),
+            // The rule's precondition wasn't met (e.g. the input it scopes
+            // to isn't declared); undo the applied++ so it's reported as
+            // N/A, not as a verified pass.
+            RuleResult::NotApplicable => applied -= 1,
         }
     }
 
@@ -1304,16 +1316,16 @@ mod tests {
     }
 
     #[test]
-    fn kolohelios_nix_via_flakehub_passes_when_no_flake_nix() {
+    fn kolohelios_nix_via_flakehub_na_when_no_flake_nix() {
         let tmp = TempDir::new().unwrap();
         assert_eq!(
             KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
-            RuleResult::Pass
+            RuleResult::NotApplicable
         );
     }
 
     #[test]
-    fn kolohelios_nix_via_flakehub_passes_when_flake_does_not_reference_input() {
+    fn kolohelios_nix_via_flakehub_na_when_flake_does_not_reference_input() {
         let tmp = TempDir::new().unwrap();
         fs::write(
             tmp.path().join("flake.nix"),
@@ -1322,7 +1334,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
-            RuleResult::Pass
+            RuleResult::NotApplicable
         );
     }
 
@@ -1381,21 +1393,21 @@ mod tests {
         .unwrap();
         assert_eq!(
             KoloheliosNixViaFlakehub.check(tmp.path(), &infra_meta()),
-            RuleResult::Pass
+            RuleResult::NotApplicable
         );
     }
 
     #[test]
-    fn kolohelios_home_via_flakehub_passes_when_no_flake_nix() {
+    fn kolohelios_home_via_flakehub_na_when_no_flake_nix() {
         let tmp = TempDir::new().unwrap();
         assert_eq!(
             KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
-            RuleResult::Pass
+            RuleResult::NotApplicable
         );
     }
 
     #[test]
-    fn kolohelios_home_via_flakehub_passes_when_flake_does_not_reference_input() {
+    fn kolohelios_home_via_flakehub_na_when_flake_does_not_reference_input() {
         let tmp = TempDir::new().unwrap();
         fs::write(
             tmp.path().join("flake.nix"),
@@ -1404,7 +1416,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
-            RuleResult::Pass
+            RuleResult::NotApplicable
         );
     }
 
@@ -1463,7 +1475,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             KoloheliosHomeViaFlakehub.check(tmp.path(), &infra_meta()),
-            RuleResult::Pass
+            RuleResult::NotApplicable
         );
     }
 
