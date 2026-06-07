@@ -69,6 +69,9 @@
               pkgs.git
               pkgs.opentofu
             ];
+            preCheck = ''
+              export HOME="$(mktemp -d)"
+            '';
             nativeBuildInputs = [
               pkgs.makeWrapper
               pkgs.installShellFiles
