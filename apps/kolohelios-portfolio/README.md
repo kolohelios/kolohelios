@@ -36,8 +36,11 @@ is a `fallthrough` stub for paths not matched by a static asset.
 - `dist/` — generated, committed. The `build-check` validate step
   re-runs the pipeline in CI and fails on drift. Includes the
   `resume.{pdf,docx}` copies and the rendered `resume/index.html`.
-- `wrangler.toml` — Worker name, `worker-build` invocation, and the
-  `[assets]` block that wires `dist/` into Workers Static Assets.
+- `wrangler.toml` — **generated** from the `wrangler:` block in
+  `project.cue` by `shaka deploy generate-wrangler` (`shaka preflight`
+  fails on drift). Carries the Worker name, `[assets]` block, `[vars]`,
+  and the `[[unsafe.bindings]]` rate limiter. Never hand-edit it — change
+  `project.cue` and regenerate.
 
 ## Why static assets
 
@@ -105,9 +108,9 @@ browser. Provisioning is a one-time manual step:
 1. In Kit, create two **forms** — one for contact, one for the
    newsletter — and a **custom field** named `message` (the contact
    form sends the message body into it).
-2. Copy each form's numeric id into `wrangler.toml`'s `[vars]`
-   (`KIT_FORM_ID_CONTACT`, `KIT_FORM_ID_NEWSLETTER`). Form ids are not
-   secret.
+2. Copy each form's numeric id into `project.cue`'s `wrangler.vars`
+   (`KIT_FORM_ID_CONTACT`, `KIT_FORM_ID_NEWSLETTER`), then run
+   `shaka deploy generate-wrangler`. Form ids are not secret.
 3. Set the API key as a Worker secret (not committed):
 
    ```
