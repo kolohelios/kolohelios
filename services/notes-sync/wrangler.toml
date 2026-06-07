@@ -40,15 +40,20 @@ tag                = "v2"
 # band, never in this file:
 #   wrangler secret put GITHUB_TOKEN
 #
-# Auth (phase 4): `OAUTH_BASE_URL` is this Worker's public origin — the
-# client_id is `<OAUTH_BASE_URL>/client-metadata.json` and the redirect is
-# `<OAUTH_BASE_URL>/oauth/callback`, so it must match the deployed
-# hostname. `OAUTH_HANDLE_RESOLVER` (optional) is the appview used to
-# resolve a handle to a DID. The cookie-signing key is a secret:
+# Auth (phase 4): `OAUTH_BASE_URL` is this backend Worker's public origin
+# — the client_id is `<OAUTH_BASE_URL>/client-metadata.json` and the
+# redirect is `<OAUTH_BASE_URL>/oauth/callback`, so it must match the
+# deployed hostname. `OAUTH_APP_URL` is the front end (notes-web); the
+# callback redirects there after minting the cookie. Both are
+# `*.kolohelios.com`, so the host-only session cookie is same-site and
+# rides the WebSocket back to this Worker. `OAUTH_HANDLE_RESOLVER`
+# (optional) is the appview used to resolve a handle to a DID. The
+# cookie-signing key is a secret:
 #   wrangler secret put SESSION_SECRET
 [vars]
-GITHUB_BRANCH        = "main"
-GITHUB_OWNER         = "kolohelios"
-GITHUB_REPO          = "notes-store"
-OAUTH_BASE_URL       = "https://notes-sync.example.workers.dev"
+GITHUB_BRANCH         = "main"
+GITHUB_OWNER          = "kolohelios"
+GITHUB_REPO           = "notes-store"
+OAUTH_APP_URL         = "https://notes.kolohelios.com"
+OAUTH_BASE_URL        = "https://notes-sync.kolohelios.com"
 OAUTH_HANDLE_RESOLVER = "https://bsky.social"

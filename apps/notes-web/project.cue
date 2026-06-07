@@ -12,4 +12,21 @@ package project
 			},
 		]
 	}
+	serving: [
+		{
+			via:       "cloudflare-worker"
+			hostnames: ["notes.kolohelios.com"]
+		},
+	]
+	deploy: {
+		target:       "cloudflare-worker"
+		customDomain: "notes.kolohelios.com"
+		zone:         "kolohelios.com"
+	}
+	ci: {
+		deploy: {
+			reusableWorkflow:    "./.github/workflows/cf-deploy.yml"
+			previewScriptPrefix: "notes-web"
+		}
+	}
 }
