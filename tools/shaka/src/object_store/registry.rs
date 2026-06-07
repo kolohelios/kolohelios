@@ -331,4 +331,47 @@ mod tests {
         assert_eq!(entries[0].namespace.name, "devbox");
         assert_eq!(entries[0].namespace.purpose, "remote tfstate");
     }
+
+    /// Discovery must work when handed a *forward-relative* root, which
+    /// is what the CLI passes (`collect(Path::new("."))`): `discover`
+    /// then yields forward-relative project dirs like `infra/devbox`,
+    /// and the cue invocation must not re-root that relative path under
+    /// its own cwd (which would double it to
+    /// `infra/devbox/infra/devbox/project.cue`). The other `collect_*`
+    /// tests pass *absolute* `tmp.path()` roots, which never double, so
+    /// they don't cover this shape.
+    ///
+    /// Reproduced without mutating the process cwd (which would race
+    /// parallel tests): plant the module in a temp dir *under* the
+    /// current cwd, then pass its bare name as a forward-relative root.
+    /// A leading-`..` relative path wouldn't exercise the doubling — the
+    /// `..` segments cancel the re-rooting instead.
+    #[test]
+    fn collect_handles_forward_relative_root() {
+        let tmp = TempDir::new_in(".").unwrap();
+        plant_test_module(tmp.path());
+        fs::create_dir_all(tmp.path().join("infra/devbox")).unwrap();
+        fs::write(
+            tmp.path().join("infra/devbox/project.cue"),
+            "package project\n#Project & {\n\
+                 name: \"devbox\"\n\
+                 kind: \"infra\"\n\
+                 objectStorage: namespaces: [{\n\
+                     kind: \"tfstate\"\n\
+                     name: \"devbox\"\n\
+                     purpose: \"remote tfstate\"\n\
+                 }]\n\
+             }\n",
+        )
+        .unwrap();
+
+        // `tmp` sits directly under cwd, so its bare name is a
+        // forward-relative root — exactly the shape the CLI passes.
+        let relative_root = Path::new(tmp.path().file_name().unwrap());
+        assert!(relative_root.is_relative());
+
+        let entries = collect(relative_root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].namespace.name, "devbox");
+    }
 }
