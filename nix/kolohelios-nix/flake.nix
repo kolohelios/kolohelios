@@ -33,6 +33,12 @@
       # root — agents in a subdirectory or jj workspace hit `no such file
       # or directory`. Walking up (rather than asking git/jj) handles jj
       # workspaces uniformly, since those have no colocated `.git`.
+      #
+      # In an external repo with no kolohelios checkout above cwd, fall
+      # back to a real `shaka` elsewhere on PATH (a FlakeHub-installed
+      # binary) instead of erroring — otherwise this shim shadows it and
+      # `shaka` is unusable. The shim is itself named `shaka`, so the
+      # fallback skips its own store path to avoid exec'ing into itself.
       shakaShim =
         pkgs:
         pkgs.writeShellApplication {
@@ -46,8 +52,22 @@
               fi
               dir="$(dirname "$dir")"
             done
+            # No kolohelios checkout above cwd. Find the next `shaka` on
+            # PATH that isn't this shim and hand off to it. `self` is the
+            # absolute path of this script as invoked; resolve it so a
+            # symlinked PATH entry still matches the store realpath.
+            self="''${BASH_SOURCE[0]}"
+            self="$(readlink -f "$self" 2>/dev/null || echo "$self")"
+            IFS=':' read -ra path_dirs <<<"$PATH"
+            for d in "''${path_dirs[@]}"; do
+              cand="$d/shaka"
+              [[ -x "$cand" ]] || continue
+              real="$(readlink -f "$cand" 2>/dev/null || echo "$cand")"
+              [[ "$real" == "$self" ]] && continue
+              exec "$cand" "$@"
+            done
             echo "shaka: no tools/shaka/bin/shaka found above $PWD" >&2
-            echo "(this shim expects a kolohelios checkout)" >&2
+            echo "and no other shaka on PATH to fall back to" >&2
             exit 1
           '';
         };

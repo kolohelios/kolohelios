@@ -54,7 +54,7 @@ coverage:
     # Optional on wasm-app (cargo-llvm-cov can't see the browser DOM and
     # socket paths); skip when not declared.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on wasm-app); skipping"
         exit 0
@@ -73,6 +73,6 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: fmt-check lint doc-check deny machete wasm-build coverage nix-fmt-check flake-check whitespace-check

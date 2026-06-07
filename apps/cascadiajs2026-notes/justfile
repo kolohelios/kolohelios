@@ -46,7 +46,7 @@ coverage:
     #!/usr/bin/env bash
     # Line coverage only — see the rust-cli template for why.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on rust-worker); skipping"
         exit 0
@@ -65,7 +65,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 # `test` runs the native unit tests: coverage is optional on rust-worker
 # (cargo-llvm-cov can't see the wasm request paths), so unlike rust-cli

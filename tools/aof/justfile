@@ -43,7 +43,7 @@ coverage:
     # (`-Z coverage-options=branch`), incompatible with the pinned
     # stable toolchain.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
     measured=$(cargo llvm-cov --json --summary-only)
     line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
@@ -58,6 +58,6 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: cue-vet fmt-check lint doc-check deny machete coverage nix-fmt-check flake-check whitespace-check

@@ -11,7 +11,7 @@ nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: tofu-validate nix-fmt-check whitespace-check
 
