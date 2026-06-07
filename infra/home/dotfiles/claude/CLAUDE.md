@@ -24,3 +24,6 @@
   - Project runbooks, snippets, architecture notes, inventories: a `docs/` folder in the relevant project, or a GitHub issue
 - **Memory is only appropriate for** ephemeral within-session/within-project state that genuinely doesn't need to be surfaced to me — and even then, prefer surfacing.
 - When you catch yourself reaching for memory to "make something durable," that's the signal to instead propose an edit to one of the files above and let me approve it.
+
+## Shell commands
+- **The Bash tool runs on macOS with BSD coreutils, not GNU.** GNU-only flags fail — no `grep -P`/`grep -oP` (Perl regex), no `cat -A`, no GNU-only `sed`/`head`/`date` options. Reach for `rg`, `grep -E`, or `perl` for regex; verify with `man` when unsure. Devshells may ship GNU tools, but the Bash tool doesn't activate `direnv`, so commands run against the base BSD userland.
