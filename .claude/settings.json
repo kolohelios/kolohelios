@@ -17,5 +17,8 @@
       "Bash(shaka *)",
       "Bash(tools/shaka/bin/shaka *)"
     ]
+  },
+  "env": {
+    "GH_REPO": "kolohelios/kolohelios"
   }
 }
