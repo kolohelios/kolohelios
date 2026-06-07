@@ -285,6 +285,12 @@ this before scripting against `jj`:
 - **`jj op log` is the source of truth for past operations** — fetches,
   rebases, snapshots. Filter by first-line `description` content in
   templates when scripting.
+- **Concurrent operations can diverge.** When two workspaces (or a
+  background job) touch the shared `.jj/repo` at once, a command can fail
+  with `Internal error: The repo was loaded at operation X, which seems
+  to be a sibling of the working copy's operation Y`. It's recoverable —
+  the working copy reconciles on the next operation, so re-run the
+  command; use `jj op log` to inspect what raced.
 - **`jj diff --summary -r @`** prefixes each path with a single letter
   (`A`/`M`/`D`/`R`/`C`); stable enough to parse.
 - **`jj git push --allow-new`** (or `-N`) is required the first time a
