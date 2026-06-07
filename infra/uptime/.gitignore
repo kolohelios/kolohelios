@@ -1,0 +1,14 @@
+# Terraform / OpenTofu local state and plan artifacts
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Project-local secret references (only `.env.example` is committed).
+.env
+
+# Nix build outputs (`nix build` symlinks).
+result
+result-*

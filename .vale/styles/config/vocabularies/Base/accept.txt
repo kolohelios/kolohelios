@@ -86,3 +86,4 @@ architecting
 [Zz]ellij
 [Kk]eybind
 [Kk]eybinds
+[Rr]eachability
