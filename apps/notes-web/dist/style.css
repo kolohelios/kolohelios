@@ -43,6 +43,27 @@ body {
   font-size: 0.85rem;
 }
 
+.login {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.login input,
+.login button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.login button {
+  cursor: pointer;
+}
+
 main {
   flex: 1;
   display: flex;

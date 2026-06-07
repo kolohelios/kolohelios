@@ -6,11 +6,25 @@
     <title>notes</title>
     <link rel="stylesheet" href="/style.css" />
     <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+    <!-- The notes-sync backend hosts the WebSocket and the OAuth flow. -->
+    <script>
+      window.NOTES_BACKEND = "notes-sync.kolohelios.com";
+    </script>
   </head>
   <body>
     <header class="chrome">
       <h1>notes</h1>
       <span id="status" class="status">connecting…</span>
+      <form id="login" class="login">
+        <input
+          id="handle"
+          name="handle"
+          placeholder="you.bsky.social"
+          autocomplete="username"
+          spellcheck="false"
+        />
+        <button type="submit">sign in</button>
+      </form>
     </header>
     <main>
       <textarea
@@ -37,6 +51,17 @@
       // `window.NOTES_BACKEND`, defaulting to this origin for local dev.
       const backend = window.NOTES_BACKEND || location.host;
       const wsUrl = `${wsProto}://${backend}/note/${encodeURIComponent(noteId)}/ws`;
+
+      // Sign in: hand off to the backend's ATProto OAuth login. It
+      // resolves the handle, runs the flow, mints the session cookie, and
+      // redirects back here.
+      document.getElementById("login").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const handle = document.getElementById("handle").value.trim();
+        if (handle) {
+          location.href = `https://${backend}/oauth/login?handle=${encodeURIComponent(handle)}`;
+        }
+      });
 
       const status = document.getElementById("status");
       try {

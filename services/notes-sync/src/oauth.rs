@@ -398,8 +398,14 @@ mod flow {
         );
         console_log!("authenticated {} via {}", flow.did, flow.issuer);
 
+        // Land back on the front end (notes-web). The cookie is host-only
+        // on this backend origin and still rides the same-site WebSocket.
+        let app_url = env
+            .var("OAUTH_APP_URL")
+            .map(|v| v.to_string())
+            .unwrap_or_else(|_| "/".to_owned());
         let headers = Headers::new();
-        headers.set("Location", "/")?;
+        headers.set("Location", &app_url)?;
         headers.set(
             "Set-Cookie",
             &format!("session={cookie}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={SESSION_TTL_SECS}"),
