@@ -45,6 +45,22 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	cache?:       #CacheRules
 }
 
+// A Cloudflare `[[unsafe.bindings]]` entry — the escape hatch for
+// bindings wrangler lacks first-class TOML for. Discriminated on `type`
+// so KV/R2/queue variants can extend this disjunction later; only the
+// `ratelimit` shape the portfolio's `/api/subscribe` uses is modelled
+// now. `namespace_id` is an arbitrary unique id (string); `period` is
+// the rate-limit window, which Cloudflare restricts to 10 or 60 seconds.
+#RateLimitBinding: {
+	name:         string & !=""
+	type:         "ratelimit"
+	namespace_id: string & !=""
+	simple: {
+		limit:  int & >0
+		period: 10 | 60
+	}
+}
+
 // Wrangler runtime/build config that drives `wrangler.toml` for a
 // `rust-worker` project. `shaka deploy generate-wrangler` (#113) emits
 // `wrangler.toml` from this block and drift-checks it in preflight, so
@@ -90,6 +106,12 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// `wrangler secret put`); values never live in the repo. Names only,
 	// so the generator can surface them as a comment.
 	secrets?: [...string & =~"^[A-Z][A-Z0-9_]*$"]
+
+	// Cloudflare `[[unsafe.bindings]]` entries. Modelled because the
+	// portfolio's rate limiter (`SUBSCRIBE_RATE_LIMITER`) can't otherwise
+	// round-trip through the generator; dropping it would break
+	// `/api/subscribe` rate limiting on deploy.
+	unsafe_bindings?: [...#RateLimitBinding]
 }
 
 // Publication target for a `#CiBuild` job. Each variant emits a
@@ -296,7 +318,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 			fail: number & >=0 & <=100
 		}
 	}
-	deploy?: #Deploy
+	deploy?:   #Deploy
 	wrangler?: #Wrangler
 	ci?: {
 		deploy?: #CiDeploy
