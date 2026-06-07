@@ -41,6 +41,14 @@ struct Check {
     /// Glob patterns (with `*` and `**`) for paths that should trigger this check.
     /// Empty list means "always run regardless of changed files".
     paths: &'static [&'static str],
+    /// Repo-root-relative paths that must exist on disk for this check to
+    /// apply. Empty means "universal" — the check runs in any repo. When
+    /// non-empty and NONE of the listed paths exist, the check is skipped
+    /// cleanly (reported as skipped, not run, not failed). This lets a
+    /// kolohelios-specific check (e.g. `shaka domain check`, scoped to
+    /// `infra/cloudflare-dns/domains`) sit in the shared `CHECKS` suite yet
+    /// stay dormant in an external repo that has nothing for it to act on.
+    required_paths: &'static [&'static str],
     run: fn() -> CheckResult,
 }
 
@@ -83,6 +91,7 @@ const CHECKS: &[Check] = &[
         // under `--since`. `*/*/project.cue` (canonical layout) is already
         // covered by `**/project.cue` but kept for readability.
         paths: &["tools/shaka/**", "*/*/project.cue", "**/project.cue"],
+        required_paths: &[],
         run: shaka_project_schema_check,
     },
     Check {
@@ -92,6 +101,7 @@ const CHECKS: &[Check] = &[
             "tools/shaka/src/domain/**",
             "infra/cloudflare-dns/domains/**",
         ],
+        required_paths: &["infra/cloudflare-dns/domains"],
         run: shaka_domain_schema_check,
     },
     Check {
@@ -106,6 +116,7 @@ const CHECKS: &[Check] = &[
             "tools/shaka/schema/domain/**",
             "infra/cloudflare-dns/domains/**",
         ],
+        required_paths: &["infra/cloudflare-dns/domains"],
         run: shaka_domain_check,
     },
     Check {
@@ -115,11 +126,13 @@ const CHECKS: &[Check] = &[
             "tools/shaka/src/token/**",
             "infra/cloudflare-tokens/tokens/**",
         ],
+        required_paths: &["infra/cloudflare-tokens/tokens"],
         run: shaka_token_cloudflare_schema_check,
     },
     Check {
         name: "shaka project generate-justfiles --check",
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/justfile"],
+        required_paths: &[],
         run: shaka_project_generate_justfiles_check,
     },
     Check {
@@ -129,6 +142,7 @@ const CHECKS: &[Check] = &[
         // generate-justfiles drift check.
         name: "shaka project generate-flakes --check",
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/flake.nix"],
+        required_paths: &[],
         run: shaka_project_generate_flakes_check,
     },
     Check {
@@ -141,6 +155,7 @@ const CHECKS: &[Check] = &[
             "*/*/project.cue",
             "infra/cloudflare-deploy/terraform/generated/**",
         ],
+        required_paths: &["infra/cloudflare-deploy/terraform/generated"],
         run: shaka_deploy_generate_tf_check,
     },
     Check {
@@ -152,6 +167,7 @@ const CHECKS: &[Check] = &[
         // they adopt the block.
         name: "shaka deploy generate-wrangler --check",
         paths: &["tools/shaka/**", "*/*/project.cue", "*/*/wrangler.toml"],
+        required_paths: &[],
         run: shaka_deploy_generate_wrangler_check,
     },
     Check {
@@ -161,6 +177,7 @@ const CHECKS: &[Check] = &[
         // emitted module.tf — mirroring the deploy check above.
         name: "shaka terraform check",
         paths: &["tools/shaka/**", "*/*/cue/**", "*/*/terraform/module.tf"],
+        required_paths: &[],
         run: shaka_terraform_check,
     },
     Check {
@@ -170,6 +187,7 @@ const CHECKS: &[Check] = &[
         // file.
         name: "shaka ci generate-workflows --check",
         paths: &["tools/shaka/**", "*/*/project.cue", ".github/workflows/**"],
+        required_paths: &[],
         run: shaka_ci_generate_workflows_check,
     },
     Check {
@@ -178,6 +196,7 @@ const CHECKS: &[Check] = &[
         // sees files the generator already accounts for).
         name: "shaka ci audit-workflows",
         paths: &["tools/shaka/**", "*/*/project.cue", ".github/workflows/**"],
+        required_paths: &[],
         run: shaka_ci_audit_workflows,
     },
     Check {
@@ -187,6 +206,7 @@ const CHECKS: &[Check] = &[
         // scan. `*/*/**` covers all of them; the audit itself lives under
         // `tools/shaka/**`, which `*/*/**` already matches.
         paths: &["*/*/**"],
+        required_paths: &[],
         run: shaka_project_audit,
     },
     Check {
@@ -205,6 +225,7 @@ const CHECKS: &[Check] = &[
             "tools/resume/resume.md",
             "apps/kolohelios-portfolio/data/profile.json",
         ],
+        required_paths: &[],
         run: shaka_profile_generate_check,
     },
     Check {
@@ -225,6 +246,7 @@ const CHECKS: &[Check] = &[
             "apps/kolohelios-portfolio/dist/resume.pdf",
             "apps/kolohelios-portfolio/dist/resume.docx",
         ],
+        required_paths: &[],
         run: resume_synced_to_portfolio,
     },
     Check {
@@ -234,11 +256,13 @@ const CHECKS: &[Check] = &[
         // should still fire on every PR until cleaned up.
         name: "typos",
         paths: &[],
+        required_paths: &[],
         run: typos_check,
     },
     Check {
         name: "actionlint",
         paths: &[".github/workflows/**"],
+        required_paths: &[],
         run: actionlint_check,
     },
     Check {
@@ -248,11 +272,13 @@ const CHECKS: &[Check] = &[
         // every markdown file.
         name: "vale",
         paths: &[],
+        required_paths: &[],
         run: vale_check,
     },
     Check {
         name: "taplo fmt --check",
         paths: &["**/*.toml", "taplo.toml"],
+        required_paths: &[],
         run: taplo_check,
     },
 ];
@@ -274,11 +300,22 @@ pub fn run(keep_going: bool, since: Option<String>, json: bool) {
         None => None,
     };
 
-    let (repo_to_run, repo_skipped): (Vec<&Check>, Vec<&Check>) =
-        CHECKS.iter().partition(|c| match &changed {
+    // First gate: a check whose `required_paths` are all absent from this
+    // repo doesn't apply here at all (e.g. the kolohelios-specific domain /
+    // token / deploy checks in an external repo). Skip it cleanly before
+    // even considering the `--since` path scope.
+    let repo_root = Path::new(".");
+    let (repo_applicable, repo_inapplicable): (Vec<&Check>, Vec<&Check>) =
+        CHECKS.iter().partition(|c| check_applies(c, repo_root));
+
+    // Second gate: among the applicable checks, the `--since` path scope
+    // selects which actually need to run for this change set.
+    let (repo_to_run, mut repo_skipped): (Vec<&Check>, Vec<&Check>) =
+        repo_applicable.into_iter().partition(|c| match &changed {
             None => true,
             Some(paths) => c.paths.is_empty() || paths.iter().any(|p| matches_any(p, c.paths)),
         });
+    repo_skipped.extend(repo_inapplicable);
 
     let projects: Vec<PathBuf> = crate::project::schema_check::discover(Path::new("."));
     let (project_to_run, project_skipped): (Vec<PathBuf>, Vec<PathBuf>) =
@@ -515,6 +552,21 @@ fn changed_paths(since: &str) -> Result<Vec<String>, String> {
     // workspace whose `.git` isn't reachable on the filesystem. See
     // issue #210.
     crate::jj::changed_paths(since, "@").map_err(|e| e.to_string())
+}
+
+/// Whether a check applies to the repo rooted at `root`. A check with no
+/// `required_paths` is universal and always applies; otherwise it applies
+/// only if at least one of its required paths exists on disk. This is what
+/// lets kolohelios-specific repo checks lie dormant in an external repo
+/// instead of failing against nothing.
+fn check_applies(check: &Check, root: &Path) -> bool {
+    required_paths_present(check.required_paths, root)
+}
+
+/// True when `required` is empty (universal) or at least one of its entries
+/// exists under `root`.
+fn required_paths_present(required: &[&str], root: &Path) -> bool {
+    required.is_empty() || required.iter().any(|p| root.join(p).exists())
 }
 
 fn matches_any(path: &str, patterns: &[&str]) -> bool {
@@ -989,5 +1041,64 @@ mod tests {
 
         // Missing copy → hard error (portfolio never rebuilt).
         assert!(resume_artifact_drift(&[(s, "/no/such/copy.bin")]).is_err());
+    }
+
+    #[test]
+    fn universal_check_always_applies() {
+        // No required_paths => applies in any repo, even an empty temp dir.
+        let dir = std::env::temp_dir();
+        assert!(required_paths_present(&[], &dir));
+    }
+
+    #[test]
+    fn scoped_check_skips_when_required_paths_absent() {
+        // A check scoped to a kolohelios-only dir does not apply in a repo
+        // that lacks every one of its required paths.
+        let dir = std::env::temp_dir().join("shaka-preflight-test-absent");
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!required_paths_present(
+            &[
+                "infra/cloudflare-dns/domains",
+                "infra/cloudflare-tokens/tokens"
+            ],
+            &dir
+        ));
+    }
+
+    #[test]
+    fn scoped_check_runs_when_any_required_path_present() {
+        // If at least one required path exists, the check applies. Build a
+        // temp tree containing only the second required path.
+        let dir = std::env::temp_dir().join("shaka-preflight-test-present");
+        std::fs::create_dir_all(dir.join("infra/cloudflare-tokens/tokens")).unwrap();
+        assert!(required_paths_present(
+            &[
+                "infra/cloudflare-dns/domains",
+                "infra/cloudflare-tokens/tokens"
+            ],
+            &dir
+        ));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn check_applies_delegates_to_required_paths() {
+        let dir = std::env::temp_dir().join("shaka-preflight-test-delegate");
+        std::fs::create_dir_all(&dir).unwrap();
+        let universal = Check {
+            name: "universal",
+            paths: &[],
+            required_paths: &[],
+            run: || CheckResult::Pass,
+        };
+        let scoped = Check {
+            name: "scoped",
+            paths: &[],
+            required_paths: &["infra/cloudflare-dns/domains"],
+            run: || CheckResult::Pass,
+        };
+        assert!(check_applies(&universal, &dir));
+        assert!(!check_applies(&scoped, &dir));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
