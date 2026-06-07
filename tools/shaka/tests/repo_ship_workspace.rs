@@ -7,6 +7,7 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::sync::OnceLock;
 
 use tempfile::TempDir;
 
@@ -14,10 +15,26 @@ const SHAKA: &str = env!("CARGO_BIN_EXE_shaka");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+/// A writable `HOME` for every spawned `jj`/`git`/`shaka` process.
+///
+/// The nix sandbox runs the build's check phase with `HOME=/homeless-shelter`
+/// on a read-only filesystem. `jj` writes per-repo state under
+/// `$HOME/.config/jj/repos/<hash>`, so a read-only `HOME` makes every
+/// jj-backed test fail with "Read-only file system". Pointing `HOME` at a
+/// process-wide writable tempdir (created once, shared via `.env` so there is
+/// no `set_var` race across parallel tests) keeps the tests hermetic and
+/// sandbox-safe.
+fn writable_home() -> &'static Path {
+    static HOME: OnceLock<TempDir> = OnceLock::new();
+    HOME.get_or_init(|| TempDir::new().expect("home tempdir"))
+        .path()
+}
+
 fn jj(cwd: &Path, args: &[&str]) -> std::process::Output {
     Command::new("jj")
         .args(args)
         .current_dir(cwd)
+        .env("HOME", writable_home())
         .output()
         .expect("failed to spawn jj")
 }
@@ -37,6 +54,7 @@ fn shaka(cwd: &Path, args: &[&str]) -> std::process::Output {
     Command::new(SHAKA)
         .args(args)
         .current_dir(cwd)
+        .env("HOME", writable_home())
         .output()
         .expect("failed to spawn shaka")
 }
