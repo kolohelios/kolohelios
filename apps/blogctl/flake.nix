@@ -64,6 +64,9 @@
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
             nativeCheckInputs = [ pkgs.jujutsu ];
+            preCheck = ''
+              export HOME="$(mktemp -d)"
+            '';
             nativeBuildInputs = [ pkgs.installShellFiles ];
             postInstall = ''
               installShellCompletion --cmd blogctl \

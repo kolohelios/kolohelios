@@ -489,6 +489,18 @@ fn render_packages(cli: &CliMeta) -> String {
         out.push_str(&render_pkg_list("nativeCheckInputs", &cli.check_inputs, 12));
     }
 
+    // jj 0.30+ (nixpkgs 26.05) writes a per-repo "secure config" under
+    // `$HOME/.config/jj/repos/`, so `jj config set --repo` aborts when
+    // HOME is unwritable. The build sandbox sets HOME=/homeless-shelter,
+    // so any project whose tests drive jj needs a writable HOME for the
+    // check phase. Scoped to jj-using projects via the `jujutsu` check
+    // input rather than emitted unconditionally.
+    if cli.check_inputs.iter().any(|i| i == "jujutsu") {
+        out.push_str(
+            "            preCheck = ''\n              export HOME=\"$(mktemp -d)\"\n            '';\n",
+        );
+    }
+
     // `wrapProgram` (from makeWrapper) is needed for a PATH prefix and/or
     // the SHAKA_CUE_MODULE_DIR set, so either knob pulls it in.
     let needs_wrapper = !cli.runtime_path_deps.is_empty() || cli.cue_module.is_some();
@@ -1062,6 +1074,28 @@ mod tests {
         };
         let out = render_flake("demo", &cli);
         assert!(out.contains("nativeCheckInputs = [ pkgs.jujutsu ];"));
+    }
+
+    #[test]
+    fn jujutsu_check_input_adds_writable_home_precheck() {
+        let cli = CliMeta {
+            check_inputs: vec!["jujutsu".into()],
+            ..minimal_cli()
+        };
+        let out = render_flake("demo", &cli);
+        // jj 0.30+ aborts `config set --repo` without a writable HOME.
+        assert!(out.contains("preCheck = ''"));
+        assert!(out.contains(r#"export HOME="$(mktemp -d)""#));
+    }
+
+    #[test]
+    fn no_jujutsu_check_input_omits_precheck() {
+        let cli = CliMeta {
+            check_inputs: vec!["cue".into()],
+            ..minimal_cli()
+        };
+        let out = render_flake("demo", &cli);
+        assert!(!out.contains("preCheck"));
     }
 
     #[test]
