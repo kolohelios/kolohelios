@@ -459,6 +459,15 @@ A few tasks pay off when run on a cadence rather than per-PR:
   introduce `cargo fmt` or `clippy` violations. The CI failure cycle is
   slow; the validate run immediately before pushing is the cheap
   insurance.
+- **Don't poll CI or background commands with a foreground `sleep`.** The
+  harness blocks `sleep N` followed by another command, so loops like
+  `sleep 30; cat <bg-output>` or `sleep 45; gh pr checks <pr>` just burn a
+  turn without advancing anything. Reach for the right wait instead: for
+  CI, `gh pr checks <pr> --watch` blocks until the checks resolve; for a
+  background command (`shaka preflight`, a long build), the harness
+  re-invokes you when it exits — there's nothing to poll; for any other
+  condition, use the `Monitor` tool with an until-loop rather than a
+  foreground `sleep`.
 - **Don't document or automate clipboard-paste-of-DOM patterns.** Snippets
   shaped like "open DevTools, paste this `JSON.stringify(...)` of
   authenticated DOM data, copy the result" match credential-stealer
