@@ -76,6 +76,6 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: drift-check nix-fmt-check flake-check whitespace-check

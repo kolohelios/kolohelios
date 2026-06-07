@@ -43,7 +43,7 @@ coverage:
     # (`-Z coverage-options=branch`), incompatible with the pinned
     # stable toolchain.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
     measured=$(cargo llvm-cov --json --summary-only)
     line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
@@ -58,7 +58,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: fmt-check lint doc-check deny machete coverage nix-fmt-check flake-check whitespace-check
 "#;
@@ -110,7 +110,7 @@ coverage:
     # (`-Z coverage-options=branch`), incompatible with the pinned
     # stable toolchain.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
     measured=$(cargo llvm-cov --json --summary-only)
     line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
@@ -125,7 +125,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: fmt-check lint doc-check deny machete wasm-check coverage nix-fmt-check flake-check whitespace-check
 "#;
@@ -190,7 +190,7 @@ coverage:
     # Optional on wasm-app (cargo-llvm-cov can't see the browser DOM and
     # socket paths); skip when not declared.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on wasm-app); skipping"
         exit 0
@@ -209,7 +209,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: fmt-check lint doc-check deny machete wasm-build coverage nix-fmt-check flake-check whitespace-check
 "#;
@@ -224,7 +224,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: nix-fmt-check flake-check whitespace-check
 "#;
@@ -285,7 +285,7 @@ coverage:
     #!/usr/bin/env bash
     # Line coverage only — see the rust-cli template for why.
     set -euo pipefail
-    thresholds=$(cue export ../../tools/shaka/schema/project-schema.cue project.cue)
+    thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on rust-worker); skipping"
         exit 0
@@ -304,7 +304,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 # `test` runs the native unit tests: coverage is optional on rust-worker
 # (cargo-llvm-cov can't see the wasm request paths), so unlike rust-cli
@@ -331,7 +331,7 @@ nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: tofu-validate nix-fmt-check whitespace-check
 
@@ -368,7 +368,7 @@ nix-fmt-check:
     nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: tofu-validate nix-fmt-check whitespace-check
 
@@ -401,7 +401,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: nix-fmt-check flake-check whitespace-check
 "#;
@@ -487,7 +487,7 @@ flake-check:
     nix flake check
 
 whitespace-check:
-    ../../tools/shaka/bin/shaka whitespace check
+    shaka whitespace check
 
 validate: drift-check nix-fmt-check flake-check whitespace-check
 "#;
@@ -915,7 +915,7 @@ mod tests {
             DOCUMENT_TEMPLATE,
         ] {
             assert!(tpl.contains("whitespace-check:"));
-            assert!(tpl.contains("../../tools/shaka/bin/shaka whitespace check"));
+            assert!(tpl.contains("shaka whitespace check"));
             assert!(
                 tpl.contains("whitespace-check\n"),
                 "validate chain must include whitespace-check"
@@ -1044,7 +1044,7 @@ mod tests {
         // header may still mention `--branch` in an explanatory
         // comment, so we assert on the precise command line.
         assert!(RUST_TEMPLATE.contains("$(cargo llvm-cov --json --summary-only)"));
-        assert!(RUST_TEMPLATE.contains("cue export ../../tools/shaka/schema/project-schema.cue"));
+        assert!(RUST_TEMPLATE.contains("shaka project coverage-thresholds"));
         assert!(RUST_TEMPLATE.contains(".coverage.line.fail"));
     }
 

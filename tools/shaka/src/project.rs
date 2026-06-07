@@ -1,4 +1,5 @@
 mod audit;
+mod coverage_thresholds;
 mod generate_flakes;
 mod generate_justfiles;
 mod new;
@@ -32,6 +33,10 @@ pub enum ProjectCommand {
         #[arg(long)]
         check: bool,
     },
+    /// Export the cwd project's `project.cue` as JSON (used by the
+    /// generated `coverage` recipe to read its gate without a
+    /// kolohelios source-tree path)
+    CoverageThresholds,
     /// Audit every discovered project for structural conformance
     Audit,
     /// Scaffold a new project (currently rust-only)
@@ -50,6 +55,7 @@ pub fn run(cmd: ProjectCommand) {
         ProjectCommand::SchemaCheck => schema_check::run(),
         ProjectCommand::GenerateJustfiles { check } => generate_justfiles::run(check),
         ProjectCommand::GenerateFlakes { check } => generate_flakes::run(check),
+        ProjectCommand::CoverageThresholds => coverage_thresholds::run(),
         ProjectCommand::Audit => audit::run(),
         ProjectCommand::New { name, slot } => new::run(name, slot),
     }
