@@ -818,6 +818,22 @@ fn actionlint_check() -> CheckResult {
         return CheckResult::Pass;
     }
     let mut cmd = Command::new("actionlint");
+    // Suppress two false positives on `actions/create-github-app-token@v3`.
+    // The action deprecated `app-id` in favor of `client-id` at runtime
+    // (the kolohelios-bot workflows migrated in #303), but actionlint's
+    // bundled action metadata is stale — upstream `popular_actions.go`
+    // still has no `client-id` for this action and marks `app-id`
+    // required for v3, so it flags the runtime-valid input. No released
+    // actionlint accepts `client-id` here, and its config file can't
+    // override action-input schemas, so `-ignore` is the only lever.
+    // Scoped to these exact messages so every other action-input error
+    // (including other inputs on the same action) still gates. See #854.
+    cmd.args([
+        "-ignore",
+        r#"missing input "app-id" which is required by action "actions/create-github-app-token"#,
+        "-ignore",
+        r#"input "client-id" is not defined in action "actions/create-github-app-token"#,
+    ]);
     cmd.args(&workflows);
     run_command(&mut cmd)
 }
