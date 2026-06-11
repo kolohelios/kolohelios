@@ -115,6 +115,23 @@ pub fn cue_project(args: &[&str], project_file: &Path) -> io::Result<Output> {
         .output()
 }
 
+/// Read a project's declared `kind` from its `project.cue`. Returns
+/// `None` if the directory has no `project.cue`, `cue export` fails, or
+/// the output has no `kind` field — callers treat any of those as "not
+/// the kind I'm looking for" rather than an error.
+pub fn project_kind(project_dir: &Path) -> Option<String> {
+    let project_file = project_dir.join("project.cue");
+    if !project_file.exists() {
+        return None;
+    }
+    let output = cue_project(&["export"], &project_file).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    value.get("kind")?.as_str().map(str::to_owned)
+}
+
 enum ProjectResult {
     Pass,
     MissingFile,

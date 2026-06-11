@@ -52,6 +52,10 @@ fn run_monorepo(input: String, pr_branch: Option<String>, auto_merge: bool) {
             BumpResult::Updated => {
                 println!("  {GREEN}{BOLD}updated{RESET}   {display}");
                 updated_paths.push(project.clone());
+                if let Err(e) = sync_worker_wasm_bindgen(project) {
+                    println!("  {RED}{BOLD}FAIL{RESET}      {display} ({DIM}{e}{RESET})");
+                    failed += 1;
+                }
             }
             BumpResult::Unchanged => {
                 println!("  {DIM}unchanged{RESET} {display}");
@@ -221,6 +225,45 @@ fn bump_one(project: &Path, input: &str) -> BumpResult {
     } else {
         BumpResult::Updated
     }
+}
+
+/// The wasm-bindgen crates a `rust-worker` pins in lockstep — their
+/// versions move together, so bumping one without the rest leaves an
+/// unsatisfiable lock. Every worker depends on the `worker` crate, which
+/// pulls all four transitively.
+const WASM_BINDGEN_FAMILY: [&str; 4] =
+    ["wasm-bindgen", "js-sys", "web-sys", "wasm-bindgen-futures"];
+
+/// Keep a `rust-worker`'s `wasm-bindgen` family at the latest release so
+/// it stays at/above `worker-build`'s minimum (#864). `worker-build` is
+/// nixpkgs-pinned, so its minimum only moves when the toolchain lock
+/// does — pairing this `cargo update` with the `flake.lock` bump keeps the
+/// two in lockstep inside a single PR. No-op for non-worker projects; the
+/// caller's `git add -A` folds the resulting `Cargo.lock` change into the
+/// bump commit.
+fn sync_worker_wasm_bindgen(project: &Path) -> Result<(), String> {
+    if schema_check::project_kind(project).as_deref() != Some("rust-worker") {
+        return Ok(());
+    }
+
+    let mut args = vec!["update"];
+    for pkg in WASM_BINDGEN_FAMILY {
+        args.push("-p");
+        args.push(pkg);
+    }
+    let output = Command::new("cargo")
+        .args(&args)
+        .current_dir(project)
+        .output()
+        .map_err(|e| format!("failed to spawn cargo: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "cargo update wasm-bindgen failed: {}",
+            stderr.lines().last().unwrap_or("(no output)")
+        ));
+    }
+    Ok(())
 }
 
 fn publish_pr(
