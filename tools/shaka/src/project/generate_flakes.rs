@@ -616,10 +616,10 @@ fn render_devshell(cli: &CliMeta) -> String {
 /// devShell-only: workers build to wasm via `worker-build`, not
 /// `buildRustPackage`, so there's no `packages`/`apps` and no
 /// `rustPlatform`. The toolchain adds the `wasm32-unknown-unknown`
-/// target; the devShell carries a fixed base (`wrangler` plus
-/// `pkg-config` and `openssl` for `worker-build`'s native
-/// `cargo install`), the `~/.cargo/bin` PATH `shellHook`, and any
-/// `extra_dev_shell_packages`.
+/// target; the devShell carries a fixed base (`wrangler`, a
+/// nixpkgs-pinned `worker-build`, plus `pkg-config` and `openssl` for
+/// the wasm-bindgen / wasm-opt downloads `worker-build` runs), the
+/// `~/.cargo/bin` PATH `shellHook`, and any `extra_dev_shell_packages`.
 fn render_worker_flake(name: &str, worker: &WorkerMeta) -> String {
     let description = worker.description.as_deref().unwrap_or(name);
     let mut out = String::with_capacity(2048);
@@ -676,10 +676,13 @@ const WORKER_OUTPUT_HEADER: &str = r#"    {
 "#;
 
 /// Devshell block for worker flakes. Fixed base — the worker toolchain,
-/// `wrangler`, `pkg-config`, `openssl` — then any `extra_dev_shell_packages`,
-/// then `workflowPackages` and the Linux-only `cargo-llvm-cov`, closing
-/// with the `~/.cargo/bin` PATH `shellHook` (appended, not prepended, so
-/// a runner's rustup `cargo` doesn't shadow nix's toolchain).
+/// `wrangler`, `worker-build`, `pkg-config`, `openssl` — then any
+/// `extra_dev_shell_packages`, then `workflowPackages` and the Linux-only
+/// `cargo-llvm-cov`, closing with the `~/.cargo/bin` PATH `shellHook`
+/// (appended, not prepended, so a runner's rustup `cargo` doesn't shadow
+/// nix's toolchain). `worker-build` is pinned via nixpkgs rather than
+/// `cargo install`ed at runtime so its wasm-bindgen minimum can't drift by
+/// runner cache (#864).
 fn render_worker_devshell(extra_dev_shell_packages: &[String]) -> String {
     let mut out = String::new();
     out.push_str("      devShells = forEachSupportedSystem (\n");
@@ -689,6 +692,7 @@ fn render_worker_devshell(extra_dev_shell_packages: &[String]) -> String {
     out.push_str("            packages = [\n");
     out.push_str("              (rustToolchain pkgs)\n");
     out.push_str("              pkgs.wrangler\n");
+    out.push_str("              pkgs.worker-build\n");
     out.push_str("              pkgs.pkg-config\n");
     out.push_str("              pkgs.openssl\n");
     for pkg in extra_dev_shell_packages {
@@ -1151,6 +1155,7 @@ mod tests {
     fn worker_devshell_carries_fixed_base_and_shell_hook() {
         let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
         assert!(out.contains("pkgs.wrangler"));
+        assert!(out.contains("pkgs.worker-build"));
         assert!(out.contains("pkgs.pkg-config"));
         assert!(out.contains("pkgs.openssl"));
         assert!(out.contains(r#"export PATH="$PATH:$HOME/.cargo/bin""#));

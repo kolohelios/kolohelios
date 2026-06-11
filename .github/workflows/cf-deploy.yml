@@ -117,15 +117,10 @@ jobs:
         # in a `$PATH` we control. See `wrangler.toml`'s top-of-file
         # comment + #423.
         #
-        # Split into two `nix develop --command` invocations rather
-        # than one `bash -c`: each call applies the flake's
-        # `shellHook` (which puts `~/.cargo/bin` on `$PATH`), so the
-        # `worker-build` binary that `cargo install` drops there is
-        # visible to the second call. `--locked` pins `worker-build`
-        # to its published `Cargo.lock`; subsequent runs no-op when
-        # the binary is already cached.
+        # `worker-build` comes from the devshell (nixpkgs-pinned) rather
+        # than a floating `cargo install`, so its wasm-bindgen minimum
+        # can't drift by runner cache (#864).
         run: |
-          nix develop . --command cargo install -q worker-build --locked
           nix develop . --command worker-build --release
       - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
         id: wrangler

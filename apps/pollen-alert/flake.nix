@@ -56,6 +56,7 @@
             packages = [
               (rustToolchain pkgs)
               pkgs.wrangler
+              pkgs.worker-build
               pkgs.pkg-config
               pkgs.openssl
             ]

@@ -238,21 +238,19 @@ validate: nix-fmt-check flake-check whitespace-check
 // composes the wasm check so wasm-incompat deps surface here, not
 // later when wrangler tries to compile.
 //
-// `worker-build-check` mirrors the exact `cargo install worker-build
-// --locked && worker-build --release` chain `cf-deploy.yml` runs in
-// CI (#424). `wasm-check` alone catches syntactic wasm-target
-// incompatibility but not the toolchain-resolution failure mode
-// that bit #403 — wasm-pack's `which("rustc")` probe is only
+// `worker-build-check` mirrors the `worker-build --release` chain
+// `cf-deploy.yml` runs in CI (#424). `wasm-check` alone catches
+// syntactic wasm-target incompatibility but not the toolchain-resolution
+// failure mode that bit #403 — wasm-pack's `which("rustc")` probe is only
 // exercised by `worker-build`. Validate runs it locally so a CI-only
-// failure of this class can no longer hide behind a green local
-// run. The `cargo install --locked` is idempotent (no-op on a
-// re-run with the same lockfile-pinned version); first-run cost is
-// the worker-build install.
+// failure of this class can no longer hide behind a green local run.
+// `worker-build` comes from the devshell (nixpkgs-pinned) rather than a
+// floating `cargo install`, so its wasm-bindgen minimum can't drift by
+// runner cache (#864).
 const RUST_WORKER_TEMPLATE: &str = r#"wasm-check:
     cargo check --target wasm32-unknown-unknown
 
 worker-build-check:
-    cargo install -q worker-build --locked
     worker-build --release
 
 test:
