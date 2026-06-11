@@ -105,10 +105,23 @@ fn changes_job(spec: &WorkerDeploySpec) -> InlineJob {
         "${{ steps.filter.outputs.portfolio }}".to_string(),
     );
 
+    // Watch the local reusable workflow so a refactor of `cf-deploy.yml`
+    // re-runs this project's deploy. A cross-repo reference
+    // (`<owner>/<repo>/.github/workflows/<name>.yml@<ref>`) points at a
+    // file that doesn't exist in the consumer repo, so there's nothing
+    // local to watch — drop the line; the app dir and this generated
+    // workflow stay watched.
+    let reusable_watch = if spec.deploy.reusable_workflow.starts_with("./") {
+        format!(
+            "\n  - '.github/workflows/{}'",
+            filename_of(&spec.deploy.reusable_workflow),
+        )
+    } else {
+        String::new()
+    };
     let filter_body = format!(
-        "portfolio:\n  - '{project_dir_str}/**'\n  - '.github/workflows/{name}-deploy.yml'\n  - '.github/workflows/{reusable}'\n",
+        "portfolio:\n  - '{project_dir_str}/**'\n  - '.github/workflows/{name}-deploy.yml'{reusable_watch}\n",
         name = spec.project_name,
-        reusable = filename_of(&spec.deploy.reusable_workflow),
     );
 
     let mut checkout_with: BTreeMap<String, Value> = BTreeMap::new();
@@ -441,5 +454,59 @@ mod tests {
             .expect("paths-filter step with a filters body");
         assert!(filters.contains("apps/portfolio/**"), "{filters}");
         assert!(filters.contains("cf-deploy.yml"), "{filters}");
+    }
+
+    // ── cross-repo reusable workflow (external-repo consumers) ──────────
+
+    /// An external consumer (e.g. buzzingo) that reuses this repo's
+    /// `cf-deploy.yml` via a cross-repo `uses:` reference instead of a
+    /// local `./...` path.
+    fn cross_repo_spec() -> WorkerDeploySpec {
+        WorkerDeploySpec {
+            project_dir: PathBuf::from("apps/buzzingo"),
+            project_name: "buzzingo".to_string(),
+            deploy: CiDeploy {
+                reusable_workflow: "kolohelios/kolohelios/.github/workflows/cf-deploy.yml@main"
+                    .to_string(),
+                preview_script_prefix: "buzzingo".to_string(),
+            },
+        }
+    }
+
+    fn emit_cross_repo() -> serde_yaml_ng::Value {
+        let yaml = super::super::workflow::emit(&build(&cross_repo_spec()));
+        serde_yaml_ng::from_str(&yaml).expect("valid YAML")
+    }
+
+    #[test]
+    fn cross_repo_reference_passes_through_to_uses() {
+        let parsed = emit_cross_repo();
+        for job in ["verify", "preview", "deploy"] {
+            assert_eq!(
+                parsed["jobs"][job]["uses"].as_str(),
+                Some("kolohelios/kolohelios/.github/workflows/cf-deploy.yml@main"),
+                "job {job} should call the cross-repo reusable workflow"
+            );
+        }
+    }
+
+    #[test]
+    fn cross_repo_filter_omits_the_reusable_workflow_path() {
+        let parsed = emit_cross_repo();
+        let filters = parsed["jobs"]["changes"]["steps"]
+            .as_sequence()
+            .expect("steps")
+            .iter()
+            .find_map(|s| s["with"].get("filters").and_then(|f| f.as_str()))
+            .expect("paths-filter step with a filters body");
+        // The app dir and the generated deploy workflow stay watched...
+        assert!(filters.contains("apps/buzzingo/**"), "{filters}");
+        assert!(
+            filters.contains(".github/workflows/buzzingo-deploy.yml"),
+            "{filters}"
+        );
+        // ...but the cross-repo reusable workflow isn't a local file, so
+        // there's nothing to watch.
+        assert!(!filters.contains("cf-deploy.yml"), "{filters}");
     }
 }

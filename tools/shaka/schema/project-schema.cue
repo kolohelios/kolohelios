@@ -203,8 +203,14 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 #CiDeploy: {
 	// Reusable workflow this project's deploy delegates to. Must match
 	// the cf-deploy.yml form for the generated verify/preview/deploy
-	// jobs to make sense.
-	reusableWorkflow: =~"^\\./\\.github/workflows/[a-z0-9-]+\\.ya?ml$"
+	// jobs to make sense. Two accepted forms:
+	//   - local in-repo: `./.github/workflows/<name>.yml`
+	//   - cross-repo:    `<owner>/<repo>/.github/workflows/<name>.yml@<ref>`
+	// The cross-repo form lets an external consumer (e.g. the private
+	// buzzingo repo) reuse this repo's `cf-deploy.yml` instead of
+	// hand-authoring its own deploy machinery.
+	reusableWorkflow: =~"^\\./\\.github/workflows/[a-z0-9-]+\\.ya?ml$" |
+		=~"^[\\w.-]+/[\\w.-]+/\\.github/workflows/[a-z0-9-]+\\.ya?ml@[\\w./-]+$"
 
 	// PR preview Worker name template: the emitter generates
 	// `<previewScriptPrefix>-pr-${{ github.event.pull_request.number }}`
