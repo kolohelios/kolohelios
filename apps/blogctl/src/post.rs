@@ -549,6 +549,7 @@ Body.
         let mut metadata = fixture_metadata();
         metadata.targets = vec![
             TargetEntry {
+                samples: Vec::new(),
                 name: Target::Linkedin,
                 status: TargetStatus::Published,
                 url: Some("https://www.linkedin.com/posts/example".into()),
@@ -556,6 +557,7 @@ Body.
                 metrics: None,
             },
             TargetEntry {
+                samples: Vec::new(),
                 name: Target::Blog,
                 status: TargetStatus::Planned,
                 url: None,
@@ -642,6 +644,7 @@ body
         use crate::target::{Target, TargetEntry, TargetMetrics, TargetStatus};
         let mut metadata = fixture_metadata();
         metadata.targets = vec![TargetEntry {
+            samples: Vec::new(),
             name: Target::Linkedin,
             status: TargetStatus::Published,
             url: Some("https://www.linkedin.com/posts/example".into()),

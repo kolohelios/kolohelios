@@ -7,9 +7,14 @@ use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 
 use crate::error::{Error, Result};
+
+// Serialize `MetricSample::date` as a bare `YYYY-MM-DD` ISO date rather
+// than `time`'s default integer encoding, keeping the frontmatter
+// human-readable.
+time::serde::format_description!(iso_date, Date, "[year]-[month]-[day]");
 
 /// A venue a post can be distributed to. Closed enum — adding a new
 /// venue is a deliberate code change, not a frontmatter typo away.
@@ -118,6 +123,22 @@ pub struct TargetMetrics {
     pub sampled_at: OffsetDateTime,
 }
 
+/// One day's observed performance for a target, sourced from a daily
+/// analytics export (`blogctl linkedin import`). Coarser than
+/// [`TargetMetrics`] — engagements is a single aggregate, not split into
+/// reactions/comments/reposts — and keyed by `date` so a target accrues
+/// a time-series. Either metric may be absent when an export populated
+/// only one of its two ranked tables.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetricSample {
+    #[serde(with = "iso_date")]
+    pub date: Date,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impressions: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engagements: Option<u64>,
+}
+
 /// One entry in a post's `targets:` list. `url` and `published_at` are
 /// required when `status == Published` and optional otherwise; the
 /// invariant is enforced at parse time, not by the type.
@@ -138,6 +159,32 @@ pub struct TargetEntry {
     /// and for posts on a venue without analytics surfaced yet).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metrics: Option<TargetMetrics>,
+    /// Per-day metric samples imported from LinkedIn analytics exports,
+    /// kept sorted by date and idempotent on date (see
+    /// [`TargetEntry::record_sample`]). Distinct from `metrics`, which
+    /// holds the latest single manual sample.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub samples: Vec<MetricSample>,
+}
+
+impl TargetEntry {
+    /// Record a daily metric sample, keeping `samples` sorted by date.
+    /// Idempotent on date: a sample whose date is already present is a
+    /// no-op (returns `false`); a new date is inserted in order
+    /// (returns `true`). Idempotency on `(urn, date)` is what lets
+    /// re-running overlapping exports add no duplicate data points.
+    pub fn record_sample(&mut self, sample: MetricSample) -> bool {
+        match self
+            .samples
+            .binary_search_by(|existing| existing.date.cmp(&sample.date))
+        {
+            Ok(_) => false,
+            Err(idx) => {
+                self.samples.insert(idx, sample);
+                true
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -268,5 +315,62 @@ mod tests {
         let raw = "name: blog\nstatus: planned\n";
         let parsed: TargetEntry = serde_yaml_ng::from_str(raw).unwrap();
         assert!(parsed.metrics.is_none());
+        // And no `samples:` key either — pre-#859 frontmatter.
+        assert!(parsed.samples.is_empty());
+    }
+
+    #[test]
+    fn metric_sample_serializes_date_as_iso_and_round_trips() {
+        let sample = MetricSample {
+            date: time::macros::date!(2026 - 05 - 22),
+            impressions: Some(1234),
+            engagements: Some(56),
+        };
+        let yaml = serde_yaml_ng::to_string(&sample).unwrap();
+        assert!(yaml.contains("date: 2026-05-22"), "got: {yaml}");
+        let reparsed: MetricSample = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(reparsed, sample);
+    }
+
+    #[test]
+    fn metric_sample_omits_absent_metric() {
+        let sample = MetricSample {
+            date: time::macros::date!(2026 - 05 - 22),
+            impressions: Some(10),
+            engagements: None,
+        };
+        let yaml = serde_yaml_ng::to_string(&sample).unwrap();
+        assert!(!yaml.contains("engagements"), "got: {yaml}");
+    }
+
+    #[test]
+    fn record_sample_is_idempotent_on_date_and_keeps_sorted() {
+        let mut entry = TargetEntry {
+            name: Target::Linkedin,
+            status: TargetStatus::Published,
+            url: Some("https://www.linkedin.com/posts/x-7400000000000000001-Ab/".into()),
+            published_at: None,
+            metrics: None,
+            samples: Vec::new(),
+        };
+        let sample = |day, imp| MetricSample {
+            date: day,
+            impressions: Some(imp),
+            engagements: None,
+        };
+        assert!(entry.record_sample(sample(time::macros::date!(2026 - 05 - 02), 2)));
+        assert!(entry.record_sample(sample(time::macros::date!(2026 - 05 - 01), 1)));
+        // Re-recording an existing date is a no-op that keeps the first value.
+        assert!(!entry.record_sample(sample(time::macros::date!(2026 - 05 - 01), 999)));
+
+        let dates: Vec<_> = entry.samples.iter().map(|s| s.date).collect();
+        assert_eq!(
+            dates,
+            vec![
+                time::macros::date!(2026 - 05 - 01),
+                time::macros::date!(2026 - 05 - 02),
+            ],
+        );
+        assert_eq!(entry.samples[0].impressions, Some(1));
     }
 }

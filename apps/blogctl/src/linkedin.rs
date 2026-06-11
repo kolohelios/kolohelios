@@ -33,6 +33,10 @@ const DATE_HEADER: &str = "Post publish date";
 const ENGAGEMENTS_HEADER: &str = "Engagements";
 const IMPRESSIONS_HEADER: &str = "Impressions";
 const URN_PREFIX: &str = "urn:li:activity:";
+/// Minimum digit-run length to treat as a LinkedIn activity id. Real ids
+/// are 19 digits; the threshold rejects shorter numbers (utm ids,
+/// timestamps) that appear elsewhere in a URL.
+const MIN_ACTIVITY_ID_LEN: usize = 17;
 
 /// One post's metrics as captured by one daily export.
 ///
@@ -222,6 +226,37 @@ fn extract_urn(url: &str) -> Option<String> {
     (!digits.is_empty()).then(|| format!("{URN_PREFIX}{digits}"))
 }
 
+/// Extract the bare LinkedIn activity id (the digit run) from any post
+/// URL form: the `urn:li:activity:<id>` of analytics exports, or the
+/// `/posts/<slug>-<id>-<code>/?…` of a shared post URL. Returns the
+/// longest digit run when it is at least 17 digits (real ids are 19).
+///
+/// Used to match an export's [`PostSnapshot::urn`] to a post's
+/// `targets[].url`, which usually carries the id in the share-URL form
+/// rather than the `urn:` form.
+pub fn activity_id(url: &str) -> Option<&str> {
+    let bytes = url.as_bytes();
+    // Track the longest digit run; the activity id is the only long one.
+    let mut best: Option<(usize, usize)> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        let len = i - start;
+        if best.is_none_or(|(_, best_len)| len > best_len) {
+            best = Some((start, len));
+        }
+    }
+    best.filter(|&(_, len)| len >= MIN_ACTIVITY_ID_LEN)
+        .map(|(start, len)| &url[start..start + len])
+}
+
 /// Parse LinkedIn's `M/D/YYYY` publish dates (month and day unpadded).
 fn parse_us_date(value: &str) -> std::result::Result<Date, time::error::Parse> {
     Date::parse(
@@ -271,6 +306,26 @@ fn is_export(path: &Path) -> bool {
 mod tests {
     use super::*;
     use time::macros::date;
+
+    #[test]
+    fn activity_id_from_export_urn() {
+        assert_eq!(
+            activity_id("urn:li:activity:7440067024082604032"),
+            Some("7440067024082604032")
+        );
+    }
+
+    #[test]
+    fn activity_id_from_shared_post_url() {
+        let url = "https://www.linkedin.com/posts/kolohelios_the-beaver-community-share-7456442827909005312-8FKm/?utm_source=share";
+        assert_eq!(activity_id(url), Some("7456442827909005312"));
+    }
+
+    #[test]
+    fn activity_id_rejects_urls_without_a_long_id() {
+        assert_eq!(activity_id("https://example.com/posts/123"), None);
+        assert_eq!(activity_id("https://www.linkedin.com/in/someone"), None);
+    }
 
     #[test]
     fn extract_urn_from_feed_url() {

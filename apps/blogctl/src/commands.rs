@@ -10,6 +10,7 @@ pub mod final_edit;
 pub mod fix;
 pub mod import;
 pub mod init;
+pub mod linkedin;
 pub mod list;
 pub mod metrics;
 pub mod new;

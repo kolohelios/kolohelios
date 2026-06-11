@@ -720,6 +720,7 @@ mod tests {
             url: Some("https://example.invalid".into()),
             published_at: Some(datetime!(2026-05-08 14:32:00 UTC)),
             metrics: None,
+            samples: Vec::new(),
         }];
         let outcome = merge_metrics(&mut targets, Target::Linkedin, &sample_metrics());
         assert_eq!(outcome, MergeMetricsOutcome::Applied);
@@ -741,6 +742,7 @@ mod tests {
             url: Some("https://example.invalid".into()),
             published_at: Some(datetime!(2026-05-08 14:32:00 UTC)),
             metrics: Some(sample_metrics()),
+            samples: Vec::new(),
         }];
         let outcome = merge_metrics(&mut targets, Target::Linkedin, &sample_metrics());
         assert_eq!(outcome, MergeMetricsOutcome::Unchanged);

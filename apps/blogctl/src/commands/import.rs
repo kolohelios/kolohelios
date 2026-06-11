@@ -85,6 +85,7 @@ pub fn run(jj: &dyn Jj, args: ImportArgs) -> Result<()> {
             todoist_task_id: None,
             history_checked: false,
             targets: vec![TargetEntry {
+                samples: Vec::new(),
                 name: target_name,
                 status: TargetStatus::Published,
                 url: Some(args.url),

@@ -24,5 +24,5 @@ pub use linkedin::PostSnapshot;
 pub use post::{Post, PostMetadata};
 pub use stage::Stage;
 pub use storage::{Repository, Workdir};
-pub use target::{Target, TargetEntry, TargetStatus};
+pub use target::{MetricSample, Target, TargetEntry, TargetStatus};
 pub use taxonomy::{Dimension, Taxonomy};

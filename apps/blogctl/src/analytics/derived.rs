@@ -98,6 +98,7 @@ mod tests {
         reposts: u64,
     ) -> TargetEntry {
         TargetEntry {
+            samples: Vec::new(),
             name: Target::Linkedin,
             status: TargetStatus::Published,
             url: Some("https://example.invalid".into()),
@@ -135,6 +136,7 @@ mod tests {
     #[test]
     fn missing_metrics_yields_none_engagement_rate_and_zero_interactions() {
         let t = TargetEntry {
+            samples: Vec::new(),
             name: Target::Linkedin,
             status: TargetStatus::Planned,
             url: None,

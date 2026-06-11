@@ -333,6 +333,11 @@ pub enum Command {
         #[command(subcommand)]
         action: MetricsAction,
     },
+    /// LinkedIn analytics-export workflows.
+    Linkedin {
+        #[command(subcommand)]
+        action: LinkedinAction,
+    },
     /// Walk every published post and fill in missing classifications
     /// + metrics interactively, or batch-import from a JSON file.
     Backfill {
@@ -439,6 +444,28 @@ pub enum MetricsAction {
         /// eligible in one sitting.
         #[arg(long, default_value_t = 10)]
         batch_size: usize,
+        /// Skip the post-write `jj` commit + push for this invocation.
+        #[arg(long)]
+        no_sync: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LinkedinAction {
+    /// Refresh post metrics from parsed exports, matching posts by
+    /// activity URN. Records a per-day data point per matched post;
+    /// reports unmatched URNs for later import (#860).
+    Import {
+        /// Workdir path. Defaults to the current working directory.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// Directory of `Content_*.xlsx` exports. Defaults to
+        /// `linkedin-exports/` under the workdir.
+        #[arg(long, value_name = "PATH")]
+        xlsx_dir: Option<PathBuf>,
+        /// Preview matches and counts without writing or syncing.
+        #[arg(long)]
+        dry_run: bool,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -759,6 +786,23 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
                     &mut output,
                 )
             }
+        },
+        Command::Linkedin { action } => match action {
+            LinkedinAction::Import {
+                workdir,
+                xlsx_dir,
+                dry_run,
+                no_sync,
+            } => commands::linkedin::run(
+                jj,
+                commands::linkedin::ImportArgs {
+                    workdir: workdir_or_pwd(workdir)?,
+                    xlsx_dir,
+                    dry_run,
+                    no_sync,
+                },
+            )
+            .map(|_| ()),
         },
         Command::Backfill {
             workdir,
