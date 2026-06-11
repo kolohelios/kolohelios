@@ -395,6 +395,7 @@ mod tests {
                 todoist_task_id: None,
                 history_checked: false,
                 targets: vec![TargetEntry {
+                    samples: Vec::new(),
                     name: Target::Linkedin,
                     status: TargetStatus::Published,
                     url: Some("https://example.invalid".into()),

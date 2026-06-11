@@ -47,6 +47,7 @@ pub fn run(jj: &dyn Jj, args: AddTargetArgs) -> Result<()> {
     }
 
     post.metadata.targets.push(TargetEntry {
+        samples: Vec::new(),
         name: args.target,
         status: TargetStatus::Planned,
         url: None,
