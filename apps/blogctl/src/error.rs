@@ -277,6 +277,48 @@ pub enum Error {
         value: String,
         source: humantime::DurationError,
     },
+
+    #[snafu(display("could not open LinkedIn export {}: {source}", path.display()))]
+    LinkedinOpen {
+        path: PathBuf,
+        source: calamine::Error,
+    },
+
+    #[snafu(display("LinkedIn export {} has no `TOP POSTS` sheet", path.display()))]
+    LinkedinSheetMissing { path: PathBuf },
+
+    #[snafu(display("could not read the `TOP POSTS` sheet in {}: {source}", path.display()))]
+    LinkedinSheetRead {
+        path: PathBuf,
+        source: calamine::Error,
+    },
+
+    #[snafu(display(
+        "LinkedIn export {} has no `Post URL` header in its `TOP POSTS` sheet",
+        path.display()
+    ))]
+    LinkedinHeaderMissing { path: PathBuf },
+
+    #[snafu(display(
+        "post URL {url:?} in {} has no `urn:li:activity:<id>` segment",
+        path.display()
+    ))]
+    LinkedinMissingUrn { path: PathBuf, url: String },
+
+    #[snafu(display(
+        "could not parse publish date {value:?} in {}: expected M/D/YYYY ({source})",
+        path.display()
+    ))]
+    LinkedinPublishDate {
+        path: PathBuf,
+        value: String,
+        source: time::error::Parse,
+    },
+
+    #[snafu(display(
+        "could not derive a snapshot date from export filename {name:?}: expected `Content_<YYYY-MM-DD>_<YYYY-MM-DD>_*.xlsx`"
+    ))]
+    LinkedinFilename { name: String },
 }
 
 impl Error {

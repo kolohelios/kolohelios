@@ -11,6 +11,9 @@ allow = [
   "ISC",
   "Unicode-3.0",
   "Unicode-DFS-2016",
+  # zlib-rs — the deflate backend pulled in by `zip`/`calamine` for
+  # xlsx parsing — is Zlib-licensed (permissive, OSI-approved).
+  "Zlib",
 ]
 private = { ignore = true }
 version = 2
