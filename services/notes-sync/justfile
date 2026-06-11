@@ -5,7 +5,6 @@ wasm-check:
     cargo check --target wasm32-unknown-unknown
 
 worker-build-check:
-    cargo install -q worker-build --locked
     worker-build --release
 
 test:
