@@ -45,6 +45,12 @@ pub struct WorkerDeploySpec {
 pub struct CiDeploy {
     pub reusable_workflow: String,
     pub preview_script_prefix: String,
+    /// Optional wrangler environment for the production `deploy` job
+    /// (`--env <environment>` in `cf-deploy.yml`). `verify`/`preview`
+    /// never set it, so a prod-only `custom_domain` route under
+    /// `[env.production]` stays off route-free previews.
+    #[serde(default)]
+    pub environment: Option<String>,
 }
 
 pub fn build(spec: &WorkerDeploySpec) -> Workflow {
@@ -231,6 +237,16 @@ fn deploy_call(spec: &WorkerDeploySpec) -> ReusableCall {
         Value::String(spec.project_dir.to_string_lossy().to_string()),
     );
     with.insert("verify_only".to_string(), Value::Bool(false));
+    // Only the production deploy selects a wrangler environment;
+    // `verify`/`preview` stay on the route-free top-level config so a
+    // prod-only `custom_domain` route under `[env.<environment>]` never
+    // lands on a `*.workers.dev` preview.
+    if let Some(environment) = &spec.deploy.environment {
+        with.insert(
+            "environment".to_string(),
+            Value::String(environment.clone()),
+        );
+    }
     // `workflow_dispatch` bypasses the changes filter so a manual
     // re-deploy isn't blocked by an unchanged push base. Real
     // `push: main` deploys still gate on the filter.
@@ -344,6 +360,7 @@ mod tests {
             deploy: CiDeploy {
                 reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
                 preview_script_prefix: "portfolio".to_string(),
+                environment: None,
             },
         }
     }
@@ -469,6 +486,7 @@ mod tests {
                 reusable_workflow: "kolohelios/kolohelios/.github/workflows/cf-deploy.yml@main"
                     .to_string(),
                 preview_script_prefix: "buzzingo".to_string(),
+                environment: None,
             },
         }
     }
@@ -508,5 +526,49 @@ mod tests {
         // ...but the cross-repo reusable workflow isn't a local file, so
         // there's nothing to watch.
         assert!(!filters.contains("cf-deploy.yml"), "{filters}");
+    }
+
+    // ── wrangler environment (prod-only custom_domain routes) ───────────
+
+    /// A consumer whose production `custom_domain` route lives under
+    /// `[env.production]` selects that environment on the real deploy.
+    fn env_spec() -> WorkerDeploySpec {
+        WorkerDeploySpec {
+            project_dir: PathBuf::from("apps/buzzingo"),
+            project_name: "buzzingo".to_string(),
+            deploy: CiDeploy {
+                reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
+                preview_script_prefix: "buzzingo".to_string(),
+                environment: Some("production".to_string()),
+            },
+        }
+    }
+
+    #[test]
+    fn deploy_job_sets_environment_when_configured() {
+        let yaml = super::super::workflow::emit(&build(&env_spec()));
+        let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).expect("valid YAML");
+        assert_eq!(
+            parsed["jobs"]["deploy"]["with"]["environment"].as_str(),
+            Some("production")
+        );
+    }
+
+    #[test]
+    fn verify_and_preview_never_set_environment() {
+        let yaml = super::super::workflow::emit(&build(&env_spec()));
+        let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).expect("valid YAML");
+        // The route-free top-level config serves PR previews/verifies; a
+        // prod-only route under `[env.production]` must never reach them.
+        assert!(parsed["jobs"]["verify"]["with"]["environment"].is_null());
+        assert!(parsed["jobs"]["preview"]["with"]["environment"].is_null());
+    }
+
+    #[test]
+    fn environment_omitted_when_unset() {
+        // The portfolio fixture has `environment: None`; the deploy job's
+        // `with` map carries no `environment` key (today's behavior).
+        let parsed = emit_fixture();
+        assert!(parsed["jobs"]["deploy"]["with"]["environment"].is_null());
     }
 }

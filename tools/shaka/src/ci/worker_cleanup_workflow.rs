@@ -155,6 +155,7 @@ mod tests {
             deploy: CiDeploy {
                 reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
                 preview_script_prefix: "example-notes".to_string(),
+                environment: None,
             },
         }
     }
