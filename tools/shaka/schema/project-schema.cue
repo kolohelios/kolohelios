@@ -217,6 +217,15 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// as the `script_name_override` for the preview job and as the
 	// `--name` flag for the sibling cleanup workflow.
 	previewScriptPrefix: string & =~"^[a-z][a-z0-9-]*$"
+
+	// Optional wrangler environment for the production `deploy` job.
+	// When set, the generated `deploy` job passes `environment` to
+	// `cf-deploy.yml`, which appends `--env <environment>` so wrangler
+	// selects a named `[env.<name>]` section of `wrangler.toml`. The
+	// `verify`/`preview` jobs never set it: a prod-only `custom_domain`
+	// route lives under `[env.production]` while route-free previews
+	// stay on `*.workers.dev`. Omit to deploy with the top-level config.
+	environment?: string & =~"^[a-z][a-z0-9_-]*$"
 }
 
 // Where a project serves content. Decoupled from `#Deploy` (which is
