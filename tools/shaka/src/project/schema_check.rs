@@ -95,23 +95,100 @@ fn cue_module_root(project_file: &Path) -> io::Result<PathBuf> {
     ))
 }
 
+/// The CUE module a `cue` invocation runs in, plus an optional temp dir
+/// whose lifetime must span that invocation.
+///
+/// When the project's enclosing module supplies the real domain registry
+/// (`cwd` points straight at it), `_stub` is `None`. When it doesn't, we
+/// assemble a permissive stub module and `cwd` points there; `_stub`
+/// holds the `TempDir` so it isn't cleaned up until the `cue` process has
+/// exited. Drop order in `cue_project` keeps it alive across `.output()`.
+struct CueModule {
+    cwd: PathBuf,
+    _stub: Option<tempfile::TempDir>,
+}
+
+/// Resolve the cwd `cue` should run in so the project schema's
+/// `import "kolohelios.com/infra/cloudflare-dns/domains:domain"` resolves.
+///
+/// Prefer the project's enclosing module when it ships the registry — the
+/// live monorepo (real hostname constraint) or the bundled closure. When
+/// the enclosing module has no registry (a domain-free external repo with
+/// no `serving`/`deploy` and no `cloudflare-dns` project), assemble a
+/// permissive stub so it still validates instead of failing on a
+/// `cannot find package` import error (#863). A repo that *does* declare
+/// hostnames keeps its own registry and so still gets the real constraint.
+fn cue_module(project_file: &Path) -> io::Result<CueModule> {
+    let root = cue_module_root(project_file)?;
+    if has_domain_registry(&root) {
+        return Ok(CueModule {
+            cwd: root,
+            _stub: None,
+        });
+    }
+    let stub = write_stub_module()?;
+    Ok(CueModule {
+        cwd: stub.path().to_path_buf(),
+        _stub: Some(stub),
+    })
+}
+
+/// Whether `module_root` ships the domain registry package — a
+/// `infra/cloudflare-dns/domains/` directory holding at least one `.cue`
+/// file. An empty directory counts as absent (cue can't import an empty
+/// package), so it routes to the stub like a missing one.
+fn has_domain_registry(module_root: &Path) -> bool {
+    let domains = module_root.join("infra/cloudflare-dns/domains");
+    let Ok(entries) = std::fs::read_dir(&domains) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        e.path()
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("cue"))
+    })
+}
+
+/// Assemble a throwaway CUE module that satisfies the schema's domain
+/// import with a permissive stub registry (`#KnownHostnames: _`, so any
+/// hostname passes — structural validation still runs). Mirrors the
+/// closure bundled into the packaged `shaka` at `tools/shaka/cue-bundle/`;
+/// assembled at runtime here so the dev wrapper (no `$SHAKA_CUE_MODULE_DIR`)
+/// validates a registry-less external repo too.
+fn write_stub_module() -> io::Result<tempfile::TempDir> {
+    let dir = tempfile::TempDir::new()?;
+    std::fs::create_dir_all(dir.path().join("cue.mod"))?;
+    std::fs::write(
+        dir.path().join("cue.mod/module.cue"),
+        "module: \"kolohelios.com\"\nlanguage: version: \"v0.15.1\"\n",
+    )?;
+    let registry = dir.path().join("infra/cloudflare-dns/domains");
+    std::fs::create_dir_all(&registry)?;
+    std::fs::write(
+        registry.join("registry.cue"),
+        "package domain\n\n#KnownHostnames: _\n",
+    )?;
+    Ok(dir)
+}
+
 /// Run `cue <args> <project-schema> <project-file>` with cwd anchored at
-/// the CUE module root so the schema's import closure resolves no matter
-/// where the project file lives — including a nix-packaged `shaka` run in
-/// a repo with no `cue.mod` of its own. The project file is passed by
-/// absolute path because cue's cwd is the module root, not the caller's.
+/// a CUE module that resolves the schema's import closure no matter where
+/// the project file lives — the enclosing module when it ships the
+/// registry, otherwise a permissive stub (see `cue_module`). The project
+/// file is passed by absolute path because cue's cwd is the module root,
+/// not the caller's.
 ///
 /// `args` carries the verb and its flags, e.g. `["vet", "-c"]` or
 /// `["export", "--out", "json"]`.
 pub fn cue_project(args: &[&str], project_file: &Path) -> io::Result<Output> {
     let schema = project_schema_path()?;
-    let module_root = cue_module_root(project_file)?;
+    let module = cue_module(project_file)?;
     let project_abs = std::fs::canonicalize(project_file)?;
     Command::new("cue")
         .args(args)
         .arg(&schema)
         .arg(&project_abs)
-        .current_dir(&module_root)
+        .current_dir(&module.cwd)
         .output()
 }
 
@@ -488,5 +565,50 @@ mod tests {
         let strays = find_stray_project_cues(tmp.path());
 
         assert!(strays.is_empty(), "got strays: {strays:?}");
+    }
+
+    // ── domain-registry detection & stub assembly (#863) ────────────────
+
+    #[test]
+    fn has_domain_registry_true_when_package_present() {
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "infra/cloudflare-dns/domains/registry.cue");
+        assert!(has_domain_registry(tmp.path()));
+    }
+
+    #[test]
+    fn has_domain_registry_false_when_dir_absent() {
+        let tmp = TempDir::new().unwrap();
+        assert!(!has_domain_registry(tmp.path()));
+    }
+
+    #[test]
+    fn has_domain_registry_false_when_dir_empty() {
+        // An empty package dir can't be imported, so it routes to the
+        // stub like a missing one.
+        let tmp = TempDir::new().unwrap();
+        mkdir(tmp.path(), "infra/cloudflare-dns/domains");
+        assert!(!has_domain_registry(tmp.path()));
+    }
+
+    #[test]
+    fn has_domain_registry_ignores_non_cue_files() {
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "infra/cloudflare-dns/domains/README.md");
+        assert!(!has_domain_registry(tmp.path()));
+    }
+
+    #[test]
+    fn stub_module_provides_an_importable_domain_package() {
+        // The assembled stub is a self-contained CUE module: a `cue.mod`
+        // plus the `domain` package the schema imports.
+        let stub = write_stub_module().unwrap();
+        assert!(stub.path().join("cue.mod/module.cue").is_file());
+        let registry = stub
+            .path()
+            .join("infra/cloudflare-dns/domains/registry.cue");
+        let body = fs::read_to_string(registry).unwrap();
+        assert!(body.contains("package domain"), "{body}");
+        assert!(body.contains("#KnownHostnames"), "{body}");
     }
 }

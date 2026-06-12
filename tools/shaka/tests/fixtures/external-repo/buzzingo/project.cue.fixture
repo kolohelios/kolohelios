@@ -1,0 +1,20 @@
+package project
+
+// A domain-free external-repo project: a workers.dev-only rust-worker
+// with no `serving`/`deploy` block and no custom domains, so the repo
+// ships no `infra/cloudflare-dns/domains` registry. It reuses this
+// repo's `cf-deploy.yml` cross-repo (#868) with a wrangler environment
+// for its prod-only route (#869). Validating it must not require a
+// vendored domain registry (#863).
+#Project & {
+	name: "buzzingo"
+	kind: "rust-worker"
+	worker: {}
+	ci: {
+		deploy: {
+			reusableWorkflow:    "kolohelios/kolohelios/.github/workflows/cf-deploy.yml@main"
+			previewScriptPrefix: "buzzingo"
+			environment:         "production"
+		}
+	}
+}
