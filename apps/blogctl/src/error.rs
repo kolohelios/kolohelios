@@ -319,6 +319,22 @@ pub enum Error {
         "could not derive a snapshot date from export filename {name:?}: expected `Content_<YYYY-MM-DD>_<YYYY-MM-DD>_*.xlsx`"
     ))]
     LinkedinFilename { name: String },
+
+    #[snafu(display("could not fetch {url}: {message}"))]
+    LinkedinFetch { url: String, message: String },
+
+    #[snafu(display("no `SocialMediaPosting` JSON-LD found in the HTML for {url}"))]
+    LinkedinNoJsonLd { url: String },
+
+    #[snafu(display("LinkedIn post HTML for {url} is missing the `{field}` field"))]
+    LinkedinPostField { url: String, field: String },
+
+    #[snafu(display("could not parse publish date {value:?} for {url}: {source}"))]
+    LinkedinPostDate {
+        url: String,
+        value: String,
+        source: time::error::Parse,
+    },
 }
 
 impl Error {

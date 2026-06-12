@@ -452,9 +452,9 @@ pub enum MetricsAction {
 
 #[derive(Subcommand, Debug)]
 pub enum LinkedinAction {
-    /// Refresh post metrics from parsed exports, matching posts by
-    /// activity URN. Records a per-day data point per matched post;
-    /// reports unmatched URNs for later import (#860).
+    /// Import LinkedIn analytics exports: refresh metrics on posts
+    /// matched by activity URN, and create `published/` stubs for
+    /// unmatched URNs by fetching each post's public HTML.
     Import {
         /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
@@ -463,6 +463,10 @@ pub enum LinkedinAction {
         /// `linkedin-exports/` under the workdir.
         #[arg(long, value_name = "PATH")]
         xlsx_dir: Option<PathBuf>,
+        /// Skip the HTML fetch + stub creation; only refresh metrics on
+        /// posts already in the workdir.
+        #[arg(long)]
+        no_fetch: bool,
         /// Preview matches and counts without writing or syncing.
         #[arg(long)]
         dry_run: bool,
@@ -791,13 +795,16 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             LinkedinAction::Import {
                 workdir,
                 xlsx_dir,
+                no_fetch,
                 dry_run,
                 no_sync,
             } => commands::linkedin::run(
                 jj,
+                &crate::fetch::UreqFetcher::new(),
                 commands::linkedin::ImportArgs {
                     workdir: workdir_or_pwd(workdir)?,
                     xlsx_dir,
+                    no_fetch,
                     dry_run,
                     no_sync,
                 },

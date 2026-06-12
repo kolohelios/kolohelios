@@ -13,6 +13,7 @@ use tempfile::TempDir;
 use time::macros::{date, datetime};
 
 use blogctl::commands;
+use blogctl::fetch::FakeFetcher;
 use blogctl::kind::Kind;
 use blogctl::post::{Post, PostMetadata};
 use blogctl::stage::Stage;
@@ -97,10 +98,16 @@ fn samples_of(repo: &Repository, slug: &str) -> Vec<MetricSample> {
         .clone()
 }
 
-fn import_args(workdir: &Path, xlsx: &Path, dry_run: bool) -> commands::linkedin::ImportArgs {
+fn import_args(
+    workdir: &Path,
+    xlsx: &Path,
+    no_fetch: bool,
+    dry_run: bool,
+) -> commands::linkedin::ImportArgs {
     commands::linkedin::ImportArgs {
         workdir: workdir.to_path_buf(),
         xlsx_dir: Some(xlsx.to_path_buf()),
+        no_fetch,
         dry_run,
         no_sync: false,
     }
@@ -128,7 +135,8 @@ fn records_per_day_samples_for_matched_posts() {
 
     let summary = commands::linkedin::run(
         &FakeJj::new(),
-        import_args(tmp.path(), exports.path(), false),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, false),
     )
     .unwrap();
     assert_eq!(summary.added, 3);
@@ -159,14 +167,16 @@ fn re_running_overlapping_exports_is_idempotent() {
 
     let first = commands::linkedin::run(
         &FakeJj::new(),
-        import_args(tmp.path(), exports.path(), false),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, false),
     )
     .unwrap();
     assert_eq!(first.added, 1);
 
     let second = commands::linkedin::run(
         &FakeJj::new(),
-        import_args(tmp.path(), exports.path(), false),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, false),
     )
     .unwrap();
     assert_eq!(second.added, 0);
@@ -191,7 +201,8 @@ fn unmatched_urns_are_reported_not_created() {
 
     let summary = commands::linkedin::run(
         &FakeJj::new(),
-        import_args(tmp.path(), exports.path(), false),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, false),
     )
     .unwrap();
     assert_eq!(
@@ -215,11 +226,194 @@ fn dry_run_previews_without_writing() {
 
     let summary = commands::linkedin::run(
         &FakeJj::new(),
-        import_args(tmp.path(), exports.path(), true),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, true),
     )
     .unwrap();
     // The preview reports what would be added...
     assert_eq!(summary.added, 1);
     // ...but nothing is persisted.
     assert!(samples_of(&repo, "alpha").is_empty());
+}
+
+fn linkedin_url(id: &str) -> String {
+    format!("https://www.linkedin.com/feed/update/urn:li:activity:{id}")
+}
+
+/// Build minimal post HTML with a `SocialMediaPosting` JSON-LD block.
+/// Keep `headline`/`body` free of `"` and newlines so the inlined JSON
+/// stays valid.
+fn html_post(
+    headline: &str,
+    body: &str,
+    date: &str,
+    likes: u64,
+    comments: u64,
+    shares: u64,
+) -> String {
+    let json = format!(
+        r#"{{"@context":"https://schema.org","@type":"SocialMediaPosting","headline":"{headline}","articleBody":"{body}","datePublished":"{date}","interactionStatistic":[{{"interactionType":"http://schema.org/LikeAction","userInteractionCount":{likes}}},{{"interactionType":"https://schema.org/CommentAction","userInteractionCount":{comments}}},{{"interactionType":"https://schema.org/ShareAction","userInteractionCount":{shares}}}]}}"#
+    );
+    format!(
+        "<html><head><script type=\"application/ld+json\">{json}</script></head><body>x</body></html>"
+    )
+}
+
+#[test]
+fn creates_published_stub_for_unmatched_urn() {
+    let (tmp, repo) = workdir();
+    // No matching post seeded — the URN is unmatched.
+    let id = "7400000000000000050";
+    let url = linkedin_url(id);
+    let fetcher = FakeFetcher::new().with(
+        url.clone(),
+        html_post(
+            "The Test Post",
+            "Body line one. Body line two.",
+            "2026-05-10T12:00:00Z",
+            5,
+            2,
+            1,
+        ),
+    );
+    let exports = TempDir::new().unwrap();
+    write_export(exports.path(), "2026-05-10", &[(id, 100, 7)]);
+
+    let summary = commands::linkedin::run(
+        &FakeJj::new(),
+        &fetcher,
+        import_args(tmp.path(), exports.path(), false, false),
+    )
+    .unwrap();
+    assert_eq!(summary.created, vec!["the-test-post".to_string()]);
+    assert!(summary.unmatched.is_empty());
+
+    let (handle, post) = repo.load_raw("the-test-post").unwrap();
+    assert_eq!(handle.stage, Stage::Published);
+    assert_eq!(post.metadata.title, "The Test Post");
+    assert!(post.body.contains("Body line one"));
+    assert_eq!(post.metadata.created_at, datetime!(2026-05-10 12:00:00 UTC));
+
+    let target = &post.metadata.targets[0];
+    assert_eq!(target.name, Target::Linkedin);
+    assert_eq!(target.url.as_deref(), Some(url.as_str()));
+    assert_eq!(
+        target.published_at,
+        Some(datetime!(2026-05-10 12:00:00 UTC))
+    );
+    let metrics = target.metrics.as_ref().unwrap();
+    assert_eq!(metrics.impressions, 100); // from the export
+    assert_eq!(metrics.reactions, 5); // from the HTML LikeAction
+    assert_eq!(metrics.comments, 2);
+    assert_eq!(metrics.reposts, 1);
+    assert_eq!(target.samples.len(), 1);
+    assert_eq!(target.samples[0].impressions, Some(100));
+}
+
+#[test]
+fn creating_a_stub_is_idempotent_by_urn() {
+    let (tmp, repo) = workdir();
+    let id = "7400000000000000050";
+    let fetcher = FakeFetcher::new().with(
+        linkedin_url(id),
+        html_post("The Test Post", "Body.", "2026-05-10T12:00:00Z", 1, 0, 0),
+    );
+    let exports = TempDir::new().unwrap();
+    write_export(exports.path(), "2026-05-10", &[(id, 100, 7)]);
+
+    let first = commands::linkedin::run(
+        &FakeJj::new(),
+        &fetcher,
+        import_args(tmp.path(), exports.path(), false, false),
+    )
+    .unwrap();
+    assert_eq!(first.created.len(), 1);
+    assert_eq!(repo.list().unwrap().len(), 1);
+
+    // Re-run: the URN now matches the created post → no second post, and
+    // its same-day sample is an idempotent skip.
+    let second = commands::linkedin::run(
+        &FakeJj::new(),
+        &fetcher,
+        import_args(tmp.path(), exports.path(), false, false),
+    )
+    .unwrap();
+    assert!(second.created.is_empty());
+    assert_eq!(second.added, 0);
+    assert_eq!(repo.list().unwrap().len(), 1);
+}
+
+#[test]
+fn no_fetch_skips_stub_creation() {
+    let (tmp, repo) = workdir();
+    let id = "7400000000000000050";
+    let fetcher = FakeFetcher::new().with(
+        linkedin_url(id),
+        html_post("X", "B", "2026-05-10T12:00:00Z", 0, 0, 0),
+    );
+    let exports = TempDir::new().unwrap();
+    write_export(exports.path(), "2026-05-10", &[(id, 100, 7)]);
+
+    let summary = commands::linkedin::run(
+        &FakeJj::new(),
+        &fetcher,
+        import_args(tmp.path(), exports.path(), true, false),
+    )
+    .unwrap();
+    assert!(summary.created.is_empty());
+    assert_eq!(summary.unmatched, vec![format!("urn:li:activity:{id}")]);
+    assert_eq!(repo.list().unwrap().len(), 0);
+}
+
+#[test]
+fn dry_run_does_not_create_stub() {
+    let (tmp, repo) = workdir();
+    let id = "7400000000000000050";
+    let fetcher = FakeFetcher::new().with(
+        linkedin_url(id),
+        html_post("The Test Post", "B", "2026-05-10T12:00:00Z", 0, 0, 0),
+    );
+    let exports = TempDir::new().unwrap();
+    write_export(exports.path(), "2026-05-10", &[(id, 100, 7)]);
+
+    let summary = commands::linkedin::run(
+        &FakeJj::new(),
+        &fetcher,
+        import_args(tmp.path(), exports.path(), false, true),
+    )
+    .unwrap();
+    // The preview reports the post would be created...
+    assert_eq!(summary.created, vec!["the-test-post".to_string()]);
+    // ...but nothing is written.
+    assert_eq!(repo.list().unwrap().len(), 0);
+}
+
+#[test]
+fn slug_collision_skips_the_second_post() {
+    let (tmp, repo) = workdir();
+    let id_a = "7400000000000000050";
+    let id_b = "7400000000000000051";
+    // Both posts' headlines slugify to the same slug.
+    let fetcher = FakeFetcher::new()
+        .with(
+            linkedin_url(id_a),
+            html_post("Same Title", "Body A", "2026-05-10T12:00:00Z", 0, 0, 0),
+        )
+        .with(
+            linkedin_url(id_b),
+            html_post("Same Title", "Body B", "2026-05-11T12:00:00Z", 0, 0, 0),
+        );
+    let exports = TempDir::new().unwrap();
+    write_export(exports.path(), "2026-05-10", &[(id_a, 1, 0)]);
+    write_export(exports.path(), "2026-05-11", &[(id_b, 1, 0)]);
+
+    let summary = commands::linkedin::run(
+        &FakeJj::new(),
+        &fetcher,
+        import_args(tmp.path(), exports.path(), false, false),
+    )
+    .unwrap();
+    assert_eq!(summary.created, vec!["same-title".to_string()]);
+    assert_eq!(summary.unmatched.len(), 1);
+    assert_eq!(repo.list().unwrap().len(), 1);
 }

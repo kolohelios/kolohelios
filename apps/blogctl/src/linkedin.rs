@@ -21,8 +21,10 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use calamine::{open_workbook_auto, Data, Reader};
+use serde::Deserialize;
+use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
-use time::Date;
+use time::{Date, OffsetDateTime};
 
 use crate::error::{Error, Result};
 
@@ -302,10 +304,197 @@ fn is_export(path: &Path) -> bool {
             .is_some_and(|name| name.starts_with("Content_"))
 }
 
+// ---- Public-HTML post extraction (`blogctl linkedin import`, #860) ----
+
+/// A post reconstructed from its public HTML — specifically the page's
+/// `SocialMediaPosting` JSON-LD. The body is `articleBody` (the full
+/// text; richer than the truncation-prone `og:description`), the slug
+/// source is `headline`, and the counts come from `interactionStatistic`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedPost {
+    pub headline: String,
+    pub body: String,
+    pub published_at: OffsetDateTime,
+    pub reactions: u64,
+    pub comments: u64,
+    pub reposts: u64,
+}
+
+const JSON_LD_OPEN: &str = "<script type=\"application/ld+json\">";
+const JSON_LD_CLOSE: &str = "</script>";
+
+/// Extract a [`FetchedPost`] from a LinkedIn post's public HTML by
+/// parsing its `SocialMediaPosting` JSON-LD. `url` is used only for error
+/// context (mirroring [`crate::post::Post::parse`] taking a path).
+pub fn extract_post(url: &str, html: &str) -> Result<FetchedPost> {
+    let posting = find_social_media_posting(html).ok_or_else(|| Error::LinkedinNoJsonLd {
+        url: url.to_string(),
+    })?;
+
+    let require = |field: &str, value: Option<String>| {
+        value.ok_or_else(|| Error::LinkedinPostField {
+            url: url.to_string(),
+            field: field.to_string(),
+        })
+    };
+    let headline = require("headline", posting.headline)?;
+    let body = require("articleBody", posting.article_body)?;
+    let date_str = require("datePublished", posting.date_published)?;
+    let published_at =
+        OffsetDateTime::parse(&date_str, &Rfc3339).map_err(|source| Error::LinkedinPostDate {
+            url: url.to_string(),
+            value: date_str,
+            source,
+        })?;
+
+    // Map interaction counters by their schema.org action, ignoring
+    // `FollowAction` (the author's follower count, not a post metric).
+    let mut reactions = 0;
+    let mut comments = posting.comment_count.unwrap_or(0);
+    let mut reposts = 0;
+    for counter in &posting.interaction_statistic {
+        match counter.interaction_type.rsplit('/').next() {
+            Some("LikeAction") => reactions = counter.user_interaction_count,
+            Some("CommentAction") => comments = counter.user_interaction_count,
+            Some("ShareAction") => reposts = counter.user_interaction_count,
+            _ => {}
+        }
+    }
+
+    Ok(FetchedPost {
+        headline,
+        body,
+        published_at,
+        reactions,
+        comments,
+        reposts,
+    })
+}
+
+#[derive(Deserialize)]
+struct SocialMediaPosting {
+    #[serde(rename = "articleBody")]
+    article_body: Option<String>,
+    headline: Option<String>,
+    #[serde(rename = "datePublished")]
+    date_published: Option<String>,
+    #[serde(rename = "commentCount")]
+    comment_count: Option<u64>,
+    #[serde(rename = "interactionStatistic", default)]
+    interaction_statistic: Vec<InteractionCounter>,
+}
+
+#[derive(Deserialize)]
+struct InteractionCounter {
+    #[serde(rename = "interactionType")]
+    interaction_type: String,
+    #[serde(rename = "userInteractionCount")]
+    user_interaction_count: u64,
+}
+
+/// Scan the page's `application/ld+json` script blocks and return the
+/// first `SocialMediaPosting` found (top-level, in an array, or under
+/// `@graph`). Malformed or unrelated blocks are skipped.
+fn find_social_media_posting(html: &str) -> Option<SocialMediaPosting> {
+    let mut rest = html;
+    while let Some(open) = rest.find(JSON_LD_OPEN) {
+        let after = &rest[open + JSON_LD_OPEN.len()..];
+        let close = after.find(JSON_LD_CLOSE)?;
+        let block = after[..close].trim();
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(block) {
+            if let Some(posting) = find_posting_value(&value) {
+                if let Ok(parsed) = serde_json::from_value::<SocialMediaPosting>(posting.clone()) {
+                    return Some(parsed);
+                }
+            }
+        }
+        rest = &after[close + JSON_LD_CLOSE.len()..];
+    }
+    None
+}
+
+fn find_posting_value(value: &serde_json::Value) -> Option<&serde_json::Value> {
+    match value {
+        serde_json::Value::Object(map) => {
+            if map.get("@type").and_then(serde_json::Value::as_str) == Some("SocialMediaPosting") {
+                Some(value)
+            } else {
+                map.get("@graph").and_then(find_posting_value)
+            }
+        }
+        serde_json::Value::Array(items) => items.iter().find_map(find_posting_value),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use time::macros::date;
+
+    fn html_with_jsonld(json: &str) -> String {
+        format!(
+            "<html><head><script type=\"application/ld+json\">{json}</script></head><body>x</body></html>"
+        )
+    }
+
+    #[test]
+    fn extract_post_pulls_fields_from_social_media_posting() {
+        let json = r#"{"@context":"https://schema.org","@type":"SocialMediaPosting","headline":"The Beaver and the Fox","articleBody":"The Beaver and the Fox\n\nIn a woodland community...","datePublished":"2026-05-02T20:41:44.431Z","commentCount":2,"interactionStatistic":[{"@type":"InteractionCounter","interactionType":"http://schema.org/FollowAction","userInteractionCount":3093},{"@type":"InteractionCounter","interactionType":"http://schema.org/LikeAction","userInteractionCount":7},{"@type":"InteractionCounter","interactionType":"https://schema.org/ShareAction","userInteractionCount":1}]}"#;
+        let post = extract_post("https://example/x", &html_with_jsonld(json)).unwrap();
+        assert_eq!(post.headline, "The Beaver and the Fox");
+        assert!(post.body.starts_with("The Beaver and the Fox"));
+        assert!(post.body.contains("woodland"));
+        assert_eq!(post.published_at.date(), date!(2026 - 05 - 02));
+        assert_eq!(
+            (post.published_at.hour(), post.published_at.minute()),
+            (20, 41)
+        );
+        assert_eq!(post.reactions, 7); // LikeAction
+        assert_eq!(post.comments, 2); // commentCount (no CommentAction counter)
+        assert_eq!(post.reposts, 1); // ShareAction
+                                     // FollowAction (3093) is the author's follower count, not a post metric.
+        assert_ne!(post.reactions, 3093);
+    }
+
+    #[test]
+    fn extract_post_defaults_reposts_without_share_action() {
+        let json = r#"{"@type":"SocialMediaPosting","headline":"H","articleBody":"B","datePublished":"2026-05-02T00:00:00Z","interactionStatistic":[{"interactionType":"http://schema.org/LikeAction","userInteractionCount":4},{"interactionType":"https://schema.org/CommentAction","userInteractionCount":2}]}"#;
+        let post = extract_post("u", &html_with_jsonld(json)).unwrap();
+        assert_eq!(post.reactions, 4);
+        assert_eq!(post.comments, 2);
+        assert_eq!(post.reposts, 0);
+    }
+
+    #[test]
+    fn extract_post_finds_posting_inside_graph_array() {
+        let json = r#"{"@context":"https://schema.org","@graph":[{"@type":"ImageObject"},{"@type":"SocialMediaPosting","headline":"H","articleBody":"B","datePublished":"2026-05-02T00:00:00Z"}]}"#;
+        let post = extract_post("u", &html_with_jsonld(json)).unwrap();
+        assert_eq!(post.headline, "H");
+    }
+
+    #[test]
+    fn extract_post_errors_without_json_ld() {
+        let err = extract_post("u", "<html><body>nothing here</body></html>").unwrap_err();
+        assert!(matches!(err, Error::LinkedinNoJsonLd { .. }));
+    }
+
+    #[test]
+    fn extract_post_errors_on_missing_article_body() {
+        let json = r#"{"@type":"SocialMediaPosting","headline":"H","datePublished":"2026-05-02T00:00:00Z"}"#;
+        let err = extract_post("u", &html_with_jsonld(json)).unwrap_err();
+        assert!(
+            matches!(err, Error::LinkedinPostField { ref field, .. } if field == "articleBody"),
+            "got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn extract_post_errors_on_unparsable_date() {
+        let json = r#"{"@type":"SocialMediaPosting","headline":"H","articleBody":"B","datePublished":"not-a-date"}"#;
+        let err = extract_post("u", &html_with_jsonld(json)).unwrap_err();
+        assert!(matches!(err, Error::LinkedinPostDate { .. }));
+    }
 
     #[test]
     fn activity_id_from_export_urn() {

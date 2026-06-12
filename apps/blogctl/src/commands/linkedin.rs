@@ -18,10 +18,15 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 
 use crate::error::{Error, Result};
+use crate::fetch::Fetcher;
+use crate::kind::Kind;
 use crate::linkedin::{self, activity_id, PostSnapshot};
+use crate::post::{Post, PostMetadata};
+use crate::slug::slugify;
+use crate::stage::Stage;
 use crate::storage::{PostHandle, Repository, Workdir};
 use crate::sync::{self, Jj, SyncOptions};
-use crate::target::{MetricSample, Target};
+use crate::target::{MetricSample, Target, TargetEntry, TargetMetrics, TargetStatus};
 
 /// Export directory relative to the workdir when `--xlsx-dir` is unset.
 const DEFAULT_XLSX_DIR: &str = "linkedin-exports";
@@ -32,21 +37,28 @@ pub struct ImportArgs {
     /// Directory of `Content_*.xlsx` exports. Defaults to
     /// `linkedin-exports/` under the workdir.
     pub xlsx_dir: Option<PathBuf>,
+    /// Skip the HTML fetch + post-creation step; only refresh metrics on
+    /// posts already in the workdir (the #859 behavior).
+    pub no_fetch: bool,
     pub dry_run: bool,
     pub no_sync: bool,
 }
 
-/// What an import run did: how many daily samples were newly recorded,
-/// how many were already present (idempotent skips), and which export
-/// URNs matched no post in the workdir.
+/// What an import run did.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ImportSummary {
+    /// Daily metric samples newly recorded on matched posts.
     pub added: usize,
+    /// Samples already present — idempotent skips.
     pub skipped: usize,
+    /// Slugs of `published/` posts newly created from fetched HTML.
+    pub created: Vec<String>,
+    /// Export URNs still without a post after this run: skipped via
+    /// `--no-fetch`, a failed fetch/extract, or a slug collision.
     pub unmatched: Vec<String>,
 }
 
-pub fn run(jj: &dyn Jj, args: ImportArgs) -> Result<ImportSummary> {
+pub fn run(jj: &dyn Jj, fetcher: &dyn Fetcher, args: ImportArgs) -> Result<ImportSummary> {
     let xlsx_dir = args
         .xlsx_dir
         .unwrap_or_else(|| args.workdir.join(DEFAULT_XLSX_DIR));
@@ -56,9 +68,10 @@ pub fn run(jj: &dyn Jj, args: ImportArgs) -> Result<ImportSummary> {
     let handles = repo.list()?;
     let (matched, unmatched) = match_snapshots(&handles, &snapshots);
 
+    // Phase 1: refresh metrics on posts already in the workdir.
     let mut added = 0usize;
     let mut skipped = 0usize;
-    let mut writes: Vec<(PathBuf, String)> = Vec::new();
+    let mut metrics_writes: Vec<(PathBuf, String)> = Vec::new();
     for (slug, samples) in &matched {
         let (handle, mut post) = repo.load_raw(slug)?;
         let Some(idx) = post
@@ -80,33 +93,146 @@ pub fn run(jj: &dyn Jj, args: ImportArgs) -> Result<ImportSummary> {
         }
         if changed && !args.dry_run {
             post.metadata.updated_at = OffsetDateTime::now_utc();
-            let rendered = post.render()?;
-            writes.push((handle.path.clone(), rendered));
+            metrics_writes.push((handle.path.clone(), post.render()?));
         }
     }
+
+    // Phase 2: for unmatched URNs, fetch the public HTML and build a
+    // `published/` stub — unless `--no-fetch`.
+    let by_urn = group_snapshots_by_urn(&snapshots);
+    let theme = repo.read_config()?.defaults.theme;
+    let mut taken_slugs: BTreeSet<String> =
+        handles.iter().map(|h| h.metadata.slug.clone()).collect();
+    let mut new_posts: Vec<Post> = Vec::new();
+    let mut created: Vec<String> = Vec::new();
+    let mut still_unmatched: Vec<String> = Vec::new();
+
+    for urn in unmatched {
+        if args.no_fetch {
+            still_unmatched.push(urn);
+            continue;
+        }
+        let snaps = &by_urn[&urn];
+        match build_stub(fetcher, snaps, &theme, &taken_slugs) {
+            Ok(post) => {
+                taken_slugs.insert(post.metadata.slug.clone());
+                created.push(post.metadata.slug.clone());
+                new_posts.push(post);
+            }
+            Err(_) => still_unmatched.push(urn),
+        }
+    }
+    still_unmatched.sort();
 
     let summary = ImportSummary {
         added,
         skipped,
-        unmatched: unmatched.into_iter().collect(),
+        created,
+        unmatched: still_unmatched,
     };
     print_summary(&summary, args.dry_run);
 
-    if !args.dry_run && !writes.is_empty() {
+    if !args.dry_run && (!metrics_writes.is_empty() || !new_posts.is_empty()) {
         let config = repo.read_config()?;
         let opts = SyncOptions::from_config(&config.sync, args.no_sync);
-        let post_count = writes.len();
-        let message =
-            format!("chore: linkedin metrics — {added} sample(s) across {post_count} post(s)");
+        let message = format!(
+            "chore: linkedin import — {added} sample(s), {} post(s) created",
+            new_posts.len(),
+        );
         sync::commit_and_push(jj, &args.workdir, &opts, &message, || {
-            for (path, rendered) in &writes {
+            for (path, rendered) in &metrics_writes {
                 fs::write(path, rendered).map_err(|e| Error::io(path, e))?;
+            }
+            for post in &new_posts {
+                repo.create_post(post)?;
             }
             Ok(())
         })?;
     }
 
     Ok(summary)
+}
+
+/// Group every snapshot by its full activity URN.
+fn group_snapshots_by_urn(snapshots: &[PostSnapshot]) -> HashMap<String, Vec<&PostSnapshot>> {
+    let mut by_urn: HashMap<String, Vec<&PostSnapshot>> = HashMap::new();
+    for snap in snapshots {
+        by_urn.entry(snap.urn.clone()).or_default().push(snap);
+    }
+    by_urn
+}
+
+/// Fetch one unmatched URN's public HTML and assemble a `published/`
+/// post: body + headline + publish date from the JSON-LD, impressions
+/// from the latest export snapshot, the full export series as samples,
+/// and reactions/comments/reposts from the HTML. Returns an error (which
+/// the caller folds into "still unmatched") on fetch/extract failure or
+/// a slug collision with an existing post.
+fn build_stub(
+    fetcher: &dyn Fetcher,
+    snaps: &[&PostSnapshot],
+    theme: &str,
+    taken_slugs: &BTreeSet<String>,
+) -> Result<Post> {
+    // The post URL is identical across a URN's snapshots.
+    let url = snaps[0].url.clone();
+    let html = fetcher.get(&url)?;
+    let fetched = linkedin::extract_post(&url, &html)?;
+
+    let slug = slugify(&fetched.headline)?;
+    if taken_slugs.contains(&slug) {
+        return Err(Error::DuplicateSlug {
+            slug,
+            paths: "a post already uses this slug".to_string(),
+        });
+    }
+
+    let impressions = snaps
+        .iter()
+        .max_by_key(|s| s.snapshot_date)
+        .and_then(|s| s.impressions)
+        .unwrap_or(0);
+    let mut samples: Vec<MetricSample> = snaps
+        .iter()
+        .map(|s| MetricSample {
+            date: s.snapshot_date,
+            impressions: s.impressions,
+            engagements: s.engagements,
+        })
+        .collect();
+    samples.sort_by_key(|s| s.date);
+    samples.dedup_by_key(|s| s.date);
+
+    let metrics = TargetMetrics {
+        impressions,
+        reactions: fetched.reactions,
+        comments: fetched.comments,
+        reposts: fetched.reposts,
+        sampled_at: OffsetDateTime::now_utc(),
+    };
+    let metadata = PostMetadata {
+        title: fetched.headline,
+        slug,
+        kind: Kind::Post,
+        theme: theme.to_string(),
+        status: Stage::Published,
+        created_at: fetched.published_at,
+        updated_at: fetched.published_at,
+        tags: vec![],
+        todoist_task_id: None,
+        history_checked: false,
+        targets: vec![TargetEntry {
+            name: Target::Linkedin,
+            status: TargetStatus::Published,
+            url: Some(url),
+            published_at: Some(fetched.published_at),
+            metrics: Some(metrics),
+            samples,
+        }],
+        classifications: Default::default(),
+        ai: None,
+    };
+    Ok(Post::new(metadata, fetched.body))
 }
 
 /// Match parsed snapshots to posts by activity id. Returns the daily
@@ -152,13 +278,20 @@ fn match_snapshots(
 fn print_summary(summary: &ImportSummary, dry_run: bool) {
     let tag = if dry_run { " [dry-run]" } else { "" };
     println!(
-        "linkedin import: {} sample(s) added, {} already present, {} unmatched URN(s){tag}",
+        "linkedin import: {} sample(s) added, {} already present, {} post(s) created, {} unmatched URN(s){tag}",
         summary.added,
         summary.skipped,
+        summary.created.len(),
         summary.unmatched.len(),
     );
+    if !summary.created.is_empty() {
+        println!("  created posts:");
+        for slug in &summary.created {
+            println!("    {slug}");
+        }
+    }
     if !summary.unmatched.is_empty() {
-        println!("  unmatched URNs (no post in the workdir):");
+        println!("  unmatched URNs (no post created):");
         for urn in &summary.unmatched {
             println!("    {urn}");
         }
