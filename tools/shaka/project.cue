@@ -39,8 +39,6 @@ package project
 			// for linting embedded `run:` scripts.
 			"actionlint",
 			"shellcheck",
-			// awscli2 powers `shaka object-store ns audit`.
-			"awscli2",
 			// opentofu is needed by `shaka terraform emit` and the
 			// integration tests under `tests/terraform_emit.rs`.
 			"opentofu",

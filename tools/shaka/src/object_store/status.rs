@@ -76,7 +76,7 @@ fn registry_section(bucket: &str, cluster: &str) {
     println!("{BOLD}drift{RESET}");
     if !s3::aws_available() {
         println!(
-            "  {YELLOW}skipped{RESET}  {DIM}aws CLI not on PATH (enter shaka's devshell){RESET}"
+            "  {YELLOW}skipped{RESET}  {DIM}aws CLI not on PATH (run `nix shell nixpkgs#awscli2`){RESET}"
         );
         return;
     }
