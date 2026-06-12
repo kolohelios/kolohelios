@@ -39,8 +39,10 @@
 
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.stable."1.95.0".default.override {
+        pkgs.rust-bin.stable."1.95.0".minimal.override {
           extensions = [
+            "clippy"
+            "rustfmt"
             "rust-src"
             "rust-analyzer"
             "llvm-tools-preview"

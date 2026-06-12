@@ -340,8 +340,10 @@ const RUST_LIB_OUTPUT_HEADER: &str = r#"    {
 
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.stable."1.95.0".default.override {
+        pkgs.rust-bin.stable."1.95.0".minimal.override {
           extensions = [
+            "clippy"
+            "rustfmt"
             "rust-src"
             "rust-analyzer"
             "llvm-tools-preview"
@@ -457,8 +459,10 @@ const OUTPUT_HEADER: &str = r#"    {
 
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.stable."1.95.0".default.override {
+        pkgs.rust-bin.stable."1.95.0".minimal.override {
           extensions = [
+            "clippy"
+            "rustfmt"
             "rust-src"
             "rust-analyzer"
             "llvm-tools-preview"
@@ -665,8 +669,10 @@ const WORKER_OUTPUT_HEADER: &str = r#"    {
 
       rustToolchain =
         pkgs:
-        pkgs.rust-bin.stable."1.95.0".default.override {
+        pkgs.rust-bin.stable."1.95.0".minimal.override {
           extensions = [
+            "clippy"
+            "rustfmt"
             "rust-src"
             "rust-analyzer"
             "llvm-tools-preview"

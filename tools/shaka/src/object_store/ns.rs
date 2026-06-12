@@ -97,7 +97,8 @@ enum AuditBucketResult {
 fn audit_bucket(entries: &[registry::Entry], bucket: &str, cluster: &str) -> AuditBucketResult {
     if !s3::aws_available() {
         return AuditBucketResult::Skipped(
-            "aws CLI not on PATH (enter shaka's devshell to run the bucket-side audit)".into(),
+            "aws CLI not on PATH (run `nix shell nixpkgs#awscli2` for the bucket-side audit)"
+                .into(),
         );
     }
     if !s3::creds_present() {
