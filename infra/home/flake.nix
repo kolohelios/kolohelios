@@ -19,6 +19,11 @@
       url = "github:LnL7/nix-darwin/nix-darwin-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    shaka = {
+      url = "https://flakehub.com/f/kolohelios/shaka/*.tar.gz";
+      inputs.kolohelios-nix.follows = "kolohelios-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -29,6 +34,7 @@
       claude-hooks,
       home-manager,
       nix-darwin,
+      shaka,
       ...
     }:
     let
@@ -46,7 +52,7 @@
 
       darwinConfigurations.Jons-MacBook-Pro = nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
-        specialArgs = { inherit claude-hooks kolohelios-nix; };
+        specialArgs = { inherit claude-hooks kolohelios-nix shaka; };
         modules = [
           home-manager.darwinModules.home-manager
           ./modules/darwin.nix
@@ -63,7 +69,7 @@
           home-manager.nixosModules.home-manager
           ./modules/linux.nix
         ];
-        _module.args = { inherit claude-hooks kolohelios-nix; };
+        _module.args = { inherit claude-hooks kolohelios-nix shaka; };
       };
 
       formatter = kolohelios-nix.formatter;

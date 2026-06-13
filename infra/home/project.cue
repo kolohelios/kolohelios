@@ -25,11 +25,22 @@ package project
 					"nixpkgs":        "nixpkgs"
 				}
 			}
+			// The real `shaka` CLI, consumed from FlakeHub so it can be
+			// put on PATH globally (modules/common.nix). Without it, the
+			// shim-only install resolved `shaka` only inside a kolohelios
+			// checkout; `/start` / `/ship` failed in external repos.
+			"shaka": {
+				url: "https://flakehub.com/f/kolohelios/shaka/*.tar.gz"
+				follows: {
+					"kolohelios-nix": "kolohelios-nix"
+					"nixpkgs":        "nixpkgs"
+				}
+			}
 		}
 		extra: """
       darwinConfigurations.Jons-MacBook-Pro = nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
-        specialArgs = { inherit claude-hooks kolohelios-nix; };
+        specialArgs = { inherit claude-hooks kolohelios-nix shaka; };
         modules = [
           home-manager.darwinModules.home-manager
           ./modules/darwin.nix
@@ -46,7 +57,7 @@ package project
           home-manager.nixosModules.home-manager
           ./modules/linux.nix
         ];
-        _module.args = { inherit claude-hooks kolohelios-nix; };
+        _module.args = { inherit claude-hooks kolohelios-nix shaka; };
       };
 """
 	}
