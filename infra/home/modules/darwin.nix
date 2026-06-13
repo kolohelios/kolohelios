@@ -1,6 +1,7 @@
 {
   claude-hooks,
   kolohelios-nix,
+  shaka,
   ...
 }:
 
@@ -32,7 +33,7 @@
 
   home-manager.useGlobalPkgs = true;
   home-manager.useUserPackages = true;
-  home-manager.extraSpecialArgs = { inherit claude-hooks kolohelios-nix; };
+  home-manager.extraSpecialArgs = { inherit claude-hooks kolohelios-nix shaka; };
   home-manager.users.jedwards = import ./common.nix;
 
   # First-switch activation will encounter pre-existing dotfiles

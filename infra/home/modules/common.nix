@@ -5,9 +5,35 @@
 {
   pkgs,
   claude-hooks,
-  kolohelios-nix,
+  shaka,
   ...
 }:
+
+let
+  # Global `shaka`. Prefers an in-checkout `tools/shaka/bin/shaka` when cwd
+  # is inside a kolohelios checkout (so hacking on shaka itself runs the
+  # local build), and otherwise execs the real FlakeHub `shaka`. This
+  # supersedes the bare `kolohelios-nix.lib.shakaShim`: the shim's only
+  # fallback was a PATH-scan for some *other* shaka, and nothing ever
+  # installed one globally — so outside a kolohelios checkout (e.g. the
+  # buzzingo repo) it exited non-zero and `/start` / `/ship` died with
+  # "no tools/shaka/bin/shaka found ... no other shaka on PATH". Pinning
+  # the FlakeHub package as the fallback makes `shaka` resolve everywhere.
+  shakaGlobal = pkgs.writeShellApplication {
+    name = "shaka";
+    text = ''
+      dir="$PWD"
+      while [[ "$dir" != "/" ]]; do
+        wrapper="$dir/tools/shaka/bin/shaka"
+        if [[ -x "$wrapper" ]]; then
+          exec "$wrapper" "$@"
+        fi
+        dir="$(dirname "$dir")"
+      done
+      exec ${shaka.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/shaka "$@"
+    '';
+  };
+in
 
 {
   home.stateVersion = "25.05";
@@ -35,14 +61,12 @@
     # globally lets the hook fire in any working directory, not just
     # inside the kolohelios checkout.
     claude-hooks.packages.${pkgs.stdenv.hostPlatform.system}.default
-    # `shaka` PATH shim from the shared lib. Same rationale as
-    # `claude-hooks` above: on PATH globally it resolves `shaka` in any
-    # bare shell (login shell, non-direnv terminal, agent harness)
-    # whenever `cwd` is inside the kolohelios checkout — not only inside
-    # a project devshell. The shim walks up from `cwd` to the canonical
-    # `tools/shaka/bin/shaka` wrapper; outside a checkout it's a no-op
-    # that exits non-zero, so installing it globally is safe (#755).
-    (kolohelios-nix.lib.shakaShim pkgs)
+    # `shaka` on PATH globally. Same rationale as `claude-hooks` above:
+    # available in any bare shell (login shell, non-direnv terminal, agent
+    # harness), not only inside a project devshell (#755). Inside a
+    # kolohelios checkout it runs the in-tree build; everywhere else it
+    # execs the FlakeHub package (see `shakaGlobal` above).
+    shakaGlobal
   ];
 
   programs.git = {

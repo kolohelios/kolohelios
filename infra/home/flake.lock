@@ -105,7 +105,8 @@
         "nixpkgs": [
           "kolohelios-nix",
           "nixpkgs"
-        ]
+        ],
+        "shaka": "shaka"
       }
     },
     "rust-overlay": {
@@ -127,6 +128,50 @@
         "owner": "oxalica",
         "repo": "rust-overlay",
         "type": "github"
+      }
+    },
+    "rust-overlay_2": {
+      "inputs": {
+        "nixpkgs": [
+          "shaka",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1777432579,
+        "narHash": "sha256-Ce11TStDsqCge2vAAfLKe2+4lDI5cSX5ZYZOuKJBKKQ=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "3ecb5e6ab380ced3272ef7fcfe398bffbcc0f152",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "shaka": {
+      "inputs": {
+        "kolohelios-nix": [
+          "kolohelios-nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay_2"
+      },
+      "locked": {
+        "lastModified": 1781375380,
+        "narHash": "sha256-ULmyOum/yVqsFFw6YiFDiODbtyQ/fHGldPzW8Bk3eJE=",
+        "rev": "506ef072b14701869d0e554f5cbc13588ba5d0af",
+        "revCount": 592,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/shaka/0.1.592%2Brev-506ef072b14701869d0e554f5cbc13588ba5d0af/019ec243-2208-7c82-8571-cc969a015737/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/kolohelios/shaka/%2A.tar.gz"
       }
     }
   },
