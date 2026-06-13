@@ -70,6 +70,38 @@ fn schema_check_passes_without_a_domain_registry() {
 }
 
 #[test]
+fn generate_flakes_emits_shaka_consumer_knobs_for_external_repo() {
+    // The buzzingo fixture sets `consumesShaka`, so the generated flake
+    // must pull the FlakeHub `shaka` and PATH-prepend it ahead of the
+    // `workflowPackages` shim — without that, `shaka <cmd>` dies in a
+    // repo with no `tools/shaka/bin/shaka` to walk up to (#831).
+    let repo = staged_repo();
+    let gen = run(repo.path(), &["project", "generate-flakes"]);
+    assert!(
+        gen.status.success(),
+        "generate-flakes failed for a domain-free repo: {}",
+        String::from_utf8_lossy(&gen.stderr)
+    );
+    let flake = repo.path().join("apps/buzzingo/flake.nix");
+    let body = std::fs::read_to_string(&flake).expect("apps/buzzingo/flake.nix written");
+    assert!(
+        body.contains("https://flakehub.com/f/kolohelios/shaka/*.tar.gz"),
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"export PATH="${shaka.packages.${system}.default}/bin:$PATH""#),
+        "{body}"
+    );
+    // ...and `--check` agrees byte-for-byte right after generating.
+    let check = run(repo.path(), &["project", "generate-flakes", "--check"]);
+    assert!(
+        check.status.success(),
+        "--check drifted right after generate: {}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
+#[test]
 fn generate_workflows_round_trips_without_a_domain_registry() {
     let repo = staged_repo();
     // First emit the deploy/cleanup workflows from the ci.deploy block...

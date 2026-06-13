@@ -356,6 +356,18 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// `tailwindcss` + `cue` for its build path; `pollen-alert`
 		// needs none.
 		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
+
+		// Pull a FlakeHub-built `shaka` into the devShell and
+		// PATH-prepend it ahead of the `workflowPackages` shim. Only
+		// external consumers (repos with no kolohelios checkout) need
+		// this: the shim resolves `shaka` by walking up to
+		// `tools/shaka/bin/shaka`, which doesn't exist outside the
+		// monorepo, so it dies at runtime (`shaka ci mask-and-run`,
+		// any local `shaka <cmd>`). When true, `generate-flakes` adds
+		// the `shaka` FlakeHub input and a shellHook that puts the real
+		// binary on PATH first. Leave default-false for in-repo workers,
+		// where the shim finds the monorepo binary.
+		consumesShaka: *false | bool
 	}
 } | {
 	// Rust library crate shared across consumers — compiled natively

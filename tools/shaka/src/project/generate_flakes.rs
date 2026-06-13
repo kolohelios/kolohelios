@@ -144,6 +144,14 @@ struct WorkerMeta {
     description: Option<String>,
     #[serde(default)]
     extra_dev_shell_packages: Vec<String>,
+    /// External consumers (no kolohelios checkout) need a real `shaka`
+    /// on PATH ahead of the `workflowPackages` shim, which can't resolve
+    /// `tools/shaka/bin/shaka` outside the monorepo. When set, the flake
+    /// gains the `shaka` FlakeHub input and a PATH-prepend in the
+    /// `shellHook`. Default-false: in-repo workers let the shim find the
+    /// monorepo binary.
+    #[serde(default)]
+    consumes_shaka: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -624,19 +632,57 @@ fn render_devshell(cli: &CliMeta) -> String {
 /// nixpkgs-pinned `worker-build`, plus `pkg-config` and `openssl` for
 /// the wasm-bindgen / wasm-opt downloads `worker-build` runs), the
 /// `~/.cargo/bin` PATH `shellHook`, and any `extra_dev_shell_packages`.
+///
+/// When `consumes_shaka` is set the flake also pulls a FlakeHub-built
+/// `shaka` into the devShell and PATH-prepends it ahead of the
+/// `workflowPackages` shim — see `render_worker_inputs` /
+/// `render_worker_devshell` for why external consumers need it.
 fn render_worker_flake(name: &str, worker: &WorkerMeta) -> String {
     let description = worker.description.as_deref().unwrap_or(name);
     let mut out = String::with_capacity(2048);
     out.push_str(HEADER);
     out.push_str(&format!("{{\n  description = \"{description}\";\n\n"));
-    out.push_str(INPUTS);
+    out.push_str(&render_worker_inputs(worker.consumes_shaka));
     out.push_str("\n  outputs =\n");
-    out.push_str(WORKER_OUTPUT_HEADER);
+    out.push_str(&render_worker_output_header(worker.consumes_shaka));
     out.push_str("    in\n    {\n");
-    out.push_str(&render_worker_devshell(&worker.extra_dev_shell_packages));
+    out.push_str(&render_worker_devshell(
+        &worker.extra_dev_shell_packages,
+        worker.consumes_shaka,
+    ));
     out.push_str("\n      formatter = kolohelios-nix.formatter;\n    };\n");
     out.push_str("}\n");
     out
+}
+
+/// Inputs for a worker flake. Default is the shared rust `INPUTS`
+/// (kolohelios-nix + nixpkgs + rust-overlay). With `consumes_shaka`,
+/// splice a `shaka` FlakeHub input in before the closing brace, pinned
+/// to follow this flake's `kolohelios-nix` so its nixpkgs/rust-overlay
+/// closure dedups against ours in `flake.lock`.
+fn render_worker_inputs(consumes_shaka: bool) -> String {
+    if !consumes_shaka {
+        return INPUTS.to_string();
+    }
+    let base = INPUTS
+        .strip_suffix("  };\n")
+        .expect("INPUTS ends with a closing brace line");
+    format!(
+        "{base}    shaka = {{\n      url = \"https://flakehub.com/f/kolohelios/shaka/*.tar.gz\";\n      inputs.kolohelios-nix.follows = \"kolohelios-nix\";\n    }};\n  }};\n"
+    )
+}
+
+/// `outputs` header for a worker flake. With `consumes_shaka`, add
+/// `shaka` to the destructured inputs so the devShell `shellHook` can
+/// reference `shaka.packages.${system}.default`.
+fn render_worker_output_header(consumes_shaka: bool) -> String {
+    if !consumes_shaka {
+        return WORKER_OUTPUT_HEADER.to_string();
+    }
+    WORKER_OUTPUT_HEADER.replace(
+        "      rust-overlay,\n",
+        "      rust-overlay,\n      shaka,\n",
+    )
 }
 
 /// Like `OUTPUT_HEADER` but tailored for workers: the toolchain gains
@@ -689,10 +735,21 @@ const WORKER_OUTPUT_HEADER: &str = r#"    {
 /// nix's toolchain). `worker-build` is pinned via nixpkgs rather than
 /// `cargo install`ed at runtime so its wasm-bindgen minimum can't drift by
 /// runner cache (#864).
-fn render_worker_devshell(extra_dev_shell_packages: &[String]) -> String {
+///
+/// With `consumes_shaka`, the devShell function destructures `system`
+/// (needed to index `shaka.packages.${system}`) and the `shellHook`
+/// PATH-prepends the FlakeHub `shaka` binary ahead of the
+/// `workflowPackages` shim, which can't resolve a `shaka` outside the
+/// monorepo. The prepend lands before the `~/.cargo/bin` append so the
+/// real binary wins.
+fn render_worker_devshell(extra_dev_shell_packages: &[String], consumes_shaka: bool) -> String {
     let mut out = String::new();
     out.push_str("      devShells = forEachSupportedSystem (\n");
-    out.push_str("        { pkgs, ... }:\n");
+    if consumes_shaka {
+        out.push_str("        { pkgs, system, ... }:\n");
+    } else {
+        out.push_str("        { pkgs, ... }:\n");
+    }
     out.push_str("        {\n");
     out.push_str("          default = pkgs.mkShell {\n");
     out.push_str("            packages = [\n");
@@ -710,6 +767,11 @@ fn render_worker_devshell(extra_dev_shell_packages: &[String]) -> String {
         "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
     );
     out.push_str("\n            shellHook = ''\n");
+    if consumes_shaka {
+        out.push_str(
+            "              export PATH=\"${shaka.packages.${system}.default}/bin:$PATH\"\n",
+        );
+    }
     out.push_str("              export PATH=\"$PATH:$HOME/.cargo/bin\"\n");
     out.push_str("            '';\n");
     out.push_str("          };\n        }\n      );\n");
@@ -1182,6 +1244,59 @@ mod tests {
     fn worker_flake_carries_formatter() {
         let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
         assert!(out.contains("formatter = kolohelios-nix.formatter;"));
+    }
+
+    #[test]
+    fn worker_without_consumes_shaka_omits_shaka_input_and_path() {
+        // Default-false: in-repo workers rely on the workflowPackages
+        // shim to resolve the monorepo binary, so nothing shaka-specific
+        // is emitted.
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(!out.contains("flakehub.com/f/kolohelios/shaka"));
+        assert!(!out.contains("shaka.packages"));
+        assert!(!out.contains("system, ... }:"));
+    }
+
+    #[test]
+    fn worker_consumes_shaka_adds_flakehub_input() {
+        let worker = WorkerMeta {
+            consumes_shaka: true,
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("buzzingo", &worker);
+        assert!(out.contains(r#"url = "https://flakehub.com/f/kolohelios/shaka/*.tar.gz";"#));
+        // Follows our kolohelios-nix so the closure dedups in flake.lock.
+        assert!(out.contains(r#"inputs.kolohelios-nix.follows = "kolohelios-nix";"#));
+        // The standard base inputs survive the splice.
+        assert!(out.contains(r#"nixpkgs.follows = "kolohelios-nix/nixpkgs";"#));
+    }
+
+    #[test]
+    fn worker_consumes_shaka_adds_input_to_outputs_destructure() {
+        let worker = WorkerMeta {
+            consumes_shaka: true,
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("buzzingo", &worker);
+        // `shaka` must be destructured for the shellHook to reference it,
+        // and `system` for the per-system package index.
+        assert!(out.contains("      shaka,\n"));
+        assert!(out.contains("{ pkgs, system, ... }:"));
+    }
+
+    #[test]
+    fn worker_consumes_shaka_prepends_shaka_ahead_of_cargo_bin() {
+        let worker = WorkerMeta {
+            consumes_shaka: true,
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("buzzingo", &worker);
+        let shaka_path = out.find(r#"export PATH="${shaka.packages.${system}.default}/bin:$PATH""#);
+        let cargo_path = out.find(r#"export PATH="$PATH:$HOME/.cargo/bin""#);
+        let shaka_pos = shaka_path.expect("shaka PATH prepend present");
+        let cargo_pos = cargo_path.expect("cargo bin PATH append present");
+        // The real shaka must win over the shim, so it lands first.
+        assert!(shaka_pos < cargo_pos);
     }
 
     #[test]
