@@ -5,11 +5,15 @@ package project
 // ships no `infra/cloudflare-dns/domains` registry. It reuses this
 // repo's `cf-deploy.yml` cross-repo (#868) with a wrangler environment
 // for its prod-only route (#869). Validating it must not require a
-// vendored domain registry (#863).
+// vendored domain registry (#863). As an external consumer it sets
+// `consumesShaka` so the generated flake PATH-prepends a FlakeHub
+// `shaka` ahead of the `workflowPackages` shim (#831).
 #Project & {
 	name: "buzzingo"
 	kind: "rust-worker"
-	worker: {}
+	worker: {
+		consumesShaka: true
+	}
 	ci: {
 		deploy: {
 			reusableWorkflow:    "kolohelios/kolohelios/.github/workflows/cf-deploy.yml@main"
