@@ -57,12 +57,12 @@
           default = pkgs.mkShell {
             packages = [
               (rustToolchain pkgs)
-              pkgs.wrangler
               pkgs.worker-build
               pkgs.pkg-config
               pkgs.openssl
             ]
             ++ (workflowPackages pkgs)
+            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.wrangler
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
 
             shellHook = ''

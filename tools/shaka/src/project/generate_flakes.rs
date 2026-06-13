@@ -728,13 +728,22 @@ const WORKER_OUTPUT_HEADER: &str = r#"    {
 "#;
 
 /// Devshell block for worker flakes. Fixed base — the worker toolchain,
-/// `wrangler`, `worker-build`, `pkg-config`, `openssl` — then any
+/// `worker-build`, `pkg-config`, `openssl` — then any
 /// `extra_dev_shell_packages`, then `workflowPackages` and the Linux-only
-/// `cargo-llvm-cov`, closing with the `~/.cargo/bin` PATH `shellHook`
-/// (appended, not prepended, so a runner's rustup `cargo` doesn't shadow
-/// nix's toolchain). `worker-build` is pinned via nixpkgs rather than
-/// `cargo install`ed at runtime so its wasm-bindgen minimum can't drift by
-/// runner cache (#864).
+/// `wrangler` and `cargo-llvm-cov`, closing with the `~/.cargo/bin` PATH
+/// `shellHook` (appended, not prepended, so a runner's rustup `cargo`
+/// doesn't shadow nix's toolchain). `worker-build` is pinned via nixpkgs
+/// rather than `cargo install`ed at runtime so its wasm-bindgen minimum
+/// can't drift by runner cache (#864).
+///
+/// `wrangler` is gated to Linux (`lib.optional isLinux`) because its
+/// nixpkgs derivation has no darwin binary substitute and source-builds
+/// deterministically fail on darwin (EBADF in tsup's DTS step), which
+/// would gate the whole shell — `shaka`/`cargo`/`worker-build` never reach
+/// PATH. It's only needed at deploy time, and `cf-deploy.yml` runs on
+/// `ubuntu-latest` via `nix develop . --command`, so it must stay in the
+/// **default** shell on Linux (a separate deploy shell breaks CI verify).
+/// See #877.
 ///
 /// With `consumes_shaka`, the devShell function destructures `system`
 /// (needed to index `shaka.packages.${system}`) and the `shellHook`
@@ -754,7 +763,6 @@ fn render_worker_devshell(extra_dev_shell_packages: &[String], consumes_shaka: b
     out.push_str("          default = pkgs.mkShell {\n");
     out.push_str("            packages = [\n");
     out.push_str("              (rustToolchain pkgs)\n");
-    out.push_str("              pkgs.wrangler\n");
     out.push_str("              pkgs.worker-build\n");
     out.push_str("              pkgs.pkg-config\n");
     out.push_str("              pkgs.openssl\n");
@@ -763,6 +771,9 @@ fn render_worker_devshell(extra_dev_shell_packages: &[String], consumes_shaka: b
     }
     out.push_str("            ]\n");
     out.push_str("            ++ (workflowPackages pkgs)\n");
+    out.push_str(
+        "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.wrangler\n",
+    );
     out.push_str(
         "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
     );
@@ -1227,6 +1238,18 @@ mod tests {
         assert!(out.contains("pkgs.pkg-config"));
         assert!(out.contains("pkgs.openssl"));
         assert!(out.contains(r#"export PATH="$PATH:$HOME/.cargo/bin""#));
+    }
+
+    #[test]
+    fn worker_wrangler_is_linux_gated() {
+        // wrangler source-builds (and deterministically fails) on darwin,
+        // which would gate the whole shell. It's gated to Linux so darwin
+        // shells enter, while cf-deploy.yml (ubuntu) still gets it from the
+        // default shell. See #877.
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.contains("++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.wrangler"));
+        // Not in the unconditional package list.
+        assert!(!out.contains("              pkgs.wrangler\n"));
     }
 
     #[test]
