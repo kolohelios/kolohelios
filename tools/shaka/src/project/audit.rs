@@ -132,6 +132,7 @@ struct RustLicenseDual;
 struct RustVersionPinned;
 struct RustCargoRequiredFields;
 struct RustClippyLintsDeclared;
+struct RustUnwrapDenied;
 struct LicensePresent;
 struct KoloheliosNixViaFlakehub;
 struct KoloheliosHomeViaFlakehub;
@@ -374,6 +375,51 @@ impl Rule for RustClippyLintsDeclared {
 // project rather than duplicated per project — the lightweight solo-dev
 // choice. A project passes if it has its own LICENSE file or inherits one
 // from an ancestor up to the repo root.
+// Non-test code must not call `.unwrap()`. Enforcement is a crate-root
+// `#![cfg_attr(not(test), deny(clippy::unwrap_used))]` attribute rather than a
+// `[lints.clippy]` table entry: the table applies the lint to *all* cargo
+// targets, which would also fire on the `.unwrap()` calls that pepper unit
+// tests and integration-test helpers (`allow-unwrap-in-tests` only exempts
+// `#[test]`/`#[cfg(test)]` contexts, not plain helper fns living in a `tests/`
+// crate). The `not(test)` cfg-gate scopes the deny to the normal build,
+// leaving every flavor of test code untouched. The attribute must live in
+// each crate root that exists (`src/main.rs` and/or `src/lib.rs`): a bin and
+// a lib compile as separate crates and don't share crate-level attributes.
+impl Rule for RustUnwrapDenied {
+    fn name(&self) -> &'static str {
+        "rust-unwrap-denied"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind.is_rust_flavored()
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let roots: Vec<&str> = ["src/main.rs", "src/lib.rs"]
+            .into_iter()
+            .filter(|r| project_dir.join(r).is_file())
+            .collect();
+        if roots.is_empty() {
+            return RuleResult::Fail(
+                "no crate root (src/main.rs or src/lib.rs) to carry the unwrap-deny attribute"
+                    .into(),
+            );
+        }
+        for root in roots {
+            let path = project_dir.join(root);
+            let Ok(contents) = std::fs::read_to_string(&path) else {
+                return RuleResult::Fail(format!("could not read {}", path.display()));
+            };
+            if !has_unwrap_deny_attr(&contents) {
+                return RuleResult::Fail(format!(
+                    "{root} must deny `unwrap()` in non-test code: add \
+                     `#![cfg_attr(not(test), deny(clippy::unwrap_used))]` at the crate root ({})",
+                    path.display()
+                ));
+            }
+        }
+        RuleResult::Pass
+    }
+}
+
 impl Rule for LicensePresent {
     fn name(&self) -> &'static str {
         "license-present"
@@ -578,6 +624,21 @@ fn cargo_package_field(contents: &str, key: &str) -> Option<String> {
 // example `[lints.clippy]`) on its own line, tolerating leading indentation
 // and a trailing comment. Commented-out headers and sub-tables
 // (`[lints.clippy.foo]`) don't match.
+// True if `contents` carries a crate-root inner attribute that denies (or
+// forbids) `clippy::unwrap_used` outside test builds. Whitespace is stripped
+// before matching so rustfmt spacing variants compare equal; comment lines are
+// skipped so a commented-out attribute doesn't satisfy the rule.
+fn has_unwrap_deny_attr(contents: &str) -> bool {
+    contents.lines().any(|line| {
+        if line.trim_start().starts_with("//") {
+            return false;
+        }
+        let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        compact.contains("#![cfg_attr(not(test),deny(clippy::unwrap_used))]")
+            || compact.contains("#![cfg_attr(not(test),forbid(clippy::unwrap_used))]")
+    })
+}
+
 fn cargo_has_table(contents: &str, header: &str) -> bool {
     contents.lines().any(|line| {
         let Some(rest) = line.trim_start().strip_prefix(header) else {
@@ -703,6 +764,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(RustVersionPinned),
         Box::new(RustCargoRequiredFields),
         Box::new(RustClippyLintsDeclared),
+        Box::new(RustUnwrapDenied),
         Box::new(LicensePresent),
         Box::new(KoloheliosNixViaFlakehub),
         Box::new(KoloheliosHomeViaFlakehub),
@@ -1858,6 +1920,88 @@ mod tests {
     #[test]
     fn rust_clippy_lints_declared_does_not_apply_to_non_rust() {
         assert!(!RustClippyLintsDeclared.applies(&infra_meta()));
+    }
+
+    const UNWRAP_DENY_ATTR: &str = "#![cfg_attr(not(test), deny(clippy::unwrap_used))]";
+
+    fn write_root(dir: &Path, name: &str, body: &str) {
+        let src = dir.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join(name), body).unwrap();
+    }
+
+    #[test]
+    fn rust_unwrap_denied_passes_with_attr_in_main() {
+        let tmp = TempDir::new().unwrap();
+        write_root(
+            tmp.path(),
+            "main.rs",
+            &format!("{UNWRAP_DENY_ATTR}\n\nfn main() {{}}\n"),
+        );
+        assert_eq!(
+            RustUnwrapDenied.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_unwrap_denied_passes_with_attr_in_lib_only_crate() {
+        let tmp = TempDir::new().unwrap();
+        write_root(tmp.path(), "lib.rs", &format!("{UNWRAP_DENY_ATTR}\n"));
+        assert_eq!(
+            RustUnwrapDenied.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_unwrap_denied_requires_attr_in_every_root() {
+        // A bin and a lib compile as separate crates; the deny must be in both.
+        let tmp = TempDir::new().unwrap();
+        write_root(tmp.path(), "lib.rs", &format!("{UNWRAP_DENY_ATTR}\n"));
+        write_root(tmp.path(), "main.rs", "fn main() {}\n");
+        match RustUnwrapDenied.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("main.rs"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_unwrap_denied_accepts_forbid_and_extra_whitespace() {
+        let tmp = TempDir::new().unwrap();
+        write_root(
+            tmp.path(),
+            "lib.rs",
+            "#![cfg_attr( not(test) ,  forbid( clippy::unwrap_used ) )]\n",
+        );
+        assert_eq!(
+            RustUnwrapDenied.check(tmp.path(), &rust_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_unwrap_denied_ignores_commented_attr() {
+        let tmp = TempDir::new().unwrap();
+        write_root(tmp.path(), "lib.rs", &format!("// {UNWRAP_DENY_ATTR}\n"));
+        assert!(matches!(
+            RustUnwrapDenied.check(tmp.path(), &rust_meta()),
+            RuleResult::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn rust_unwrap_denied_fails_when_no_crate_root() {
+        let tmp = TempDir::new().unwrap();
+        match RustUnwrapDenied.check(tmp.path(), &rust_meta()) {
+            RuleResult::Fail(msg) => assert!(msg.contains("no crate root"), "got: {msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_unwrap_denied_does_not_apply_to_non_rust() {
+        assert!(!RustUnwrapDenied.applies(&infra_meta()));
     }
 
     #[test]

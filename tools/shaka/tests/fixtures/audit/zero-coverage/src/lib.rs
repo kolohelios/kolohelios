@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 pub fn double(x: u32) -> u32 {
     x * 2
 }

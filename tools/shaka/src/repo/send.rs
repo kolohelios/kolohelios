@@ -168,7 +168,7 @@ fn queue_auto_merge(pr_url: &str) {
 pub fn resolve_bookmark(description: &str) -> Result<String, String> {
     let bookmarks = jj::current_bookmarks().map_err(|e| e.to_string())?;
     match bookmarks.len() {
-        1 => Ok(bookmarks.into_iter().next().unwrap()),
+        1 => Ok(bookmarks.into_iter().next().expect("len checked == 1")),
         0 => jj::derive_bookmark(description).ok_or_else(|| {
             "could not derive bookmark from description; pass --bookmark".to_string()
         }),
