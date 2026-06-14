@@ -147,6 +147,59 @@ then runs an incremental `cargo build` (free when no source has changed)
 and exec's the resulting debug binary. Don't reach for `cargo run` or
 `nix run ./tools/shaka` — the wrapper subsumes both.
 
+## Public/private split
+
+This repo is public so its tooling can be referenced freely, but some
+apps have commercial value worth keeping private. The split is handled
+by **moving the private thing into its own repo that consumes this
+repo's tooling from FlakeHub** — never by submodules or a sanitized
+public mirror. Two shapes, picked by *where the value lives*:
+
+- **Model A — engine public, data private** (the house default). The
+  app is factored into a generic engine that stays here in `kolohelios`
+  (so it keeps `shaka` + preflight) and a private repo holding only the
+  commercial data, `op://` refs, and rendered output. The private repo
+  consumes the engine from FlakeHub and runs `<engine> validate/sync/render`
+  against local data; schemas stay tool-side
+  (`tools/<x>/data/schema.cue`). Live precedent: `blogctl` (here) +
+  `blogs-and-posts` (private data); generalized to `personal-os` (#620).
+  **Prefer this whenever the secret is data, not code.**
+- **Model B — whole app private.** The entire app (code *and*
+  configuration) lives in a private repo that runs the *generic* `shaka` project
+  tooling against its own `<slot>/<name>/project.cue` projects — same
+  slot shape as here. Live precedent: `buzzingo` (private Cloudflare
+  rust-worker monorepo). Reserve this for an app whose *code* is the
+  secret and can't be split into engine + data; per the "test the
+  simpler hypothesis" tenet, don't reach for it speculatively.
+
+What stays public regardless: `tools/shaka`, `nix/kolohelios-nix`,
+`infra/devbox`, and the reusable CI workflow templates. A private repo
+needs **no `kolohelios` checkout** — it pins both `kolohelios-nix` and
+`shaka` via their FlakeHub URLs, so `shaka` lands on `$PATH` in the
+private repo's devshell exactly as it does here. The mechanics that make
+a FlakeHub `shaka` work against an arbitrary repo are already in place:
+
+- The project schema ships *inside* the `shaka` package and resolves via
+  `$SHAKA_CUE_MODULE_DIR` (set by the packaged flake's `wrapProgram`),
+  not a source-tree path — so `schema-check` / `generate-*` / `preflight`
+  run with no `tools/shaka/` present (#741). A repo with no domain
+  registry validates against a stubbed one (#863).
+- `shaka preflight`'s repo-level `CHECKS` are path-gated: the
+  kolohelios-only ones (domains, tokens, deploy-tf) simply never fire in
+  a repo that lacks those paths (#829). Audit rules that target a flake
+  input only fire on projects declaring it (#830).
+- Generated `rust-worker` flakes can be parameterized for external
+  consumers (FlakeHub `shaka` input + PATH-prepend ahead of the
+  `workflowPackages` shim) (#831, #885), and generated deploy/cleanup
+  workflows emit cross-repo `reusableWorkflow` `uses:` refs (#868) so a
+  private repo references this repo's `cf-deploy.yml` / `tf-apply.yml`
+  rather than copy-pasting.
+
+So a private repo runs its own `shaka preflight` and its own GitHub
+Actions, independently; nothing crosses repo boundaries at gate time.
+Secrets stay in 1Password with the same `op` patterns. Auditing external
+`kolohelios-*` repos *from* here is the one open companion (#387).
+
 ## Version control
 
 - **`Jujutsu` (`jj`)** for all VCS operations — never `git` for working-copy
