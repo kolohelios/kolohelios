@@ -1,0 +1,25 @@
+package project
+
+// A genuinely proprietary rust crate (the buzzingo case, #880): it can't
+// carry the repo's dual `MIT OR Apache-2.0` license, so it opts out of
+// `rust-license-dual` through the general `audit.overrides` escape hatch
+// and declares `license-file` in Cargo.toml instead. `license-present`
+// still holds via the inherited root LICENSE.
+#Project & {
+	name: "proprietary-license"
+	kind: "rust-lib"
+	coverage: {
+		line: {
+			fail: 30
+		}
+	}
+	audit: {
+		overrides: [
+			{
+				rule:          "rust-license-dual"
+				severity:      "off"
+				justification: "proprietary, all-rights-reserved crate; Cargo.toml declares license-file instead of the dual SPDX"
+			},
+		]
+	}
+}

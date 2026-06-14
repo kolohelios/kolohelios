@@ -234,6 +234,23 @@ fn rust_cli_missing_ci_build_fails_audit() {
     assert!(stdout.contains("ci.build"), "stdout: {stdout}");
 }
 
+// A proprietary crate can't declare the dual `MIT OR Apache-2.0` license, so
+// it opts out of `rust-license-dual` through the general `audit.overrides`
+// escape hatch and declares `license-file` in Cargo.toml instead. Audit must
+// pass — the override is honored and no other rule trips. See #880.
+#[test]
+fn proprietary_license_via_override_passes_audit() {
+    let staged = Staged::new(&["proprietary-license"]);
+    let out = staged.run_audit();
+    let stdout = stdout_of(&out);
+    assert!(
+        out.status.success(),
+        "expected success, got exit {:?}\nstdout: {stdout}",
+        out.status.code()
+    );
+    assert!(stdout.contains("audit passed"), "stdout: {stdout}");
+}
+
 #[test]
 fn rust_cli_package_false_without_override_fails_audit() {
     let staged = Staged::new(&["rust-cli-package-false-no-override"]);

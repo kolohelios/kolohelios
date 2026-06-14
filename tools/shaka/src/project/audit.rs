@@ -142,6 +142,14 @@ struct RustCliPackageFalseRequiresOverride;
 const REQUIRED_CARGO_FIELDS: [&str; 3] = ["name", "version", "edition"];
 const LICENSE_FILENAMES: [&str; 4] = ["LICENSE", "LICENSE.md", "LICENSE-MIT", "LICENSE-APACHE"];
 const REQUIRED_RUST_LICENSE: &str = "MIT OR Apache-2.0";
+// Appended to `rust-license-dual` failures so the wall a proprietary crate
+// hits also signposts the way through it: the general `audit.overrides`
+// escape hatch (the same mechanism `rust-cli-package-false-requires-override`
+// relies on). A genuinely all-rights-reserved crate opts out here, then
+// declares `license-file` in Cargo.toml instead of the dual SPDX.
+const PROPRIETARY_OPT_OUT_HINT: &str = " — a proprietary/all-rights-reserved crate may disable \
+this rule via an `audit.overrides` entry (severity: \"off\") with a justification, then declare \
+`[package].license-file` in Cargo.toml instead of the dual SPDX";
 const REQUIRED_RUST_VERSION: &str = "1.95";
 const REQUIRED_KOLOHELIOS_NIX_URL: &str =
     "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
@@ -232,6 +240,14 @@ impl Rule for RustCoverageThresholdNonzero {
     }
 }
 
+// Every rust crate declares the repo's dual `MIT OR Apache-2.0` license by
+// default, matching the root LICENSE pair every project inherits. A
+// genuinely proprietary crate (e.g. a private external consumer) can't honor
+// that — it opts out through the general `audit.overrides` mechanism rather
+// than a bespoke field, mirroring how `cli.package: false` opts out of
+// `rust-cli-package-false-requires-override`. The failure message carries
+// the signpost (`PROPRIETARY_OPT_OUT_HINT`) so the path is discoverable at
+// the point of failure. See #880.
 impl Rule for RustLicenseDual {
     fn name(&self) -> &'static str {
         "rust-license-dual"
@@ -248,10 +264,10 @@ impl Rule for RustLicenseDual {
         match cargo_package_field(&contents, "license") {
             Some(v) if v == REQUIRED_RUST_LICENSE => RuleResult::Pass,
             Some(v) => RuleResult::Fail(format!(
-                "Cargo.toml `[package].license` must be `\"{REQUIRED_RUST_LICENSE}\"` (found `\"{v}\"`)"
+                "Cargo.toml `[package].license` must be `\"{REQUIRED_RUST_LICENSE}\"` (found `\"{v}\"`){PROPRIETARY_OPT_OUT_HINT}"
             )),
             None => RuleResult::Fail(format!(
-                "Cargo.toml must declare `[package].license = \"{REQUIRED_RUST_LICENSE}\"`"
+                "Cargo.toml must declare `[package].license = \"{REQUIRED_RUST_LICENSE}\"`{PROPRIETARY_OPT_OUT_HINT}"
             )),
         }
     }
