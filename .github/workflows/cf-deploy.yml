@@ -45,9 +45,12 @@
 #     execing the consumer, so any value op resolves shows as `***` in
 #     the log even if a consumer prints it.
 #
-# `wrangler secret put` for declared Worker runtime secrets is not
-# implemented in v1 — portfolio has none today, and the idempotence
-# story belongs in a separate issue when there's a real consumer.
+# Declared Worker runtime secrets (each project's `wrangler.secrets`)
+# are pushed after the deploy by `shaka ci push-worker-secrets`, run
+# under the same `mask-and-run` + SA-token mechanism as the deploy: it
+# reads each secret's value from the resolved `.env` and pipes it to
+# the idempotent `wrangler secret put`. Skipped in `verify_only` mode.
+# See the `push Worker runtime secrets` step below (#794).
 name: cf-deploy
 
 on:
@@ -179,6 +182,27 @@ jobs:
             2>&1 | tee /tmp/wrangler-output.log
           # `tee` masks the inner exit code; restore it explicitly.
           exit "${PIPESTATUS[0]}"
+      - name: push Worker runtime secrets
+        working-directory: ${{ inputs.project_dir }}
+        # Now that the Worker exists, push every secret declared in the
+        # project's `wrangler.secrets` from its `op://` reference. The
+        # `.env` written by the deploy step above still holds the refs.
+        # Run under `mask-and-run` so each resolved value lands a
+        # `::add-mask::` before `wrangler secret put` touches it, and so
+        # the same SA token resolves the refs. `wrangler secret put` is
+        # idempotent, so an unchanged re-deploy is a no-op.
+        #
+        # Skipped in verify_only mode — a dry-run uploads nothing, so
+        # there's no Worker to attach secrets to. `--name`/`--environment`
+        # mirror the deploy's targeting so the secret lands on the same
+        # Worker: preview scripts (`--name`) get the key too, so their
+        # submit paths work, not just the production Worker.
+        if: ${{ ! inputs.verify_only }}
+        run: |
+          nix develop . --command shaka ci mask-and-run --env-file=.env -- \
+            shaka ci push-worker-secrets \
+            ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
+            ${{ inputs.environment && format('--environment {0}', inputs.environment) || '' }}
       - name: parse worker URL
         id: parse-url
         working-directory: ${{ inputs.project_dir }}
