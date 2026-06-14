@@ -16,7 +16,7 @@ pub enum IrError {
     },
     #[snafu(display("at {path}: missing required field `{field}`"))]
     MissingField { path: String, field: &'static str },
-    #[snafu(display("at {path}: $ref expression is not a valid traversal: {expr}"))]
+    #[snafu(display("at {path}: $ref is not a valid HCL expression: {expr}"))]
     InvalidRef { path: String, expr: String },
 }
 
@@ -349,10 +349,13 @@ fn parse_expr(value: &Json, path: &str) -> Result<Expr, IrError> {
         }
         Json::Object(obj) => {
             // Detect a #Ref: an object whose only field is `$ref` and
-            // whose value is a string matching the traversal pattern.
+            // whose value parses as a well-formed HCL expression
+            // (traversal, function call, index access, conditional, splat,
+            // heredoc, …). The raw string is carried through to the
+            // emitter, which re-parses it into an HCL AST node.
             if obj.len() == 1 {
                 if let Some(Json::String(expr)) = obj.get("$ref") {
-                    if is_traversal(expr) {
+                    if is_hcl_expr(expr) {
                         return Ok(Expr::Ref(expr.clone()));
                     }
                     return Err(IrError::InvalidRef {
@@ -377,31 +380,14 @@ fn parse_expr(value: &Json, path: &str) -> Result<Expr, IrError> {
     }
 }
 
-fn is_traversal(s: &str) -> bool {
-    let mut parts = s.split('.');
-    let Some(first) = parts.next() else {
-        return false;
-    };
-    if !is_ident(first) {
-        return false;
-    }
-    for p in parts {
-        if !is_ident(p) {
-            return false;
-        }
-    }
-    true
-}
-
-fn is_ident(s: &str) -> bool {
-    let mut chars = s.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return false;
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+/// Whether `s` parses as a complete, well-formed HCL expression. The
+/// `hcl-edit` parser consumes the entire input, so trailing garbage like
+/// `var.region; rm -rf /` fails — the same injection guard the old
+/// traversal-only regex provided, now extended to any valid HCL
+/// expression (function calls, index access, conditionals, splats,
+/// heredocs).
+fn is_hcl_expr(s: &str) -> bool {
+    hcl_edit::parser::parse_expr(s).is_ok()
 }
 
 fn as_object<'a>(value: &'a Json, path: &str) -> Result<&'a Map<String, Json>, IrError> {
@@ -489,6 +475,21 @@ mod tests {
             Err(IrError::InvalidRef { .. }) => {}
             other => panic!("expected InvalidRef, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_expr_recognizes_function_call_ref() {
+        let v = json!({"$ref": "sort(var.names)"});
+        assert_eq!(
+            parse_expr(&v, "").unwrap(),
+            Expr::Ref("sort(var.names)".into())
+        );
+    }
+
+    #[test]
+    fn parse_expr_recognizes_index_ref() {
+        let v = json!({"$ref": "var.list[0]"});
+        assert_eq!(parse_expr(&v, "").unwrap(), Expr::Ref("var.list[0]".into()));
     }
 
     #[test]
@@ -613,20 +614,28 @@ mod tests {
     }
 
     #[test]
-    fn is_traversal_accepts_dotted_identifiers() {
-        assert!(is_traversal("var.region"));
-        assert!(is_traversal("linode_instance.devbox.id"));
-        assert!(is_traversal("module.foo.bar.baz"));
-        assert!(is_traversal("_underscore"));
+    fn is_hcl_expr_accepts_traversals_and_expressions() {
+        // Traversals (the pre-existing common case) still parse.
+        assert!(is_hcl_expr("var.region"));
+        assert!(is_hcl_expr("linode_instance.devbox.id"));
+        assert!(is_hcl_expr("module.foo.bar.baz"));
+        // Newly supported non-traversal expression classes.
+        assert!(is_hcl_expr("sort(var.names)"));
+        assert!(is_hcl_expr("coalesce(var.a, \"\")"));
+        assert!(is_hcl_expr("var.list[0]"));
+        assert!(is_hcl_expr("var.map[\"k\"]"));
+        assert!(is_hcl_expr("var.enabled ? var.a : var.b"));
+        assert!(is_hcl_expr("linode_instance.devbox.*.ipv4"));
     }
 
     #[test]
-    fn is_traversal_rejects_non_identifiers() {
-        assert!(!is_traversal(""));
-        assert!(!is_traversal("var."));
-        assert!(!is_traversal(".var"));
-        assert!(!is_traversal("var.region; rm -rf /"));
-        assert!(!is_traversal("var.with space"));
-        assert!(!is_traversal("123.foo"));
+    fn is_hcl_expr_rejects_malformed_input() {
+        assert!(!is_hcl_expr(""));
+        assert!(!is_hcl_expr("var."));
+        assert!(!is_hcl_expr(".var"));
+        // Trailing garbage is not consumed → parse fails.
+        assert!(!is_hcl_expr("var.region; rm -rf /"));
+        assert!(!is_hcl_expr("var.with space"));
+        assert!(!is_hcl_expr("sort(var.names"));
     }
 }
