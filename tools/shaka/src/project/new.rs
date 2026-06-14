@@ -191,7 +191,11 @@ fn readme(name: &str) -> String {
 
 fn main_rs(name: &str) -> String {
     format!(
-        "fn main() {{\n\
+        "// Non-test code must not `.unwrap()`; `not(test)` exempts unit tests,\n\
+         // and integration tests compile as separate crates (no attribute).\n\
+         #![cfg_attr(not(test), deny(clippy::unwrap_used))]\n\
+         \n\
+         fn main() {{\n\
          \x20   println!(\"hello from {name}\");\n\
          }}\n\
          \n\
@@ -324,6 +328,13 @@ mod tests {
         // rust-has-tests audit rule looks for #[cfg(test)] in any .rs file.
         let out = main_rs("demo");
         assert!(out.contains("#[cfg(test)]"));
+    }
+
+    #[test]
+    fn main_rs_denies_unwrap_outside_tests() {
+        // rust-unwrap-denied audit rule looks for this crate-root attribute.
+        let out = main_rs("demo");
+        assert!(out.contains("#![cfg_attr(not(test), deny(clippy::unwrap_used))]"));
     }
 
     #[test]

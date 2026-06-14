@@ -140,6 +140,15 @@ fn missing_rust_version_fails_audit() {
 }
 
 #[test]
+fn missing_unwrap_deny_attr_fails_audit() {
+    let staged = Staged::new(&["missing-unwrap-deny"]);
+    let out = staged.run_audit();
+    assert!(!out.status.success());
+    let stdout = stdout_of(&out);
+    assert!(stdout.contains("rust-unwrap-denied"), "stdout: {stdout}");
+}
+
+#[test]
 fn rust_only_rules_skip_for_infra() {
     let staged = Staged::new(&["clean-infra"]);
     let out = staged.run_audit();

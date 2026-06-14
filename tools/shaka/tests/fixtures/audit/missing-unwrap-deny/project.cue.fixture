@@ -1,0 +1,24 @@
+package project
+
+#Project & {
+	name: "missing-unwrap-deny"
+	kind: "rust-cli"
+	cli: {
+		binaryName: "missing-unwrap-deny"
+		package:    false
+	}
+	coverage: {
+		line: {
+			fail: 30
+		}
+	}
+	audit: {
+		overrides: [
+			{
+				rule:          "rust-cli-package-false-requires-override"
+				severity:      "off"
+				justification: "test fixture; this rule is not under test"
+			},
+		]
+	}
+}

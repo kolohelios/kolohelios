@@ -76,7 +76,7 @@ pub fn run(bookmark_arg: Option<String>, dry_run: bool) {
 fn resolve_bookmark() -> Result<String, String> {
     let bookmarks = jj::bookmarks_on("main@origin..@").map_err(|e| e.to_string())?;
     match bookmarks.len() {
-        1 => Ok(bookmarks.into_iter().next().unwrap()),
+        1 => Ok(bookmarks.into_iter().next().expect("len checked == 1")),
         0 => Err(
             "no bookmark found in main@origin..@; pass --bookmark or set one with `jj bookmark`"
                 .to_string(),
