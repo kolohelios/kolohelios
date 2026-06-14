@@ -56,7 +56,11 @@ pub enum IssueCommand {
     /// Create a GitHub issue with enforced scope label + conv-commit title
     #[command(group(ArgGroup::new("body_src").required(true).args(["body", "body_file"])))]
     Create {
-        /// Repository in owner/repo format (auto-detected from git remote if omitted)
+        /// Target repo in owner/repo format (auto-detected from git remote
+        /// if omitted). When set, `--scope` is validated against this
+        /// repo's `.shaka/labels.cue` fetched over the API — so a consumer
+        /// repo can file issues into the canonical repo with the right
+        /// scope gate.
         #[arg(long)]
         repo: Option<String>,
         /// Issue title — must match `<type>(<scope>): <subject>`
@@ -70,7 +74,8 @@ pub enum IssueCommand {
         #[arg(long, value_name = "PATH")]
         body_file: Option<String>,
         /// Scope label — must be one of the canonical scope labels
-        /// declared in `.shaka/labels.cue`
+        /// declared in the target repo's `.shaka/labels.cue` (local tree
+        /// when `--repo` is omitted; the foreign repo's when it is set)
         #[arg(long)]
         scope: String,
         /// Parent issue number; links via GitHub's native sub-issue

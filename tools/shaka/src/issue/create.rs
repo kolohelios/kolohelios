@@ -8,9 +8,19 @@
 //! - native sub-issue link is set via the GitHub sub-issues API when
 //!   `--parent <N>` is supplied (no freeform `Sub-issue of #N` body text)
 //!
-//! All validation happens *before* any GitHub call, so a bad scope or
-//! malformed title fails locally without polluting the issue list with
-//! a half-created issue.
+//! Most validation happens *before* any GitHub call, so a malformed
+//! title or freeform parent ref fails locally without polluting the
+//! issue list with a half-created issue.
+//!
+//! **Cross-repo scope validation.** When `--repo <owner/name>` targets a
+//! foreign repo, `--scope` is validated against *that* repo's
+//! `.shaka/labels.cue` fetched over the GitHub API — not the local
+//! working tree. This is what lets a private consumer repo (which has no
+//! local checkout of the target, and whose own `.shaka/labels.cue` would
+//! otherwise shadow the target's) file issues into the canonical repo
+//! through this command instead of falling back to raw `gh issue create`.
+//! Without `--repo`, scope is validated against the local tree exactly as
+//! before.
 
 use std::path::Path;
 
@@ -32,7 +42,8 @@ pub struct CreateArgs {
 }
 
 pub fn run(args: CreateArgs) {
-    if let Err(e) = run_inner(args, Path::new(".")) {
+    let fetch = |repo: &str, path: &str| gh::fetch_raw_file(repo, path).map_err(|e| e.to_string());
+    if let Err(e) = run_inner(args, Path::new("."), fetch) {
         eprintln!("{RED}{BOLD}error:{RESET} {e}");
         std::process::exit(1);
     }
@@ -51,7 +62,10 @@ struct Plan {
     parent: Option<u64>,
 }
 
-fn run_inner(args: CreateArgs, cwd: &Path) -> Result<(), String> {
+fn run_inner<F>(args: CreateArgs, cwd: &Path, fetch_labels: F) -> Result<(), String>
+where
+    F: Fn(&str, &str) -> Result<Option<String>, String>,
+{
     // 1. Title format — same validator as `shaka commit lint`.
     title::validate(&args.title).map_err(|e| e.to_string())?;
 
@@ -66,8 +80,10 @@ fn run_inner(args: CreateArgs, cwd: &Path) -> Result<(), String> {
     //    so we never write the freeform shape in the first place.
     reject_freeform_parent_refs(&body, args.parent)?;
 
-    // 4. Scope — must be one of the canonical scope labels.
-    let label_set = labels::load(cwd)?;
+    // 4. Scope — must be one of the canonical scope labels of the *target*
+    //    repo. With `--repo`, fetch that repo's `.shaka/labels.cue` over
+    //    the API; without it, read the local tree (unchanged behavior).
+    let label_set = load_scope_labels(&args.repo, cwd, &fetch_labels)?;
     validate_scope(&args.scope, &label_set)?;
 
     // 5. Repo — explicit flag wins; otherwise infer.
@@ -126,6 +142,36 @@ fn validate_scope(scope: &str, set: &LabelSet) -> Result<(), String> {
         "scope `{scope}` is not a canonical scope label; valid: {}",
         valid.join(", ")
     ))
+}
+
+/// Path to the canonical label set, relative to a repo root — both for
+/// the local working tree and for the GitHub Contents API.
+const LABELS_FILE_REL: &str = ".shaka/labels.cue";
+
+/// Resolve the label set `--scope` is validated against.
+///
+/// With `--repo`, the target is a (possibly foreign) repo: fetch its
+/// `.shaka/labels.cue` over the API and parse it. A consumer repo has no
+/// local checkout of the target, and its own `.shaka/labels.cue` would
+/// shadow the target's if we read the local tree — so the remote fetch is
+/// the only correct source here. Without `--repo`, read the local tree as
+/// before.
+fn load_scope_labels<F>(repo: &Option<String>, cwd: &Path, fetch: &F) -> Result<LabelSet, String>
+where
+    F: Fn(&str, &str) -> Result<Option<String>, String>,
+{
+    match repo {
+        Some(r) => {
+            let cue = fetch(r, LABELS_FILE_REL)?.ok_or_else(|| {
+                format!(
+                    "target repo `{r}` has no {LABELS_FILE_REL} — cannot validate \
+                     --scope against it"
+                )
+            })?;
+            labels::load_from_string(&cue).map_err(|e| format!("{r}:{LABELS_FILE_REL}: {e}"))
+        }
+        None => labels::load(cwd),
+    }
 }
 
 /// Reject bodies that contain freeform parent-pointer phrases (`Sub-issue
@@ -215,27 +261,51 @@ mod tests {
         }
     }
 
-    fn workdir_with_labels(canonical: &[&str]) -> TempDir {
-        let tmp = TempDir::new().unwrap();
-        let mut entries = String::from("package labels\n\n#LabelSet & {\n    labels: [\n");
+    /// Build a `.shaka/labels.cue` document declaring `canonical` as scope
+    /// labels. Used both as a local file (planted in a tempdir) and as the
+    /// string a fake remote fetch serves.
+    fn labels_cue(canonical: &[&str]) -> String {
+        let mut s = String::from("package labels\n\n#LabelSet & {\n    labels: [\n");
         for name in canonical {
-            entries.push_str(&format!(
+            s.push_str(&format!(
                 "        {{name: {name:?}, color: \"5319e7\", description: \"\", scope: true}},\n"
             ));
         }
-        entries.push_str("    ]\n}\n");
+        s.push_str("    ]\n}\n");
+        s
+    }
+
+    fn workdir_with_labels(canonical: &[&str]) -> TempDir {
+        let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join(".shaka")).unwrap();
-        std::fs::write(tmp.path().join(".shaka/labels.cue"), entries).unwrap();
+        std::fs::write(tmp.path().join(".shaka/labels.cue"), labels_cue(canonical)).unwrap();
         tmp
+    }
+
+    /// Fake fetch that serves `cue` for any (repo, path) — stands in for
+    /// `gh::fetch_raw_file` so tests exercise the cross-repo path offline.
+    fn serve(cue: String) -> impl Fn(&str, &str) -> Result<Option<String>, String> {
+        move |_repo, _path| Ok(Some(cue.clone()))
+    }
+
+    /// Fake fetch that serves a 404 (no labels file) for any repo.
+    fn serve_missing() -> impl Fn(&str, &str) -> Result<Option<String>, String> {
+        |_repo, _path| Ok(None)
+    }
+
+    /// Fake fetch that must never be called — the local path (no `--repo`)
+    /// and the early-exit checks (title/body/freeform) never fetch.
+    fn never() -> impl Fn(&str, &str) -> Result<Option<String>, String> {
+        |_repo, _path| panic!("fetch should not be called")
     }
 
     #[test]
     fn rejects_bad_title_before_loading_labels() {
-        // Title validation runs before label loading — confirmed by
-        // *not* planting a labels file. If the validator fired second,
-        // we'd hit "no .shaka/labels.cue found" first.
-        let tmp = TempDir::new().unwrap();
-        let err = run_inner(args("not conventional", "shaka"), tmp.path()).unwrap_err();
+        // Title validation runs before label loading — the `never` fetch
+        // would panic if we got as far as resolving the (foreign) label
+        // set, so reaching the title error proves ordering.
+        let err =
+            run_inner(args("not conventional", "shaka"), Path::new("."), never()).unwrap_err();
         assert!(
             err.contains("missing `: ` separator") || err.contains("does not match"),
             "expected title error, got: {err}"
@@ -244,17 +314,74 @@ mod tests {
 
     #[test]
     fn rejects_unknown_scope_with_valid_list() {
-        let tmp = workdir_with_labels(&["shaka", "ci"]);
-        let err = run_inner(args("feat(shaka): add x", "blogctl"), tmp.path()).unwrap_err();
+        // `--repo` is set, so scope is validated against the *served*
+        // (foreign) label set, not any local tree.
+        let err = run_inner(
+            args("feat(shaka): add x", "blogctl"),
+            Path::new("."),
+            serve(labels_cue(&["shaka", "ci"])),
+        )
+        .unwrap_err();
         assert!(err.contains("blogctl"), "should name the bad scope: {err}");
         assert!(err.contains("shaka"), "should list valid scopes: {err}");
         assert!(err.contains("ci"), "should list valid scopes: {err}");
     }
 
     #[test]
-    fn accepts_valid_scope_and_title_in_dry_run() {
-        let tmp = workdir_with_labels(&["shaka"]);
-        run_inner(args("feat(shaka): add x", "shaka"), tmp.path()).unwrap();
+    fn accepts_valid_scope_from_foreign_repo() {
+        // The served set is the *only* source of truth here (no local
+        // labels file exists), proving cross-repo validation works.
+        run_inner(
+            args("feat(shaka): add x", "shaka"),
+            Path::new("."),
+            serve(labels_cue(&["shaka"])),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn validates_scope_against_foreign_set_not_local() {
+        // Local tree declares `local-only`; the foreign repo declares
+        // `ci`. With `--repo` set, the foreign set wins: `ci` is accepted
+        // and `local-only` is rejected.
+        let tmp = workdir_with_labels(&["local-only"]);
+        let mut ok = args("feat(ci): add x", "ci");
+        ok.repo = Some("o/r".into());
+        run_inner(ok, tmp.path(), serve(labels_cue(&["ci"]))).unwrap();
+
+        let mut bad = args("feat(x): add x", "local-only");
+        bad.repo = Some("o/r".into());
+        let err = run_inner(bad, tmp.path(), serve(labels_cue(&["ci"]))).unwrap_err();
+        assert!(
+            err.contains("local-only"),
+            "local scope should be rejected against the foreign set: {err}"
+        );
+    }
+
+    #[test]
+    fn errors_when_foreign_repo_has_no_labels_file() {
+        let err = run_inner(
+            args("feat(shaka): add x", "shaka"),
+            Path::new("."),
+            serve_missing(),
+        )
+        .unwrap_err();
+        assert!(err.contains("o/r"), "should name the target repo: {err}");
+        assert!(
+            err.contains(".shaka/labels.cue"),
+            "should name the missing file: {err}"
+        );
+    }
+
+    #[test]
+    fn load_scope_labels_uses_local_tree_when_repo_absent() {
+        // No `--repo` → read the local working tree; the `never` fetch
+        // guarantees no remote call happens. Tested at the helper level
+        // so we don't trip step-5 repo detection (which shells out to
+        // jj/git) that a full dry-run with `repo: None` would.
+        let tmp = workdir_with_labels(&["shaka", "ci"]);
+        let set = load_scope_labels(&None, tmp.path(), &never()).unwrap();
+        assert_eq!(set.scope_names(), vec!["shaka", "ci"]);
     }
 
     #[test]
@@ -262,38 +389,31 @@ mod tests {
         // A common slip is `--scope shaka --label shaka`. Don't pass
         // duplicate labels to gh — confirmed via the dry-run plan's
         // label vector (no behavioral effect on gh, but cleaner output).
-        let tmp = workdir_with_labels(&["shaka"]);
         let mut a = args("feat(shaka): add x", "shaka");
         a.labels = vec!["shaka".into(), "bug".into()];
-        // Execute through to plan-building by calling run_inner with
-        // dry-run; assertion on stdout is brittle, so call the plan
-        // builder directly via a small refactor in a future iteration
-        // if this proves needed. For now, just exercise the path.
-        run_inner(a, tmp.path()).unwrap();
+        run_inner(a, Path::new("."), serve(labels_cue(&["shaka"]))).unwrap();
     }
 
     #[test]
     fn rejects_neither_body_nor_body_file() {
-        let tmp = workdir_with_labels(&["shaka"]);
         let mut a = args("feat(shaka): add x", "shaka");
         a.body = None;
         a.body_file = None;
-        let err = run_inner(a, tmp.path()).unwrap_err();
+        let err = run_inner(a, Path::new("."), never()).unwrap_err();
         assert!(err.contains("--body"), "got: {err}");
     }
 
     #[test]
     fn rejects_both_body_and_body_file() {
-        let tmp = workdir_with_labels(&["shaka"]);
         let mut a = args("feat(shaka): add x", "shaka");
         a.body_file = Some("/nonexistent".into());
-        let err = run_inner(a, tmp.path()).unwrap_err();
+        let err = run_inner(a, Path::new("."), never()).unwrap_err();
         assert!(err.contains("mutually exclusive"), "got: {err}");
     }
 
     #[test]
     fn reads_body_from_file_when_set() {
-        let tmp = workdir_with_labels(&["shaka"]);
+        let tmp = TempDir::new().unwrap();
         let body_path = tmp.path().join("body.md");
         std::fs::write(&body_path, "from-file body").unwrap();
         let mut a = args("feat(shaka): add x", "shaka");
@@ -301,25 +421,23 @@ mod tests {
         a.body_file = Some(body_path.to_string_lossy().into());
         // Reaching dry-run without an error is the assertion — file
         // was readable and resolved.
-        run_inner(a, tmp.path()).unwrap();
+        run_inner(a, Path::new("."), serve(labels_cue(&["shaka"]))).unwrap();
     }
 
     #[test]
     fn rejects_body_with_sub_issue_of() {
-        let tmp = workdir_with_labels(&["shaka"]);
         let mut a = args("feat(shaka): add x", "shaka");
         a.body = Some("Sub-issue of #15. Adds a thing.".into());
-        let err = run_inner(a, tmp.path()).unwrap_err();
+        let err = run_inner(a, Path::new("."), never()).unwrap_err();
         assert!(err.contains("Sub-issue of #15"), "got: {err}");
         assert!(err.contains("--parent"), "should hint at --parent: {err}");
     }
 
     #[test]
     fn rejects_body_with_tracked_in() {
-        let tmp = workdir_with_labels(&["shaka"]);
         let mut a = args("feat(shaka): add x", "shaka");
         a.body = Some("Tracked in #209.".into());
-        let err = run_inner(a, tmp.path()).unwrap_err();
+        let err = run_inner(a, Path::new("."), never()).unwrap_err();
         assert!(err.contains("Tracked in #209"), "got: {err}");
     }
 
@@ -328,11 +446,10 @@ mod tests {
         // --parent N doesn't whitelist freeform body text; the two
         // would duplicate the link in incompatible shapes. One source
         // of truth (the native API), no freeform.
-        let tmp = workdir_with_labels(&["shaka"]);
         let mut a = args("feat(shaka): add x", "shaka");
         a.body = Some("Sub-issue of #15".into());
         a.parent = Some(15);
-        let err = run_inner(a, tmp.path()).unwrap_err();
+        let err = run_inner(a, Path::new("."), never()).unwrap_err();
         assert!(err.contains("Sub-issue of #15"), "got: {err}");
     }
 }
