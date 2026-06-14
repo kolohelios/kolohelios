@@ -8,6 +8,7 @@ mod generate;
 mod main_workflow;
 mod mask_and_run;
 mod parse_deploy_url;
+mod push_worker_secrets;
 mod worker_cleanup_workflow;
 mod worker_deploy_workflow;
 mod workflow;
@@ -85,6 +86,33 @@ pub enum CiCommand {
         /// File holding captured `wrangler deploy` stdout.
         log: PathBuf,
     },
+    /// Push a project's declared Worker runtime secrets to Cloudflare.
+    ///
+    /// Reads the secret *names* from the project's `wrangler.secrets`
+    /// (in `project.cue`) and the *values* from the ambient environment,
+    /// then runs `wrangler secret put <NAME>` for each. Designed to run
+    /// under `shaka ci mask-and-run --env-file=.env --`, which resolves
+    /// each declared secret's `op://` reference into an env var (and
+    /// registers it for log masking) first. `wrangler secret put` is
+    /// idempotent, so re-running an unchanged deploy is a no-op. A
+    /// project with no declared secrets is a clean no-op (#794).
+    ///
+    /// `--name` / `--env` mirror `wrangler deploy`'s flags so the secret
+    /// targets the same Worker the deploy did — `--name` for a PR-preview
+    /// script, `--env` for a named production environment.
+    #[command(name = "push-worker-secrets")]
+    PushWorkerSecrets {
+        /// Directory holding the project's `project.cue`. Defaults to the
+        /// current directory (the `cf-deploy` step's `working-directory`).
+        #[arg(long, default_value = ".")]
+        project_dir: PathBuf,
+        /// Override the target Worker script name (PR-preview deploys).
+        #[arg(long)]
+        name: Option<String>,
+        /// Select a named `[env.<name>]` Worker (production environment).
+        #[arg(long)]
+        environment: Option<String>,
+    },
 }
 
 pub fn run(cmd: CiCommand) {
@@ -100,5 +128,10 @@ pub fn run(cmd: CiCommand) {
             args,
         } => mask_and_run::run(env_file, args, retry_on, max_retries, retry_delay),
         CiCommand::ParseDeployUrl { log } => parse_deploy_url::run(log),
+        CiCommand::PushWorkerSecrets {
+            project_dir,
+            name,
+            environment,
+        } => push_worker_secrets::run(project_dir, name, environment),
     }
 }
