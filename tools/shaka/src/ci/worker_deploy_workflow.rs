@@ -60,6 +60,7 @@ pub fn build(spec: &WorkerDeploySpec) -> Workflow {
     jobs.insert("preview".to_string(), Job::ReusableCall(preview_call(spec)));
     jobs.insert("comment".to_string(), Job::Inline(comment_job(spec)));
     jobs.insert("deploy".to_string(), Job::ReusableCall(deploy_call(spec)));
+    jobs.insert("gate".to_string(), Job::Inline(gate_job(spec)));
 
     Workflow {
         name: format!("{} deploy", spec.project_name),
@@ -341,6 +342,55 @@ fi
     }
 }
 
+// ── gate ──────────────────────────────────────────────────────────────────
+
+/// The always-run job a branch-protected consumer requires instead of
+/// the path-conditional `verify`. `if: always()` lets it observe every
+/// upstream outcome, and the `jq` filter passes when each is `success`
+/// or `skipped` — so a root-only PR (where `changes` skips
+/// `verify`/`preview`/`deploy`) still reaches a green required check
+/// instead of deadlocking at `BLOCKED`. Mirrors `main.yaml`'s `Gate`,
+/// but the context name is project-scoped so it never collides with
+/// that bare `Gate`.
+///
+/// `comment` is intentionally excluded from `needs`: it's a cosmetic
+/// preview-URL post, so a transient `gh api` failure there must not
+/// block the merge. The merge-readiness signal is verify/preview/deploy.
+///
+/// Uses inline `jq` rather than `shaka ci gate` so the job stays
+/// portable for cross-repo consumers that call `cf-deploy.yml` without
+/// `shaka` on `PATH`.
+fn gate_job(spec: &WorkerDeploySpec) -> InlineJob {
+    InlineJob {
+        name: Some(format!("{} deploy gate", spec.project_name)),
+        needs: Needs::Multiple(vec![
+            "changes".to_string(),
+            "verify".to_string(),
+            "preview".to_string(),
+            "deploy".to_string(),
+        ]),
+        if_: Some("always()".to_string()),
+        runs_on: "ubuntu-latest".to_string(),
+        permissions: None,
+        env: BTreeMap::new(),
+        outputs: BTreeMap::new(),
+        steps: vec![Step::Run(RunStep {
+            id: None,
+            name: None,
+            if_: None,
+            run: r#"echo '${{ toJson(needs) }}' | jq -e '
+  to_entries
+  | map(select(.value.result != "success" and .value.result != "skipped"))
+  | if length == 0 then "Gate passed"
+    else error("Gate failed: \(map(.key) | join(", "))")
+    end
+'"#
+            .to_string(),
+            env: BTreeMap::new(),
+        })],
+    }
+}
+
 fn filename_of(path: &str) -> String {
     std::path::Path::new(path)
         .file_name()
@@ -371,12 +421,12 @@ mod tests {
     }
 
     #[test]
-    fn emits_five_lifecycle_jobs() {
+    fn emits_lifecycle_jobs_and_gate() {
         let parsed = emit_fixture();
         let jobs = parsed["jobs"].as_mapping().expect("jobs is a mapping");
-        // The deploy workflow is exactly these five jobs in order;
-        // `cleanup` lives in the generated sibling, not here.
-        for job in ["changes", "verify", "preview", "comment", "deploy"] {
+        // The deploy workflow is exactly these jobs; `cleanup` lives in
+        // the generated sibling, not here.
+        for job in ["changes", "verify", "preview", "comment", "deploy", "gate"] {
             assert!(jobs.contains_key(job), "missing job: {job}");
         }
         assert!(
@@ -384,6 +434,49 @@ mod tests {
             "cleanup belongs in the sibling file"
         );
         assert_eq!(parsed["name"].as_str(), Some("portfolio deploy"));
+    }
+
+    #[test]
+    fn gate_runs_always_with_project_scoped_name() {
+        let parsed = emit_fixture();
+        let gate = &parsed["jobs"]["gate"];
+        // `if: always()` so a path-filtered skip still resolves the
+        // required check instead of leaving it absent.
+        assert_eq!(gate["if"].as_str(), Some("always()"));
+        // Project-scoped name so the context never collides with
+        // `main.yaml`'s bare `Gate`.
+        assert_eq!(gate["name"].as_str(), Some("portfolio deploy gate"));
+    }
+
+    #[test]
+    fn gate_needs_verify_and_preview_but_not_comment() {
+        let parsed = emit_fixture();
+        let needs: Vec<&str> = parsed["jobs"]["gate"]["needs"]
+            .as_sequence()
+            .expect("gate needs list")
+            .iter()
+            .filter_map(|n| n.as_str())
+            .collect();
+        for job in ["changes", "verify", "preview", "deploy"] {
+            assert!(needs.contains(&job), "gate should need {job}: {needs:?}");
+        }
+        // `comment` is cosmetic; a flaky URL post must not block merge.
+        assert!(
+            !needs.contains(&"comment"),
+            "gate should not need comment: {needs:?}"
+        );
+    }
+
+    #[test]
+    fn gate_passes_on_skipped_upstreams() {
+        // The jq filter treats `skipped` (and `success`) as passing — the
+        // root-only-PR case where verify/preview/deploy never run.
+        let parsed = emit_fixture();
+        let run = parsed["jobs"]["gate"]["steps"][0]["run"]
+            .as_str()
+            .expect("gate has a run step");
+        assert!(run.contains(r#".value.result != "success""#), "{run}");
+        assert!(run.contains(r#".value.result != "skipped""#), "{run}");
     }
 
     #[test]
