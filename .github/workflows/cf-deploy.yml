@@ -57,6 +57,11 @@ on:
         description: "Path to the rust-worker app (e.g. apps/kolohelios-portfolio)"
         required: true
         type: string
+      worker_build_dir:
+        description: "Subdir of project_dir to run worker-build in (the Cargo-workspace member crate holding the Worker cdylib). Empty = project_dir."
+        required: false
+        type: string
+        default: ""
       verify_only:
         description: "If true, run `wrangler deploy --dry-run` instead of the real deploy. Use from PR triggers as a pre-merge credential and config check."
         required: false
@@ -126,8 +131,19 @@ jobs:
         # `worker-build` comes from the devshell (nixpkgs-pinned) rather
         # than a floating `cargo install`, so its wasm-bindgen minimum
         # can't drift by runner cache (#864).
+        #
+        # `worker-build` requires a `[package]` manifest in its CWD. When
+        # the project is a Cargo workspace, `project_dir/Cargo.toml` is a
+        # virtual manifest with no `[package]`, so `cd` into the member
+        # crate holding the Worker cdylib first. The devshell still
+        # resolves at `project_dir` (`nix develop .`); only the build CWD
+        # moves. `WORKER_BUILD_DIR` unset/empty → `.` = `project_dir`, so
+        # single-crate consumers build unchanged (#890).
         run: |
-          nix develop . --command worker-build --release
+          # shellcheck disable=SC2016  # ${WORKER_BUILD_DIR} is expanded by the inner bash -c, not this shell — single quotes are intentional
+          nix develop . --command bash -c 'cd "${WORKER_BUILD_DIR:-.}" && worker-build --release'
+        env:
+          WORKER_BUILD_DIR: ${{ inputs.worker_build_dir }}
       - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
         id: wrangler
         working-directory: ${{ inputs.project_dir }}
