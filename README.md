@@ -60,6 +60,26 @@ wrapper at `tools/shaka/bin/shaka` is the cold-start escape hatch.
   - `shaka repo sync|send|status` — `jj`/PR workflow helpers.
   - `shaka workspace` — sibling `jj` working copies for parallel sessions.
 
+## Public/private split
+
+This repo is public, but some apps have commercial value worth keeping
+private. Rather than submodules or a sanitized mirror, the private piece
+moves into its own repo that consumes this repo's tooling from FlakeHub.
+Two shapes, by where the value lives:
+
+- **Engine public, data private** — a generic engine stays here; a
+  private repo holds only the commercial data and runs the engine
+  against it (for example, `blogctl` here + a private data repo). Preferred
+  when the secret is data, not code.
+- **Whole app private** — the entire app lives in a private repo that
+  runs the *generic* `shaka` tooling against its own
+  `<slot>/<name>/project.cue` projects.
+
+Either way, `tools/shaka`, `nix/kolohelios-nix`, `infra/devbox`, and the
+reusable CI workflows stay public. A private repo pins `kolohelios-nix`
+and `shaka` via their FlakeHub URLs — no checkout of this repo required —
+and runs its own `shaka preflight` and CI independently.
+
 ## Tenets
 
 - **Devboxes are ephemeral.** Local devboxes (baremetal Mac, cloud VM)
