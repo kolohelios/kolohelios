@@ -7,6 +7,7 @@ mod gate;
 mod generate;
 mod main_workflow;
 mod mask_and_run;
+mod parse_deploy_url;
 mod worker_cleanup_workflow;
 mod worker_deploy_workflow;
 mod workflow;
@@ -70,6 +71,20 @@ pub enum CiCommand {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
         args: Vec<String>,
     },
+    /// Extract a deployed Worker's public URL from captured
+    /// `wrangler deploy` output and print it to stdout.
+    ///
+    /// Prefers the `*.workers.dev` URL; falls back to a
+    /// `<host> (custom domain)` trigger line (emitting `https://<host>`)
+    /// for Workers that disable workers.dev. Exits non-zero only when
+    /// neither is present — a custom-domain-only deploy is valid, not a
+    /// failure (#867). Used by the `cf-deploy` reusable workflow's
+    /// post-deploy URL step.
+    #[command(name = "parse-deploy-url")]
+    ParseDeployUrl {
+        /// File holding captured `wrangler deploy` stdout.
+        log: PathBuf,
+    },
 }
 
 pub fn run(cmd: CiCommand) {
@@ -84,5 +99,6 @@ pub fn run(cmd: CiCommand) {
             retry_delay,
             args,
         } => mask_and_run::run(env_file, args, retry_on, max_retries, retry_delay),
+        CiCommand::ParseDeployUrl { log } => parse_deploy_url::run(log),
     }
 }
