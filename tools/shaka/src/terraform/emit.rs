@@ -251,7 +251,7 @@ fn build_expr(e: &Expr) -> Expression {
             }
         }
         Expr::String(s) => Expression::from(s.clone()),
-        Expr::Ref(traversal_str) => build_traversal(traversal_str),
+        Expr::Ref(ref_str) => build_ref(ref_str),
         Expr::List(items) => {
             let mut arr = Array::new();
             // Heuristic: if any element is an object literal, the list
@@ -292,6 +292,25 @@ fn build_expr(e: &Expr) -> Expression {
             Expression::from(obj)
         }
     }
+}
+
+/// Parse a `#Ref`'s `$ref` string into an HCL expression AST node. This
+/// handles the full HCL expression grammar — traversals, function calls
+/// (`sort(var.x)`), index access (`var.list[0]`), conditionals, splats,
+/// heredocs — not just dotted traversals.
+///
+/// The IR builder (`terraform/ir.rs`) already validated that the string
+/// parses via the same `hcl-edit` parser, so a failure here would be a
+/// bug (an IR value reaching the emitter that the IR layer accepted but
+/// the emitter rejects). We surface that as a panic with the offending
+/// string rather than silently emitting a broken document.
+fn build_ref(s: &str) -> Expression {
+    let mut expr = hcl_edit::parser::parse_expr(s)
+        .unwrap_or_else(|e| panic!("ref {s:?} failed to parse as HCL expression: {e}"));
+    // Strip any leading/trailing decor the parser attached from the
+    // source span; `tofu fmt` canonicalizes the rest of the layout.
+    expr.decor_mut().clear();
+    expr
 }
 
 fn build_traversal(s: &str) -> Expression {
@@ -549,6 +568,49 @@ mod tests {
         assert!(s.contains("output \"secret\""));
         assert!(s.contains("value = var.tok"));
         assert!(s.contains("sensitive = true"));
+    }
+
+    #[test]
+    fn render_ref_with_function_call() {
+        let m = Module {
+            outputs: vec![Output {
+                name: "ns".into(),
+                description: None,
+                value: Expr::Ref("sort(cloudflare_zone.k.name_servers)".into()),
+                sensitive: false,
+            }],
+            ..Default::default()
+        };
+        let s = render(&m);
+        assert!(
+            s.contains("value = sort(cloudflare_zone.k.name_servers)"),
+            "expected function-call ref, got: {s}"
+        );
+    }
+
+    #[test]
+    fn render_ref_with_index_access() {
+        let m = Module {
+            outputs: vec![Output {
+                name: "first".into(),
+                description: None,
+                value: Expr::Ref("var.list[0]".into()),
+                sensitive: false,
+            }],
+            ..Default::default()
+        };
+        let s = render(&m);
+        assert!(
+            s.contains("value = var.list[0]"),
+            "expected index-access ref, got: {s}"
+        );
+    }
+
+    #[test]
+    fn build_ref_renders_conditional() {
+        let e = build_ref("var.enabled ? var.a : var.b");
+        let s = format!("{e}");
+        assert_eq!(s, "var.enabled ? var.a : var.b");
     }
 
     #[test]

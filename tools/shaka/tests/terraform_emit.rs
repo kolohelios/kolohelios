@@ -87,7 +87,11 @@ fn every_valid_fixture_renders_to_its_golden() {
 
 #[test]
 fn every_invalid_fixture_causes_emit_to_fail() {
-    let fixtures = fixtures_in("invalid/schema");
+    // Both schema-level invalids (rejected by `cue export`) and
+    // emit-level invalids (pass the schema but fail the emitter's HCL
+    // expression parse) must cause emit to exit non-zero.
+    let mut fixtures = fixtures_in("invalid/schema");
+    fixtures.extend(fixtures_in("invalid/emit"));
     assert!(!fixtures.is_empty(), "no invalid fixtures found");
     for fixture in fixtures {
         let case = fixture

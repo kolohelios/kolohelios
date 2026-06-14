@@ -7,23 +7,28 @@ package terraform
 //
 // The schema models Terraform constructs structurally rather than as raw
 // strings. HCL expressions that aren't JSON-representable (traversals like
-// `var.region` or `linode_instance.devbox.id`) are written as #Ref
-// objects; the emitter recognizes them and produces HCL Traversal nodes.
+// `var.region`, function calls like `sort(...)`, index access, conditionals,
+// splats) are written as #Ref objects; the emitter parses the expression and
+// produces the corresponding HCL AST node.
 
-// #Ref expresses an HCL traversal — a dotted chain of identifiers like
-// `var.region` or `linode_instance.devbox.id`. The schema closes #Ref to
+// #Ref expresses an arbitrary HCL expression — a traversal like
+// `var.region`, a function call like `sort(var.x)`, index access like
+// `var.list[0]`, a conditional, a splat, etc. The schema closes #Ref to
 // exactly one field, `$ref`, so the emitter can detect refs without
 // colliding with user-authored objects that happen to share field names.
+// The `$ref` value is only required to be a non-empty string here; the
+// emitter validates it by parsing it as an HCL expression (see
+// `terraform/ir.rs`), rejecting anything that isn't well-formed HCL.
 #Ref: {
-	"$ref": string & =~"^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)*$"
+	"$ref": string & !=""
 }
 
 // #NonRefObject: a generic object value that is *not* a ref. Without this,
-// CUE's union semantics let a malformed ref like `{"$ref": "bad string"}`
-// satisfy the open object branch of #Value and bypass the regex on #Ref —
-// the schema would accept it and only the IR walker would reject it.
+// CUE's union semantics let an object carrying a `$ref` key satisfy the
+// open object branch of #Value and bypass #Ref's single-field shape — the
+// schema would accept it and only the IR walker would see it.
 // Forbidding `$ref` here (`"$ref"?: _|_`) forces any object carrying a
-// `$ref` key through #Ref, where the regex applies.
+// `$ref` key through #Ref, where the emitter then parses it.
 #NonRefObject: {[string]: #Value, "$ref"?: _|_}
 
 // #Value: the recursive value type for attributes. Anything that JSON can
