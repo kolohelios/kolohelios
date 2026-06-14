@@ -25,7 +25,8 @@
 # so each PR gets its own ephemeral Worker (cleanup is the
 # caller's responsibility, typically a `pull_request: closed`
 # job that runs `wrangler delete`). Output `worker_url` exposes
-# the `*.workers.dev` URL so the caller can post / update a PR
+# the deployed URL (the `*.workers.dev` URL, or the custom domain for
+# a custom-domain-only Worker) so the caller can post / update a PR
 # comment without re-parsing wrangler output itself.
 #
 # Threat-model assumptions (worth revisiting if any of these change):
@@ -77,7 +78,7 @@ on:
         required: true
     outputs:
       worker_url:
-        description: "The *.workers.dev URL the Worker was deployed to. Empty in verify_only mode."
+        description: "The URL the Worker was deployed to — its *.workers.dev URL, or the custom domain for a custom-domain-only Worker. Empty in verify_only mode."
         value: ${{ jobs.deploy.outputs.worker_url }}
 
 jobs:
@@ -164,15 +165,19 @@ jobs:
           exit "${PIPESTATUS[0]}"
       - name: parse worker URL
         id: parse-url
-        # Skipped in verify-only mode; nothing was deployed, no URL
-        # to extract. Grep the first `https://*.workers.dev` line
-        # from wrangler stdout — stable across recent wrangler
-        # versions; if the format ever shifts, this step fails the
-        # job rather than silently emitting an empty URL.
+        working-directory: ${{ inputs.project_dir }}
+        # Skipped in verify-only mode; nothing was deployed, no URL to
+        # extract. `shaka ci parse-deploy-url` prefers the
+        # `*.workers.dev` URL but falls back to a `<host> (custom domain)`
+        # trigger line — a Worker with a `custom_domain` route disables
+        # the workers.dev URL by default, so a clean custom-domain-only
+        # deploy prints no workers.dev line (#867). It exits non-zero only
+        # when neither shape is present (a genuine wrangler format change);
+        # that turns into the error annotation below rather than a silent
+        # empty URL.
         if: ${{ ! inputs.verify_only }}
         run: |
-          url=$(grep -oE 'https://[^[:space:]]+\.workers\.dev' /tmp/wrangler-output.log | head -1)
-          if [[ -z "$url" ]]; then
+          if ! url=$(nix develop . --command shaka ci parse-deploy-url /tmp/wrangler-output.log); then
             echo "::error::could not parse worker URL from wrangler output (format change?)"
             exit 1
           fi
