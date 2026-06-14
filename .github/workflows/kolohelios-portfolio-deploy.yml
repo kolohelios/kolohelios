@@ -104,3 +104,21 @@ jobs:
       verify_only: false
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+  gate:
+    name: kolohelios-portfolio deploy gate
+    needs:
+    - changes
+    - verify
+    - preview
+    - deploy
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - run: |-
+        echo '${{ toJson(needs) }}' | jq -e '
+          to_entries
+          | map(select(.value.result != "success" and .value.result != "skipped"))
+          | if length == 0 then "Gate passed"
+            else error("Gate failed: \(map(.key) | join(", "))")
+            end
+        '
