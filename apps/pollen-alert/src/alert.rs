@@ -40,8 +40,8 @@ pub fn find_alert(
     let mut run_start: Option<usize> = None;
     for (i, (_h, score)) in hours.iter().enumerate() {
         if score.points >= threshold {
-            run_start.get_or_insert(i);
-            let run_len = i - run_start.unwrap() + 1;
+            let start = *run_start.get_or_insert(i);
+            let run_len = i - start + 1;
             if run_len >= min_consecutive {
                 // Extend the run to its full length — the qualifying
                 // window may continue past the min_consecutive mark.
@@ -53,7 +53,7 @@ pub fn find_alert(
                         break;
                     }
                 }
-                return Some(build_alert(&hours[run_start.unwrap()..=end]));
+                return Some(build_alert(&hours[start..=end]));
             }
         } else {
             run_start = None;
@@ -64,8 +64,8 @@ pub fn find_alert(
 
 fn build_alert(run: &[(ForecastHour, HourScore)]) -> Alert {
     let score = run.iter().map(|(_, s)| s.points).max().unwrap_or(0);
-    let window_start = run.first().unwrap().0.local_time;
-    let window_end = run.last().unwrap().0.local_time;
+    let window_start = run.first().expect("alert run is non-empty").0.local_time;
+    let window_end = run.last().expect("alert run is non-empty").0.local_time;
 
     // Tally reason counts in first-seen order so ties break by the
     // original `score_hour` insertion order.

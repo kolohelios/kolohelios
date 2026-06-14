@@ -826,21 +826,27 @@ impl FakeJj {
     /// Force the next `status()` call to return `s`. Defaults to
     /// `Status::Ok` when unset.
     pub fn with_status(self, s: Status) -> Self {
-        self.inner.lock().unwrap().status = Some(s);
+        self.inner.lock().expect("FakeJj mutex poisoned").status = Some(s);
         self
     }
 
     /// Force `rebase_onto_remote()` to return `o`. Defaults to
     /// `RebaseOutcome::Clean` when unset.
     pub fn with_rebase_outcome(self, o: RebaseOutcome) -> Self {
-        self.inner.lock().unwrap().rebase_outcome = Some(o);
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .rebase_outcome = Some(o);
         self
     }
 
     /// Force the next `push()` call to return `o`. Defaults to
     /// `PushOutcome::Pushed` when unset.
     pub fn with_push_outcome(self, o: PushOutcome) -> Self {
-        self.inner.lock().unwrap().push_outcome = Some(o);
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .push_outcome = Some(o);
         self
     }
 
@@ -848,21 +854,30 @@ impl FakeJj {
     /// `Ok(None)` (no unpushed commits) when unset. Pass
     /// `Some(Some(summary))` for a positive result.
     pub fn with_unpushed_summary(self, s: Option<UnpushedSummary>) -> Self {
-        self.inner.lock().unwrap().unpushed_summary = Some(s);
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .unpushed_summary = Some(s);
         self
     }
 
     /// Force `other_bookmarks_in_range()` to return `names`. Default is
     /// an empty vec (no side branches in range) when unset.
     pub fn with_other_bookmarks(self, names: Vec<String>) -> Self {
-        self.inner.lock().unwrap().other_bookmarks = Some(names);
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .other_bookmarks = Some(names);
         self
     }
 
     /// Force `change_is_empty()` to return `is_empty`. Default is
     /// `true` (matches the common case: an empty `@` between writes).
     pub fn with_change_is_empty(self, is_empty: bool) -> Self {
-        self.inner.lock().unwrap().change_is_empty = Some(is_empty);
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .change_is_empty = Some(is_empty);
         self
     }
 
@@ -872,19 +887,26 @@ impl FakeJj {
     /// describe-in-place branch fires only when this is explicitly an
     /// empty string AND `change_is_empty` is `true`.
     pub fn with_change_description(self, desc: impl Into<String>) -> Self {
-        self.inner.lock().unwrap().change_description = Some(desc.into());
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .change_description = Some(desc.into());
         self
     }
 
     /// Snapshot of recorded calls in order.
     pub fn calls(&self) -> Vec<Call> {
-        self.inner.lock().unwrap().calls.clone()
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .clone()
     }
 }
 
 impl Jj for FakeJj {
     fn status(&self, workdir: &Path) -> Result<Status> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::Status {
             workdir: workdir.to_path_buf(),
         });
@@ -892,7 +914,7 @@ impl Jj for FakeJj {
     }
 
     fn other_bookmarks_in_range(&self, workdir: &Path, bookmark: &str) -> Result<Vec<String>> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::OtherBookmarksInRange {
             workdir: workdir.to_path_buf(),
             bookmark: bookmark.to_string(),
@@ -901,10 +923,14 @@ impl Jj for FakeJj {
     }
 
     fn fetch(&self, workdir: &Path, remote: &str) -> Result<()> {
-        self.inner.lock().unwrap().calls.push(Call::Fetch {
-            workdir: workdir.to_path_buf(),
-            remote: remote.to_string(),
-        });
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .push(Call::Fetch {
+                workdir: workdir.to_path_buf(),
+                remote: remote.to_string(),
+            });
         Ok(())
     }
 
@@ -914,7 +940,7 @@ impl Jj for FakeJj {
         bookmark: &str,
         remote: &str,
     ) -> Result<RebaseOutcome> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::Rebase {
             workdir: workdir.to_path_buf(),
             bookmark: bookmark.to_string(),
@@ -924,23 +950,31 @@ impl Jj for FakeJj {
     }
 
     fn new_change(&self, workdir: &Path, message: &str) -> Result<()> {
-        self.inner.lock().unwrap().calls.push(Call::NewChange {
-            workdir: workdir.to_path_buf(),
-            message: message.to_string(),
-        });
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .push(Call::NewChange {
+                workdir: workdir.to_path_buf(),
+                message: message.to_string(),
+            });
         Ok(())
     }
 
     fn set_bookmark_to_head(&self, workdir: &Path, bookmark: &str) -> Result<()> {
-        self.inner.lock().unwrap().calls.push(Call::SetBookmark {
-            workdir: workdir.to_path_buf(),
-            bookmark: bookmark.to_string(),
-        });
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .push(Call::SetBookmark {
+                workdir: workdir.to_path_buf(),
+                bookmark: bookmark.to_string(),
+            });
         Ok(())
     }
 
     fn push(&self, workdir: &Path, remote: &str, bookmark: &str) -> Result<PushOutcome> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::Push {
             workdir: workdir.to_path_buf(),
             remote: remote.to_string(),
@@ -956,7 +990,7 @@ impl Jj for FakeJj {
         remote: &str,
         _now: OffsetDateTime,
     ) -> Result<Option<UnpushedSummary>> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::UnpushedSummary {
             workdir: workdir.to_path_buf(),
             bookmark: bookmark.to_string(),
@@ -966,7 +1000,7 @@ impl Jj for FakeJj {
     }
 
     fn change_is_empty(&self, workdir: &Path, change: &str) -> Result<bool> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::ChangeIsEmpty {
             workdir: workdir.to_path_buf(),
             change: change.to_string(),
@@ -975,25 +1009,33 @@ impl Jj for FakeJj {
     }
 
     fn new_change_at(&self, workdir: &Path, parent: &str, message: Option<&str>) -> Result<()> {
-        self.inner.lock().unwrap().calls.push(Call::NewChangeAt {
-            workdir: workdir.to_path_buf(),
-            parent: parent.to_string(),
-            message: message.map(str::to_string),
-        });
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .push(Call::NewChangeAt {
+                workdir: workdir.to_path_buf(),
+                parent: parent.to_string(),
+                message: message.map(str::to_string),
+            });
         Ok(())
     }
 
     fn set_bookmark_at(&self, workdir: &Path, bookmark: &str, target: &str) -> Result<()> {
-        self.inner.lock().unwrap().calls.push(Call::SetBookmarkAt {
-            workdir: workdir.to_path_buf(),
-            bookmark: bookmark.to_string(),
-            target: target.to_string(),
-        });
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .push(Call::SetBookmarkAt {
+                workdir: workdir.to_path_buf(),
+                bookmark: bookmark.to_string(),
+                target: target.to_string(),
+            });
         Ok(())
     }
 
     fn change_description(&self, workdir: &Path, change: &str) -> Result<String> {
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.lock().expect("FakeJj mutex poisoned");
         s.calls.push(Call::ChangeDescription {
             workdir: workdir.to_path_buf(),
             change: change.to_string(),
@@ -1006,10 +1048,14 @@ impl Jj for FakeJj {
     }
 
     fn describe(&self, workdir: &Path, message: &str) -> Result<()> {
-        self.inner.lock().unwrap().calls.push(Call::Describe {
-            workdir: workdir.to_path_buf(),
-            message: message.to_string(),
-        });
+        self.inner
+            .lock()
+            .expect("FakeJj mutex poisoned")
+            .calls
+            .push(Call::Describe {
+                workdir: workdir.to_path_buf(),
+                message: message.to_string(),
+            });
         Ok(())
     }
 }
