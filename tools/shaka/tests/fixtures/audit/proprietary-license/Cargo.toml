@@ -1,0 +1,10 @@
+[package]
+name = "proprietary-license"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+publish = false
+rust-version = "1.95"
+
+[lints.clippy]
+mod_module_files = "deny"
