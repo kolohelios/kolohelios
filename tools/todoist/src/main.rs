@@ -1,3 +1,7 @@
+// Non-test code must not `.unwrap()`; `not(test)` exempts unit tests,
+// and integration tests compile as separate crates (no attribute).
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 use std::error::Error;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};

@@ -1,3 +1,7 @@
+// Non-test code must not `.unwrap()`; `not(test)` exempts unit tests,
+// and integration tests compile as separate crates (no attribute).
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 //! Wire protocol shared by the `notes-sync` Durable Object and the WASM
 //! editor — one set of serde structs so both sides serialize the same
 //! bytes. Compiles natively (for `cargo test`) and to

@@ -1,3 +1,7 @@
+// Non-test code must not `.unwrap()`; `not(test)` exempts unit tests,
+// and integration tests compile as separate crates (no attribute).
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 //! Portable hooks invoked by the Claude Code harness via
 //! `settings.json`. Each hook is a subcommand of this binary; the
 //! harness pipes tool-call JSON on stdin and treats a non-zero exit

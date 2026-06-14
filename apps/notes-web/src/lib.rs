@@ -1,3 +1,7 @@
+// Non-test code must not `.unwrap()`; `not(test)` exempts unit tests,
+// and integration tests compile as separate crates (no attribute).
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 //! notes-web — the front-end Worker for the note app. The HTMX shell and
 //! the Rust-WASM editor bundle are served as Workers Static Assets
 //! (`[assets]` in `wrangler.toml`); Cloudflare serves matched paths at

@@ -1,3 +1,7 @@
+// Non-test code must not `.unwrap()`; `not(test)` exempts unit tests,
+// and integration tests compile as separate crates (no attribute).
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 //! notes-sync — Cloudflare Worker + per-note Durable Object backing the
 //! live-synced note app. Each note maps to one Durable Object via
 //! `idFromName(noteId)`; while a note is open that DO is the single
