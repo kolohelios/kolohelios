@@ -14,17 +14,34 @@ on `shaka issue create`.
 
 ## Workflow
 
+### 0. Pick the target repo
+
+By default the issue is filed into the **local** repo (auto-detected from
+the git remote) and every `shaka` call below runs against it. When filing
+into a *foreign* repo — for example, opening a `kolohelios/kolohelios`
+issue from inside a private consumer repo that has no local checkout of it
+— capture the target as `<owner/name>` and thread `--repo <owner/name>`
+through **every** `shaka` invocation below (search *and* create). This
+keeps the duplicate search and the scope gate pointed at the same repo the
+issue lands in, instead of falling back to raw `gh issue create`. With
+`--repo`, `--scope` is validated against the target repo's
+`.shaka/labels.cue` fetched over the API, not the local tree.
+
+The rest of this workflow writes `[--repo <owner/name>]` to mark where the
+flag goes; drop it for the default local-repo case.
+
 ### 1. Search first
 
 Take the topic the user wants to file. Run:
 
 ```
-shaka issue list --search "<keywords>"
+shaka issue list [--repo <owner/name>] --search "<keywords>"
 ```
 
 Pick keywords from the topic — typically the project scope plus the
 distinguishing nouns/verbs (for example, `analytics summary` or
-`auth token storage`).
+`auth token storage`). `--repo` aims the duplicate search at the target
+repo so candidates from the right project surface.
 
 ### 2. Show candidates
 
@@ -62,10 +79,13 @@ the user to confirm or tweak.
 Write the drafted body to a temp file and run:
 
 ```
-shaka issue create --title "<title>" --scope <scope> --body-file <path> [--label ...] [--parent <N>]
+shaka issue create [--repo <owner/name>] --title "<title>" --scope <scope> --body-file <path> [--label ...] [--parent <N>]
 ```
 
-- `--scope` (required) — the canonical scope label from
+- `--repo <owner/name>` — file into a foreign repo (see Step 0). Must be
+  the same target used for the Step 1 search. `--scope` is then validated
+  against *that* repo's `.shaka/labels.cue`. Omit for the local repo.
+- `--scope` (required) — the canonical scope label from the target repo's
   `.shaka/labels.cue`; usually the project name (`shaka`, `infra/home`).
   `shaka` attaches it and fails if it isn't canonical.
 - `--label` (repeatable) — extra labels beyond the scope label
@@ -86,8 +106,10 @@ natively).
 
 ## Conventions
 
-- Scope label comes from `--scope` — one of the canonical labels in
-  `.shaka/labels.cue`. Use `--label` for any extras on top.
+- Scope label comes from `--scope` — one of the canonical labels in the
+  target repo's `.shaka/labels.cue` (the local tree by default, or the
+  `--repo` target's fetched set when filing into a foreign repo). Use
+  `--label` for any extras on top.
 - One issue per discrete feature/bug. Sub-tasks of a larger effort
   get their own issues, linked with `--parent <N>`.
 - Conventional commit type belongs in the title:
