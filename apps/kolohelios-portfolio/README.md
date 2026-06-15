@@ -111,14 +111,11 @@ browser. Provisioning is a one-time manual step:
 2. Copy each form's numeric id into `project.cue`'s `wrangler.vars`
    (`KIT_FORM_ID_CONTACT`, `KIT_FORM_ID_NEWSLETTER`), then run
    `shaka deploy generate-wrangler`. Form ids are not secret.
-3. Set the API key as a Worker secret (not committed):
-
-   ```
-   wrangler secret put KIT_API_KEY
-   ```
-
-   The deploy workflow does not push Worker secrets yet (#794), so set
-   it once against the production worker.
+3. Store the Kit API key in 1Password and put its `op://` reference in
+   `.env.example` as `KIT_API_KEY` (already wired). The deploy resolves
+   it via `op run` and pushes it to the Worker with `wrangler secret put`
+   on every `push: main` (and to PR-preview Workers) — no manual
+   `wrangler secret put` step.
 4. Enable double opt-in on both Kit forms so Kit owns confirmation and
    unsubscribe/compliance.
 
