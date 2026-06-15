@@ -6,7 +6,7 @@ use crate::project::schema_check;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 #[derive(Debug, PartialEq, Eq)]
-enum BumpResult {
+pub(crate) enum BumpResult {
     Updated,
     Unchanged,
     Skipped,
@@ -191,7 +191,7 @@ fn merge_footer(auto_merge: bool) -> &'static str {
     }
 }
 
-fn bump_one(project: &Path, input: &str) -> BumpResult {
+pub(crate) fn bump_one(project: &Path, input: &str) -> BumpResult {
     let flake = project.join("flake.nix");
     let Ok(contents) = std::fs::read_to_string(&flake) else {
         return BumpResult::Skipped;

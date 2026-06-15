@@ -1,6 +1,6 @@
 mod audit;
 mod bump;
-mod bump_locks;
+pub(crate) mod bump_locks;
 pub mod describe;
 mod policy;
 mod pr;
