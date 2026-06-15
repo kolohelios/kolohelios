@@ -24,6 +24,7 @@ mod repo;
 mod term;
 mod terraform;
 mod token;
+mod update;
 mod whitespace;
 mod workspace;
 
@@ -115,6 +116,14 @@ enum Commands {
         #[command(subcommand)]
         command: token::TokenCommand,
     },
+    /// Bring this host's nix-managed system up to date: bump the
+    /// kolohelios-nix lock infra/home consumes, then run the
+    /// platform-appropriate system rebuild (macOS/nix-darwin today)
+    Update {
+        /// Print the resolved lock-bump and rebuild plan without running it
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Whitespace and line-ending hygiene (check, fix)
     Whitespace {
         #[command(subcommand)]
@@ -156,6 +165,7 @@ fn main() {
         Commands::Repo { command } => repo::run(command),
         Commands::Terraform { command } => terraform::run(command),
         Commands::Token { command } => token::run(command),
+        Commands::Update { dry_run } => update::run(dry_run),
         Commands::Whitespace { command } => whitespace::run(command),
         Commands::Workspace { command } => workspace::run(command),
     }
