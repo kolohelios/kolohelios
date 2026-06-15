@@ -5,12 +5,17 @@ Terraform-managed Cloudflare DNS zones. Slice #1 of the personal portfolio
 
 ## Layout
 
-- `terraform/main.tf` — Cloudflare provider and zone resources.
-  Account ID comes literally from `var.cloudflare_account_id` (see
-  #311/#313 for why no `data "cloudflare_accounts"` lookup).
-- `terraform/outputs.tf` — `domain_expectations` is the stable contract
-  consumed by `shaka domain check` (per-domain expected NS pair and DNSSEC
-  state).
+- `cue/` — typed source of truth for the Terraform module
+  (`module.cue` declares the Cloudflare provider, zone resources, and the
+  `domain_expectations` output against
+  `tools/shaka/schema/terraform-schema.cue`). Account ID comes literally
+  from `var.cloudflare_account_id` (see #311/#313 for why no
+  `data "cloudflare_accounts"` lookup).
+- `terraform/` — the committed `module.tf` (emitted from `cue/` by
+  `shaka terraform emit`) and the committed `backend.tf` (from
+  `project.cue` via `shaka object-store tfstate emit`). The
+  `domain_expectations` output is the stable contract consumed by
+  `shaka domain check` (per-domain expected NS pair and DNSSEC state).
 - `domains/` — per-domain CUE registry, one keyed entry per file
   (`domains: "<hostname>": schema.#Domain & { ... }`) plus
   `aggregate.cue` declaring the typed map and the derived
@@ -28,6 +33,21 @@ nix develop . --command just validate
 
 runs the same `tofu validate` / `nix fmt --check` / whitespace steps CI
 runs for this project (via `shaka preflight`).
+
+## Editing the Terraform module
+
+The module is declared in CUE under `cue/` and validated against
+`tools/shaka/schema/terraform-schema.cue`. The HCL OpenTofu reads
+(`terraform/module.tf`) is generated — never edit it directly. The
+workflow:
+
+1. Edit `cue/module.cue`.
+2. Run `shaka terraform emit --project infra/cloudflare-dns` to
+   regenerate `terraform/module.tf`.
+3. Commit both the CUE source and the regenerated HCL.
+
+`shaka terraform check` (in `shaka preflight`) catches the case where one
+was committed without the other.
 
 ## Provisioning
 
