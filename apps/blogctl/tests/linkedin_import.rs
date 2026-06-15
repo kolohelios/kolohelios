@@ -2,9 +2,10 @@
 //!
 //! Seeds a workdir with published posts whose LinkedIn target URLs carry
 //! activity ids in the `/posts/…-<id>-<code>` share form, writes
-//! synthetic `Content_*.xlsx` exports (carrying the `urn:li:activity:<id>`
-//! form), and drives the import end-to-end against a `FakeJj` so the
-//! sync path runs without a real `jj` binary.
+//! synthetic exports (both the old `Content_` and new
+//! `AggregateAnalytics_` filename formats, carrying the
+//! `urn:li:activity:<id>` form), and drives the import end-to-end against
+//! a `FakeJj` so the sync path runs without a real `jj` binary.
 
 use std::path::Path;
 
@@ -60,10 +61,29 @@ fn seed_post(repo: &Repository, slug: &str, activity_id: &str) {
     repo.create_post(&post).unwrap();
 }
 
-/// Write one `Content_<date>_<date>_Synthetic.xlsx` export. Each row is
+/// Write one old-format `Content_<date>_<date>_Synthetic.xlsx` export
+/// (dates first, name last).
+fn write_export(dir: &Path, date: &str, rows: &[(&str, u64, u64)]) {
+    write_workbook(
+        &dir.join(format!("Content_{date}_{date}_Synthetic.xlsx")),
+        rows,
+    );
+}
+
+/// Write one new-format `AggregateAnalytics_<name>_<date>_<date>.xlsx`
+/// export (name first, dates last). The sheet contents are identical to
+/// the old format — only the filename differs.
+fn write_aggregate_export(dir: &Path, date: &str, rows: &[(&str, u64, u64)]) {
+    write_workbook(
+        &dir.join(format!("AggregateAnalytics_Synthetic_{date}_{date}.xlsx")),
+        rows,
+    );
+}
+
+/// Write the `TOP POSTS` sheet to `path`. Each row is
 /// `(activity_id, impressions, engagements)` and is written to both the
 /// engagements-ranked (A:C) and impressions-ranked (E:G) tables.
-fn write_export(dir: &Path, date: &str, rows: &[(&str, u64, u64)]) {
+fn write_workbook(path: &Path, rows: &[(&str, u64, u64)]) {
     let mut workbook = Workbook::new();
     let sheet = workbook.add_worksheet();
     sheet.set_name("TOP POSTS").unwrap();
@@ -83,8 +103,7 @@ fn write_export(dir: &Path, date: &str, rows: &[(&str, u64, u64)]) {
         sheet.write_string(r, 5, "5/1/2026").unwrap();
         sheet.write_number(r, 6, *impressions as f64).unwrap();
     }
-    let path = dir.join(format!("Content_{date}_{date}_Synthetic.xlsx"));
-    workbook.save(&path).unwrap();
+    workbook.save(path).unwrap();
 }
 
 fn samples_of(repo: &Repository, slug: &str) -> Vec<MetricSample> {
@@ -152,6 +171,52 @@ fn records_per_day_samples_for_matched_posts() {
     assert_eq!(alpha[1].impressions, Some(150));
 
     assert_eq!(samples_of(&repo, "beta").len(), 1);
+}
+
+#[test]
+fn imports_mixed_prefix_exports_without_duplicates() {
+    // A `linkedin-exports/` dir holding both the old `Content_` format
+    // and the new `AggregateAnalytics_` format must import every file —
+    // the default `[linkedin] export_filename_prefixes` covers both —
+    // and re-running adds no duplicate data points.
+    let (tmp, repo) = workdir();
+    seed_post(&repo, "alpha", "7400000000000000001");
+    let exports = TempDir::new().unwrap();
+    write_export(
+        exports.path(),
+        "2026-05-22",
+        &[("7400000000000000001", 100, 10)],
+    );
+    write_aggregate_export(
+        exports.path(),
+        "2026-05-23",
+        &[("7400000000000000001", 150, 12)],
+    );
+
+    let summary = commands::linkedin::run(
+        &FakeJj::new(),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, false),
+    )
+    .unwrap();
+    assert_eq!(summary.added, 2);
+    assert!(summary.unmatched.is_empty());
+
+    let alpha = samples_of(&repo, "alpha");
+    assert_eq!(alpha.len(), 2);
+    assert_eq!(alpha[0].date, date!(2026 - 05 - 22));
+    assert_eq!(alpha[1].date, date!(2026 - 05 - 23));
+
+    // Re-running the same mixed dir is idempotent on `(urn, date)`.
+    let second = commands::linkedin::run(
+        &FakeJj::new(),
+        &FakeFetcher::new(),
+        import_args(tmp.path(), exports.path(), true, false),
+    )
+    .unwrap();
+    assert_eq!(second.added, 0);
+    assert_eq!(second.skipped, 2);
+    assert_eq!(samples_of(&repo, "alpha").len(), 2);
 }
 
 #[test]

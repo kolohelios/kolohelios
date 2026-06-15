@@ -1,5 +1,6 @@
-//! Parser for LinkedIn's daily `Content_<start>_<end>_*.xlsx` analytics
-//! exports.
+//! Parser for LinkedIn's daily analytics exports — `xlsx` files whose
+//! names start with a configured prefix (`Content_`, `AggregateAnalytics_`,
+//! …; see `[linkedin] export_filename_prefixes`).
 //!
 //! Each export's `TOP POSTS` sheet holds two side-by-side tables — one
 //! ranked by engagements, one by impressions — that share the columns
@@ -9,9 +10,10 @@
 //! distinct post per file. The two tables rank the same posts
 //! differently, so the merge is by URN, never by row position.
 //!
-//! The snapshot date comes from the filename's `<start>_<end>` window,
-//! not the sheet, so re-parsing overlapping exports yields stable
-//! per-day data points keyed by `(urn, snapshot_date)`.
+//! The snapshot date comes from the filename's `<start>_<end>` window
+//! (the last date token, regardless of field order), not the sheet, so
+//! re-parsing overlapping exports yields stable per-day data points keyed
+//! by `(urn, snapshot_date)`.
 //!
 //! Pure parse: no writes, no network. The batch import (#707) and the
 //! metrics refresh (#859) consume these snapshots.
@@ -75,15 +77,15 @@ struct Table {
     metric: Metric,
 }
 
-/// Parse every `Content_*.xlsx` export in `dir`, in filename order,
-/// concatenating their per-post snapshots. A post recurs once per day
-/// it appears in; de-duplicate by [`PostSnapshot::urn`] to count
-/// distinct posts.
-pub fn parse_dir(dir: &Path) -> Result<Vec<PostSnapshot>> {
+/// Parse every export in `dir` whose filename starts with one of
+/// `prefixes`, in filename order, concatenating their per-post snapshots.
+/// A post recurs once per day it appears in; de-duplicate by
+/// [`PostSnapshot::urn`] to count distinct posts.
+pub fn parse_dir(dir: &Path, prefixes: &[String]) -> Result<Vec<PostSnapshot>> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .map_err(|source| Error::io(dir, source))?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| is_export(path))
+        .filter(|path| is_export(path, prefixes))
         .collect();
     paths.sort();
 
@@ -267,41 +269,39 @@ fn parse_us_date(value: &str) -> std::result::Result<Date, time::error::Parse> {
     )
 }
 
-/// Derive the snapshot date from a `Content_<start>_<end>_*.xlsx`
-/// filename, using the window end. Dailies have `start == end`; the end
-/// is the "as of" date the metrics represent.
+/// Derive the snapshot date from an export filename, using the window
+/// end. Dailies carry a `<start>_<end>` window with `start == end`; the
+/// end is the "as of" date the metrics represent. The prefix and field
+/// order differ across export formats (`Content_<date>_<date>_<name>` vs
+/// `AggregateAnalytics_<name>_<date>_<date>`), so we don't depend on field
+/// position — we take the last parseable `YYYY-MM-DD` token, which is the
+/// window end in both layouts.
 fn snapshot_date_from_filename(path: &Path) -> Result<Date> {
-    let name = path
-        .file_name()
+    let stem = path
+        .file_stem()
         .and_then(OsStr::to_str)
         .ok_or_else(|| Error::LinkedinFilename {
             name: path.display().to_string(),
         })?;
-    let window = name
-        .strip_prefix("Content_")
+    let date = format_description!("[year]-[month]-[day]");
+    stem.split('_')
+        .filter_map(|field| Date::parse(field, &date).ok())
+        .next_back()
         .ok_or_else(|| Error::LinkedinFilename {
-            name: name.to_string(),
-        })?;
-    // window == "<start>_<end>_<rest>.xlsx"; the end date is the 2nd field.
-    let end = window
-        .split('_')
-        .nth(1)
-        .ok_or_else(|| Error::LinkedinFilename {
-            name: name.to_string(),
-        })?;
-    Date::parse(end, &format_description!("[year]-[month]-[day]")).map_err(|_| {
-        Error::LinkedinFilename {
-            name: name.to_string(),
-        }
-    })
+            name: stem.to_string(),
+        })
 }
 
-fn is_export(path: &Path) -> bool {
+fn is_export(path: &Path, prefixes: &[String]) -> bool {
     path.extension().and_then(OsStr::to_str) == Some("xlsx")
         && path
             .file_name()
             .and_then(OsStr::to_str)
-            .is_some_and(|name| name.starts_with("Content_"))
+            .is_some_and(|name| {
+                prefixes
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix.as_str()))
+            })
 }
 
 // ---- Public-HTML post extraction (`blogctl linkedin import`, #860) ----
@@ -552,20 +552,36 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_date_uses_window_end() {
-        let path = Path::new("/x/Content_2026-04-30_2026-05-01_JonathanEdwards.xlsx");
+    fn snapshot_date_uses_window_end_regardless_of_field_order() {
+        // Old format: dates first, name last.
         assert_eq!(
-            snapshot_date_from_filename(path).unwrap(),
+            snapshot_date_from_filename(Path::new(
+                "/x/Content_2026-04-30_2026-05-01_JonathanEdwards.xlsx"
+            ))
+            .unwrap(),
+            date!(2026 - 05 - 01)
+        );
+        // New format: name first, dates last.
+        assert_eq!(
+            snapshot_date_from_filename(Path::new(
+                "/x/AggregateAnalytics_JonathanEdwards_2026-04-30_2026-05-01.xlsx"
+            ))
+            .unwrap(),
+            date!(2026 - 05 - 01)
+        );
+        // Daily window collapses to a single date.
+        assert_eq!(
+            snapshot_date_from_filename(Path::new("/x/Content_2026-05-01.xlsx")).unwrap(),
             date!(2026 - 05 - 01)
         );
     }
 
     #[test]
-    fn snapshot_date_rejects_unexpected_filenames() {
+    fn snapshot_date_rejects_filenames_without_a_date() {
         for bad in [
-            "/x/Shares_2026-04-30_2026-04-30.xlsx", // wrong prefix
-            "/x/Content_2026-04-30.xlsx",           // only one date field
-            "/x/Content_nope_alsonope_x.xlsx",      // fields aren't dates
+            "/x/Content_nope_alsonope_x.xlsx", // fields aren't dates
+            "/x/AggregateAnalytics_JonathanEdwards.xlsx",
+            "/x/README.xlsx",
         ] {
             assert!(
                 matches!(
@@ -588,12 +604,31 @@ mod tests {
     }
 
     #[test]
-    fn is_export_matches_only_content_xlsx() {
-        assert!(is_export(Path::new(
-            "/x/Content_2026-04-30_2026-04-30_X.xlsx"
-        )));
-        assert!(!is_export(Path::new("/x/Shares_2026-04-30.csv")));
-        assert!(!is_export(Path::new("/x/Content_2026-04-30.txt")));
-        assert!(!is_export(Path::new("/x/README.md")));
+    fn is_export_matches_any_configured_prefix() {
+        let prefixes = vec!["Content_".to_string(), "AggregateAnalytics_".to_string()];
+        assert!(is_export(
+            Path::new("/x/Content_2026-04-30_2026-04-30_X.xlsx"),
+            &prefixes
+        ));
+        assert!(is_export(
+            Path::new("/x/AggregateAnalytics_X_2026-04-30_2026-04-30.xlsx"),
+            &prefixes
+        ));
+        // Right prefix, wrong extension.
+        assert!(!is_export(
+            Path::new("/x/Content_2026-04-30.txt"),
+            &prefixes
+        ));
+        // Right extension, unconfigured prefix.
+        assert!(!is_export(
+            Path::new("/x/Shares_2026-04-30.xlsx"),
+            &prefixes
+        ));
+        assert!(!is_export(Path::new("/x/README.md"), &prefixes));
+        // A prefix absent from the config no longer matches.
+        assert!(!is_export(
+            Path::new("/x/Content_2026-04-30.xlsx"),
+            &["AggregateAnalytics_".to_string()]
+        ));
     }
 }
