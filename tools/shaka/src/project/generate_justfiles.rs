@@ -43,6 +43,15 @@ coverage:
     # (`-Z coverage-options=branch`), incompatible with the pinned
     # stable toolchain.
     set -euo pipefail
+    # cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it broken
+    # on darwin), so skip cleanly off-Linux rather than hard-erroring or
+    # silently using an unpinned global install. CI runs on Linux, so the
+    # gate is still enforced there. To measure locally on darwin:
+    # `cargo install cargo-llvm-cov`.
+    if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+        echo "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+        exit 0
+    fi
     thresholds=$(shaka project coverage-thresholds)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
     measured=$(cargo llvm-cov --json --summary-only)
@@ -110,6 +119,15 @@ coverage:
     # (`-Z coverage-options=branch`), incompatible with the pinned
     # stable toolchain.
     set -euo pipefail
+    # cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it broken
+    # on darwin), so skip cleanly off-Linux rather than hard-erroring or
+    # silently using an unpinned global install. CI runs on Linux, so the
+    # gate is still enforced there. To measure locally on darwin:
+    # `cargo install cargo-llvm-cov`.
+    if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+        echo "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+        exit 0
+    fi
     thresholds=$(shaka project coverage-thresholds)
     fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
     measured=$(cargo llvm-cov --json --summary-only)
@@ -190,6 +208,15 @@ coverage:
     # Optional on wasm-app (cargo-llvm-cov can't see the browser DOM and
     # socket paths); skip when not declared.
     set -euo pipefail
+    # cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it broken
+    # on darwin), so skip cleanly off-Linux rather than hard-erroring or
+    # silently using an unpinned global install. CI runs on Linux, so the
+    # gate is still enforced there. To measure locally on darwin:
+    # `cargo install cargo-llvm-cov`.
+    if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+        echo "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+        exit 0
+    fi
     thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on wasm-app); skipping"
@@ -283,6 +310,15 @@ coverage:
     #!/usr/bin/env bash
     # Line coverage only — see the rust-cli template for why.
     set -euo pipefail
+    # cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it broken
+    # on darwin), so skip cleanly off-Linux rather than hard-erroring or
+    # silently using an unpinned global install. CI runs on Linux, so the
+    # gate is still enforced there. To measure locally on darwin:
+    # `cargo install cargo-llvm-cov`.
+    if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+        echo "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+        exit 0
+    fi
     thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on rust-worker); skipping"
@@ -917,6 +953,35 @@ mod tests {
             assert!(
                 tpl.contains("whitespace-check\n"),
                 "validate chain must include whitespace-check"
+            );
+        }
+    }
+
+    #[test]
+    fn coverage_recipes_skip_when_llvm_cov_unavailable() {
+        // cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it
+        // broken on darwin), so every coverage recipe must detect its
+        // absence and skip cleanly rather than hard-error — keeping local
+        // `validate` green off-Linux while CI still enforces the gate (#746).
+        for tpl in [
+            RUST_TEMPLATE,
+            RUST_LIB_TEMPLATE,
+            WASM_APP_TEMPLATE,
+            RUST_WORKER_TEMPLATE,
+        ] {
+            assert!(
+                tpl.contains("cargo llvm-cov"),
+                "template should have a coverage recipe to guard"
+            );
+            assert!(
+                tpl.contains("command -v cargo-llvm-cov"),
+                "coverage recipe must guard on cargo-llvm-cov availability"
+            );
+            assert!(
+                tpl.contains(
+                    "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+                ),
+                "coverage recipe must print a clear skip message"
             );
         }
     }
