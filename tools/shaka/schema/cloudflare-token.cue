@@ -54,6 +54,7 @@ package cloudflare_token
 
 #PermissionGroup:
 	"Account Settings:Read" |
+	"Account Settings:Edit" |
 	"Account:Cloudflare Pages:Edit" |
 	"Account:Workers Scripts:Edit" |
 	"Zone:Cache Settings:Edit" |

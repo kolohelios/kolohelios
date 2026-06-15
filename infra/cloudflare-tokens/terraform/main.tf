@@ -50,6 +50,10 @@ data "cloudflare_api_token_permission_groups_list" "account_settings_read" {
   name = "Account Settings Read"
 }
 
+data "cloudflare_api_token_permission_groups_list" "account_settings_write" {
+  name = "Account Settings Write"
+}
+
 data "cloudflare_api_token_permission_groups_list" "workers_scripts_write" {
   name = "Workers Scripts Write"
 }
@@ -128,6 +132,10 @@ resource "cloudflare_api_token" "deploy" {
       effect = "allow"
       permission_groups = [
         { id = data.cloudflare_api_token_permission_groups_list.workers_scripts_write.result[0].id },
+        # Account-scoped RUM `site_info` write for the portfolio's
+        # `cloudflare_web_analytics_site` (#195). Smallest CF-exposed
+        # scope — there is no narrower "Web Analytics" group.
+        { id = data.cloudflare_api_token_permission_groups_list.account_settings_write.result[0].id },
       ]
       resources = jsonencode({
         "com.cloudflare.api.account.${local.account_id}" = "*"
