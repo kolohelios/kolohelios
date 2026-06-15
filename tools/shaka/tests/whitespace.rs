@@ -299,6 +299,53 @@ fn check_finds_files_added_only_in_sibling() {
 }
 
 #[test]
+fn check_skips_vendored_vale_packages_but_not_our_config() {
+    // A whitespace offender inside a vendored vale package
+    // (.vale/styles/<Package>/) is excluded from scanning; our own vocab
+    // under the reserved .vale/styles/config/ subtree is not (#895).
+    let repo = Repo::new(&[
+        ("clean.txt", b"hello\n"),
+        (".vale/styles/Google/EmDash.yml", b"extends: existence\n \n"),
+        (
+            ".vale/styles/config/vocabularies/Base/accept.txt",
+            b"kolohelios \n",
+        ),
+    ]);
+    let out = repo.shaka(&["whitespace", "check"]);
+    assert!(
+        !out.status.success(),
+        "our vocab offender should still fail the check\nstdout: {}\nstderr: {}",
+        stdout_of(&out),
+        stderr_of(&out)
+    );
+    let combined = format!("{}{}", stdout_of(&out), stderr_of(&out));
+    assert!(
+        combined.contains("accept.txt"),
+        "our vocab file must be flagged: {combined}"
+    );
+    assert!(
+        !combined.contains("EmDash.yml"),
+        "vendored package file must be excluded: {combined}"
+    );
+}
+
+#[test]
+fn fix_leaves_vendored_vale_packages_untouched() {
+    // Even a non-conformant vendored file keeps its original bytes — `fix`
+    // never rewrites it, so it can't drag unrelated churn into a change.
+    let bad: &[u8] = b"extends: existence\ntrailing \n";
+    let repo = Repo::new(&[(".vale/styles/Google/EmDash.yml", bad)]);
+    let out = repo.shaka(&["whitespace", "fix"]);
+    assert!(
+        out.status.success(),
+        "fix exited non-zero\nstdout: {}\nstderr: {}",
+        stdout_of(&out),
+        stderr_of(&out)
+    );
+    assert_eq!(repo.read(".vale/styles/Google/EmDash.yml"), bad);
+}
+
+#[test]
 fn check_default_path_scans_cwd_subtree() {
     let repo = Repo::new(&[
         ("project/a.txt", b"hello\n"),

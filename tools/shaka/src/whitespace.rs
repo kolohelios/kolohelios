@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
@@ -310,13 +311,33 @@ fn list_tracked_files(paths: &[String]) -> Result<Vec<PathBuf>, String> {
     } else {
         paths
     };
-    if jj::in_repo() {
+    let files = if jj::in_repo() {
         jj::file_list("@", arg_slice)
-            .map(|files| files.into_iter().map(PathBuf::from).collect())
-            .map_err(|e| e.to_string())
+            .map(|files| files.into_iter().map(PathBuf::from).collect::<Vec<_>>())
+            .map_err(|e| e.to_string())?
     } else {
-        git_list_tracked_files(arg_slice)
-    }
+        git_list_tracked_files(arg_slice)?
+    };
+    Ok(files.into_iter().filter(|p| !is_vendored(p)).collect())
+}
+
+// Vendored, third-party content we don't author, so the repo's whitespace
+// conventions don't apply to it. `vale sync` installs style packages under
+// `.vale/styles/<Package>/` (e.g. the `Google` package in `.vale.ini`'s
+// `Packages =`); those files belong to upstream. Scanning them is harmless,
+// but a full-tree `shaka whitespace fix` would *rewrite* a pre-existing
+// upstream offender (a missing trailing newline in `Google/EmDash.yml` during
+// #154) and drag that unrelated churn into whatever change happened to run it
+// — invisible to `preflight --since` because the file isn't in the diff.
+// Excluding the vendored packages keeps `fix` off them for good, even after a
+// future `vale sync` reintroduces an offender; our own vale content lives in
+// the reserved `.vale/styles/config/` subtree (vocabularies, ignore lists)
+// and stays in scope (#895).
+fn is_vendored(path: &Path) -> bool {
+    let comps: Vec<&OsStr> = path.components().map(|c| c.as_os_str()).collect();
+    comps.windows(3).any(|w| {
+        w[0] == OsStr::new(".vale") && w[1] == OsStr::new("styles") && w[2] != OsStr::new("config")
+    })
 }
 
 // `git ls-files` fallback for git-only checkouts. Mirrors `jj file list`'s
@@ -351,6 +372,28 @@ mod tests {
 
     fn issues(bytes: &[u8]) -> Vec<Issue> {
         scan_bytes(bytes)
+    }
+
+    #[test]
+    fn vendored_excludes_vale_style_packages() {
+        // Files inside a vendored vale package are vendored, at any depth.
+        assert!(is_vendored(Path::new(".vale/styles/Google/EmDash.yml")));
+        assert!(is_vendored(Path::new(".vale/styles/Google/vocab.txt")));
+        // Any package name, not just Google.
+        assert!(is_vendored(Path::new(".vale/styles/Microsoft/Foo.yml")));
+    }
+
+    #[test]
+    fn vendored_keeps_our_vale_config_and_sources() {
+        // The reserved config/ subtree (our vocabularies) is not vendored.
+        assert!(!is_vendored(Path::new(
+            ".vale/styles/config/vocabularies/Base/accept.txt"
+        )));
+        // The vale config file itself and ordinary sources are ours.
+        assert!(!is_vendored(Path::new(".vale.ini")));
+        assert!(!is_vendored(Path::new("tools/shaka/src/whitespace.rs")));
+        // `.vale/styles` with no package component is not a file to exclude.
+        assert!(!is_vendored(Path::new(".vale/styles")));
     }
 
     #[test]
