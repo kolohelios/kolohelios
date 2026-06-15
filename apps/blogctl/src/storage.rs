@@ -59,6 +59,11 @@ pub struct Config {
     /// unlimited; workdirs opt in by declaring `[tags] max = N`.
     #[serde(default, skip_serializing_if = "TagsConfig::is_default")]
     pub tags: TagsConfig,
+    /// LinkedIn analytics-export import settings — currently the set of
+    /// accepted export filename prefixes. Absent table falls back to both
+    /// known prefixes, so existing workdirs import with no config change.
+    #[serde(default, skip_serializing_if = "LinkedinConfig::is_default")]
+    pub linkedin: LinkedinConfig,
 }
 
 /// Workdir-wide defaults. The theme `blogctl new` selects when `--theme`
@@ -114,6 +119,41 @@ impl TagsConfig {
     fn is_default(&self) -> bool {
         self.max.is_none()
     }
+}
+
+/// LinkedIn analytics-export import settings. LinkedIn renamed the
+/// default download of the same export — `Content_<date>_<date>_<name>`
+/// became `AggregateAnalytics_<name>_<date>_<date>` — and may rename it
+/// again. The importer accepts a file whose name starts with any listed
+/// prefix, so historical and current exports import side by side. Read as
+/// `[linkedin] export_filename_prefixes = [...]`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkedinConfig {
+    /// Filename prefixes the importer accepts under `linkedin-exports/`.
+    /// Defaults to both known LinkedIn export prefixes.
+    #[serde(default = "default_export_filename_prefixes")]
+    pub export_filename_prefixes: Vec<String>,
+}
+
+impl Default for LinkedinConfig {
+    fn default() -> Self {
+        Self {
+            export_filename_prefixes: default_export_filename_prefixes(),
+        }
+    }
+}
+
+impl LinkedinConfig {
+    /// True when the prefixes match the built-in default — used by
+    /// `skip_serializing_if` to keep `[linkedin]` out of `.blog-os.toml`
+    /// for workdirs that haven't customized it.
+    fn is_default(&self) -> bool {
+        self.export_filename_prefixes == default_export_filename_prefixes()
+    }
+}
+
+fn default_export_filename_prefixes() -> Vec<String> {
+    vec!["Content_".to_string(), "AggregateAnalytics_".to_string()]
 }
 
 /// Per-kind stage configuration. Keyed by `Stage::as_str()` so the TOML
@@ -193,6 +233,7 @@ impl Config {
             classifications: Taxonomy::current_v1().to_btreemap(),
             kinds: BTreeMap::new(),
             tags: TagsConfig::default(),
+            linkedin: LinkedinConfig::default(),
         }
     }
 
@@ -822,6 +863,52 @@ mod tests {
         assert!(cfg.sync.enabled);
         assert_eq!(cfg.sync.remote, "upstream");
         assert_eq!(cfg.sync.bookmark, "trunk");
+    }
+
+    #[test]
+    fn config_without_linkedin_table_back_fills_both_known_prefixes() {
+        // Pre-`[linkedin]` workdir: parse must succeed and yield both
+        // known export prefixes so existing workdirs import current and
+        // historical exports with no config change.
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        fs::write(repo.workdir().config_path(), "version = 1\n").unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(
+            cfg.linkedin.export_filename_prefixes,
+            vec!["Content_".to_string(), "AggregateAnalytics_".to_string()]
+        );
+    }
+
+    #[test]
+    fn config_with_custom_linkedin_prefixes_round_trips() {
+        let tmp = TempDir::new().unwrap();
+        let repo = Repository::unchecked(Workdir::new(tmp.path()));
+        for dir in repo.workdir().directories() {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let raw = concat!(
+            "version = 1\n",
+            "[linkedin]\n",
+            "export_filename_prefixes = [\"Content_\", \"Exports_\"]\n",
+        );
+        fs::write(repo.workdir().config_path(), raw).unwrap();
+        let cfg = repo.read_config().unwrap();
+        assert_eq!(
+            cfg.linkedin.export_filename_prefixes,
+            vec!["Content_".to_string(), "Exports_".to_string()]
+        );
+    }
+
+    #[test]
+    fn default_config_omits_linkedin_table_from_serialized_toml() {
+        // The default prefixes are implicit, so a freshly-written config
+        // keeps `[linkedin]` out of the file (skip_serializing_if).
+        let serialized = toml::to_string(&Config::current()).unwrap();
+        assert!(!serialized.contains("[linkedin]"));
     }
 
     #[test]

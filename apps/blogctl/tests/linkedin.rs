@@ -1,4 +1,4 @@
-//! Integration tests for the LinkedIn `Content_*.xlsx` export parser.
+//! Integration tests for the LinkedIn `xlsx` export parser.
 //!
 //! LinkedIn's exports are binary (zipped XML), and the real ones carry
 //! the author's private per-post impression/engagement counts. Rather
@@ -28,6 +28,12 @@ use blogctl::Error;
 /// Synthetic activity ids are offset from this base; clearly distinct
 /// from real LinkedIn URNs while staying within `u64`.
 const BASE: u64 = 7_400_000_000_000_000_000;
+
+/// The accepted export filename prefixes for these tests — the synthetic
+/// corpus uses the `Content_` form.
+fn prefixes() -> Vec<String> {
+    vec!["Content_".to_string()]
+}
 
 struct Row {
     id: u64,
@@ -136,7 +142,7 @@ fn corpus() -> Vec<PostSnapshot> {
     write_export(d, "2026-02-04", &rows(31..=45), &[]);
     // Unequal-length sides: engagements 46..=58, impressions 50..=58.
     write_export(d, "2026-02-05", &rows(46..=58), &rows(50..=58));
-    linkedin::parse_dir(d).unwrap()
+    linkedin::parse_dir(d, &prefixes()).unwrap()
 }
 
 fn find(snaps: &[PostSnapshot], id: u64, snapshot: Date) -> &PostSnapshot {
@@ -285,12 +291,12 @@ fn corrupt_file_is_an_open_error() {
 }
 
 #[test]
-fn unparsable_filename_window_is_an_error() {
+fn filename_without_a_date_is_an_error() {
     let dir = TempDir::new().unwrap();
     let mut workbook = Workbook::new();
     workbook.add_worksheet().set_name("TOP POSTS").unwrap();
-    // Only one date field — the window parser rejects it.
-    let path = dir.path().join("Content_2026-02-01.xlsx");
+    // No parseable date token anywhere in the filename.
+    let path = dir.path().join("Content_nope_alsonope.xlsx");
     workbook.save(&path).unwrap();
     assert!(matches!(
         linkedin::parse_export(&path),
@@ -304,6 +310,6 @@ fn parse_dir_ignores_non_export_files() {
     std::fs::write(dir.path().join("README.md"), b"hi").unwrap();
     std::fs::write(dir.path().join("Shares_2026-01-01.csv"), b"x,y").unwrap();
     write_export(dir.path(), "2026-02-01", &rows(1..=3), &[]);
-    let snaps = linkedin::parse_dir(dir.path()).unwrap();
+    let snaps = linkedin::parse_dir(dir.path(), &prefixes()).unwrap();
     assert_eq!(snaps.len(), 3);
 }

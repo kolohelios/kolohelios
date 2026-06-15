@@ -1,5 +1,6 @@
 //! `blogctl linkedin import` — refresh post metrics from LinkedIn's
-//! daily `Content_*.xlsx` analytics exports.
+//! daily `xlsx` analytics exports (filenames matched against the
+//! configured `[linkedin] export_filename_prefixes`).
 //!
 //! Parses every export in `--xlsx-dir`, matches each post by the
 //! activity id embedded in its `targets[].url`, and records a per-day
@@ -34,8 +35,8 @@ const DEFAULT_XLSX_DIR: &str = "linkedin-exports";
 #[derive(Debug)]
 pub struct ImportArgs {
     pub workdir: PathBuf,
-    /// Directory of `Content_*.xlsx` exports. Defaults to
-    /// `linkedin-exports/` under the workdir.
+    /// Directory of `xlsx` exports. Defaults to `linkedin-exports/`
+    /// under the workdir.
     pub xlsx_dir: Option<PathBuf>,
     /// Skip the HTML fetch + post-creation step; only refresh metrics on
     /// posts already in the workdir (the #859 behavior).
@@ -62,9 +63,11 @@ pub fn run(jj: &dyn Jj, fetcher: &dyn Fetcher, args: ImportArgs) -> Result<Impor
     let xlsx_dir = args
         .xlsx_dir
         .unwrap_or_else(|| args.workdir.join(DEFAULT_XLSX_DIR));
-    let snapshots = linkedin::parse_dir(&xlsx_dir)?;
 
     let repo = Repository::open(Workdir::new(&args.workdir))?;
+    let config = repo.read_config()?;
+    let snapshots = linkedin::parse_dir(&xlsx_dir, &config.linkedin.export_filename_prefixes)?;
+
     let handles = repo.list()?;
     let (matched, unmatched) = match_snapshots(&handles, &snapshots);
 
@@ -100,7 +103,7 @@ pub fn run(jj: &dyn Jj, fetcher: &dyn Fetcher, args: ImportArgs) -> Result<Impor
     // Phase 2: for unmatched URNs, fetch the public HTML and build a
     // `published/` stub — unless `--no-fetch`.
     let by_urn = group_snapshots_by_urn(&snapshots);
-    let theme = repo.read_config()?.defaults.theme;
+    let theme = config.defaults.theme;
     let mut taken_slugs: BTreeSet<String> =
         handles.iter().map(|h| h.metadata.slug.clone()).collect();
     let mut new_posts: Vec<Post> = Vec::new();

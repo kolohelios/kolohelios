@@ -459,7 +459,8 @@ pub enum LinkedinAction {
         /// Workdir path. Defaults to the current working directory.
         #[arg(long, value_name = "PATH")]
         workdir: Option<PathBuf>,
-        /// Directory of `Content_*.xlsx` exports. Defaults to
+        /// Directory of `xlsx` exports (filenames matched against the
+        /// configured `[linkedin] export_filename_prefixes`). Defaults to
         /// `linkedin-exports/` under the workdir.
         #[arg(long, value_name = "PATH")]
         xlsx_dir: Option<PathBuf>,
