@@ -37,6 +37,15 @@ coverage:
     #!/usr/bin/env bash
     # Line coverage only — see the rust-cli template for why.
     set -euo pipefail
+    # cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it broken
+    # on darwin), so skip cleanly off-Linux rather than hard-erroring or
+    # silently using an unpinned global install. CI runs on Linux, so the
+    # gate is still enforced there. To measure locally on darwin:
+    # `cargo install cargo-llvm-cov`.
+    if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+        echo "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+        exit 0
+    fi
     thresholds=$(shaka project coverage-thresholds)
     if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
         echo "coverage: not declared (optional on rust-worker); skipping"
