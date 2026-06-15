@@ -119,7 +119,7 @@ pub fn parse_export(path: &Path) -> Result<Vec<PostSnapshot>> {
     let rows: Vec<&[Data]> = range.rows().collect();
     let header_idx = rows
         .iter()
-        .position(|row| row.iter().any(|cell| cell_str(cell) == Some(URL_HEADER)))
+        .position(|row| row.iter().any(|cell| header_is(cell, URL_HEADER)))
         .ok_or_else(|| Error::LinkedinHeaderMissing {
             path: path.to_path_buf(),
         })?;
@@ -176,18 +176,24 @@ pub fn parse_export(path: &Path) -> Result<Vec<PostSnapshot>> {
 fn locate_tables(header: &[Data]) -> Vec<Table> {
     let mut tables = Vec::new();
     for (col, cell) in header.iter().enumerate() {
-        if cell_str(cell) != Some(URL_HEADER) {
+        if !header_is(cell, URL_HEADER) {
             continue;
         }
         let date_col = col + 1;
         let metric_col = col + 2;
-        if header.get(date_col).and_then(cell_str) != Some(DATE_HEADER) {
+        if !header
+            .get(date_col)
+            .is_some_and(|c| header_is(c, DATE_HEADER))
+        {
             continue;
         }
-        let metric = match header.get(metric_col).and_then(cell_str) {
-            Some(ENGAGEMENTS_HEADER) => Metric::Engagements,
-            Some(IMPRESSIONS_HEADER) => Metric::Impressions,
-            _ => continue,
+        let metric_cell = header.get(metric_col);
+        let metric = if metric_cell.is_some_and(|c| header_is(c, ENGAGEMENTS_HEADER)) {
+            Metric::Engagements
+        } else if metric_cell.is_some_and(|c| header_is(c, IMPRESSIONS_HEADER)) {
+            Metric::Impressions
+        } else {
+            continue;
         };
         tables.push(Table {
             url_col: col,
@@ -204,6 +210,14 @@ fn cell_str(cell: &Data) -> Option<&str> {
         Data::String(s) => Some(s.as_str()),
         _ => None,
     }
+}
+
+/// Compare a header cell to an expected label, ignoring ASCII case. The
+/// older `Content_*` exports used sentence case (`Post publish date`);
+/// the newer `AggregateAnalytics_*` exports title-case the same headers
+/// (`Post Publish Date`). Matching case-insensitively reads both layouts.
+fn header_is(cell: &Data, header: &str) -> bool {
+    cell_str(cell).is_some_and(|s| s.eq_ignore_ascii_case(header))
 }
 
 /// Coerce a metric cell to a count. LinkedIn stores these as numbers,
@@ -591,6 +605,27 @@ mod tests {
                 "expected a filename error for {bad}"
             );
         }
+    }
+
+    #[test]
+    fn header_is_ignores_ascii_case() {
+        // Title-case (`AggregateAnalytics_*`) and sentence-case
+        // (`Content_*`) headers both match their constant.
+        assert!(header_is(
+            &Data::String("Post Publish Date".into()),
+            DATE_HEADER
+        ));
+        assert!(header_is(&Data::String("post url".into()), URL_HEADER));
+        assert!(header_is(
+            &Data::String("ENGAGEMENTS".into()),
+            ENGAGEMENTS_HEADER
+        ));
+        // Unrelated labels and non-string cells don't match.
+        assert!(!header_is(
+            &Data::String("Reactions".into()),
+            ENGAGEMENTS_HEADER
+        ));
+        assert!(!header_is(&Data::Empty, URL_HEADER));
     }
 
     #[test]

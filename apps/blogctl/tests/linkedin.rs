@@ -226,6 +226,35 @@ fn same_post_across_days_is_one_urn_with_per_day_snapshots() {
 }
 
 #[test]
+fn title_case_headers_are_parsed() {
+    // The newer `AggregateAnalytics_*` exports title-case the `TOP POSTS`
+    // headers (`Post Publish Date`) where `Content_*` used sentence case.
+    // The parser matches headers case-insensitively, so both yield posts.
+    let dir = TempDir::new().unwrap();
+    let mut workbook = Workbook::new();
+    let sheet = workbook.add_worksheet();
+    sheet.set_name("TOP POSTS").unwrap();
+    sheet.write_string(2, 0, "Post URL").unwrap();
+    sheet.write_string(2, 1, "Post Publish Date").unwrap();
+    sheet.write_string(2, 2, "Engagements").unwrap();
+    sheet.write_string(2, 4, "Post URL").unwrap();
+    sheet.write_string(2, 5, "Post Publish Date").unwrap();
+    sheet.write_string(2, 6, "Impressions").unwrap();
+    write_table(sheet, 0, &rows(1..=3));
+    write_table(sheet, 4, &rows(1..=3));
+    let path = dir
+        .path()
+        .join("AggregateAnalytics_Synthetic_2026-02-01_2026-02-01.xlsx");
+    workbook.save(&path).unwrap();
+
+    let snaps = linkedin::parse_export(&path).unwrap();
+    assert_eq!(snaps.len(), 3, "title-case headers must still yield posts");
+    let s = find(&snaps, BASE + 1, date!(2026 - 02 - 01));
+    assert_eq!(s.engagements, Some(11));
+    assert_eq!(s.impressions, Some(11));
+}
+
+#[test]
 fn missing_top_posts_sheet_is_an_error() {
     let dir = TempDir::new().unwrap();
     let mut workbook = Workbook::new();
