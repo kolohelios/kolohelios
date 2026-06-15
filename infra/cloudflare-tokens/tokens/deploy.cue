@@ -16,8 +16,14 @@ package cloudflare_token
 //     `Cache Settings:Edit`, separate from `DNS:Edit`. The grant
 //     is broader than "cache rules" — it covers all cache settings
 //     on the zone, which is the smallest scope CF exposes.
+//   - `infra/cloudflare-deploy` `tofu apply` that creates the
+//     portfolio's `cloudflare_web_analytics_site` (#195). The RUM
+//     `site_info` endpoint is account-scoped and CF gates it behind
+//     `Account Settings:Edit` — there is no narrower "Web Analytics"
+//     write group, so this is the smallest scope CF exposes (same
+//     situation as Cache Settings above).
 //
-// Sharing one token for all three flows keeps the credential surface
+// Sharing one token for all four flows keeps the credential surface
 // tight; if rotation cadences diverge, split later.
 //
 // 90-day expiry, mirroring `dns-management`; rotate via
@@ -29,6 +35,7 @@ package cloudflare_token
 	purpose: "Worker deploys (TF custom-domain attach + wrangler code uploads + cache rules)"
 	permission_groups: [
 		"Account:Workers Scripts:Edit",
+		"Account Settings:Edit",
 		"Zone:Cache Settings:Edit",
 		"Zone:DNS:Edit",
 	]
