@@ -78,6 +78,12 @@ package project
 		cache: {
 			bypassPaths: ["/api/"]
 		}
+
+		// Privacy-respecting analytics (#195). Emits a
+		// `cloudflare_web_analytics_site` (manual install); the issued,
+		// non-secret `site_token` is read from TF state and baked into the
+		// beacon in `templates/layout.html`. See README "Web analytics".
+		webAnalytics: true
 	}
 	ci: {
 		deploy: {
