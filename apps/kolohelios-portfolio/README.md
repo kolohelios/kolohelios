@@ -122,3 +122,47 @@ browser. Provisioning is a one-time manual step:
 Spam handling lives in the worker (honeypot field + per-IP rate limiting
 via the `SUBSCRIBE_RATE_LIMITER` binding + server-side email
 validation); Turnstile/hCaptcha is intentionally deferred.
+
+## Web analytics
+
+Privacy-respecting page analytics via [Cloudflare Web
+Analytics](https://developers.cloudflare.com/web-analytics/) (no
+cookies, no cross-site tracking) — chosen over a self-hosted product
+analytics stack because the portfolio is a static, CF-cached site that
+needs page counts, not funnels (#195).
+
+The site is modelled as code: `deploy.webAnalytics: true` in
+`project.cue` makes `shaka deploy generate-tf` emit a
+`cloudflare_web_analytics_site` (manual install — `auto_install` off,
+since Workers Static Assets responses bypass Cloudflare's HTML-rewrite
+path and can't be edge-injected). The beacon is therefore hand-placed in
+`templates/layout.html`, keyed by the site's `site_token` — a public,
+non-secret identifier, safe to commit (like the Kit form ids above).
+
+Caching doesn't break collection: the beacon tag is static HTML (cached
+fine), and events are a cross-origin `POST` to
+`cloudflareinsights.com/cdn-cgi/rum` that never touches this zone's
+cache.
+
+The token is issued by `tofu apply`, so it's a one-time bootstrap:
+
+1. Apply the analytics site from `infra/cloudflare-deploy/` (additive —
+   the Worker and custom domain already exist):
+
+   ```
+   op run --env-file=.env -- just apply
+   ```
+
+2. Read the issued `site_token` from state:
+
+   ```
+   op run --env-file=.env -- tofu -chdir=terraform state show \
+     'module.generated.cloudflare_web_analytics_site.kolohelios_portfolio_web_analytics'
+   ```
+
+3. Paste it into the beacon `data-cf-beacon` token in
+   `templates/layout.html`, then rebuild and commit `dist/`:
+
+   ```
+   cargo run --features build-site --bin build-site
+   ```
