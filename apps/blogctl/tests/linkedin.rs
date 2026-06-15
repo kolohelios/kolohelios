@@ -45,6 +45,12 @@ fn url(id: u64) -> String {
     format!("https://www.linkedin.com/feed/update/urn:li:activity:{id}")
 }
 
+/// The share-URL form `AggregateAnalytics_*` exports use for `Post URL`:
+/// `…/posts/<slug>-<id>-<code>`, carrying no `urn:` substring.
+fn share_url(id: u64) -> String {
+    format!("https://www.linkedin.com/posts/kolohelios_synthetic-post-{id}-aB3d/?utm_source=share")
+}
+
 /// Build the post rows for activity ids `BASE + n` over `ns`. The
 /// publish date uses a single-digit month and a day that spans one and
 /// two digits, exercising the unpadded `M/D/YYYY` parse.
@@ -252,6 +258,34 @@ fn title_case_headers_are_parsed() {
     let s = find(&snaps, BASE + 1, date!(2026 - 02 - 01));
     assert_eq!(s.engagements, Some(11));
     assert_eq!(s.impressions, Some(11));
+}
+
+#[test]
+fn share_form_post_urls_resolve_to_the_same_urn() {
+    // AggregateAnalytics_* exports carry Post URL in the share form
+    // (.../posts/<slug>-<id>-<code>) with no urn: substring. It must
+    // resolve to the same canonical URN as the Content_* feed form.
+    let dir = TempDir::new().unwrap();
+    let mut workbook = Workbook::new();
+    let sheet = workbook.add_worksheet();
+    sheet.set_name("TOP POSTS").unwrap();
+    sheet.write_string(2, 0, "Post URL").unwrap();
+    sheet.write_string(2, 1, "Post publish date").unwrap();
+    sheet.write_string(2, 2, "Engagements").unwrap();
+    let id = BASE + 1;
+    sheet.write_string(3, 0, share_url(id)).unwrap();
+    sheet.write_string(3, 1, "3/1/2026").unwrap();
+    sheet.write_number(3, 2, 42.0).unwrap();
+    let path = dir
+        .path()
+        .join("AggregateAnalytics_Synthetic_2026-02-01_2026-02-01.xlsx");
+    workbook.save(&path).unwrap();
+
+    let snaps = linkedin::parse_export(&path).unwrap();
+    assert_eq!(snaps.len(), 1);
+    // Same canonical URN as the feed-form URL for the same id.
+    assert_eq!(snaps[0].urn, format!("urn:li:activity:{id}"));
+    assert_eq!(snaps[0].engagements, Some(42));
 }
 
 #[test]
