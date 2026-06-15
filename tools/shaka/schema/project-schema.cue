@@ -43,6 +43,16 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	customDomain: domain.#KnownHostnames
 	zone:         domain.#KnownHostnames
 	cache?:       #CacheRules
+
+	// When true, `shaka deploy generate-tf` emits a
+	// `cloudflare_web_analytics_site` (manual install — `auto_install`
+	// off) for the custom domain alongside the attachment. The issued
+	// `site_token` is read from TF state after apply (`tofu state show
+	// 'module.generated.cloudflare_web_analytics_site.<project>'`) and
+	// baked into the site's HTML beacon — it's a public, non-secret
+	// identifier. Workers Static Assets responses can't be auto-injected,
+	// so the beacon is hand-placed in the page shell.
+	webAnalytics?: bool
 }
 
 // A Cloudflare `[[unsafe.bindings]]` entry — the escape hatch for
