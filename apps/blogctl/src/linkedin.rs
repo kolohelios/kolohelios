@@ -232,16 +232,28 @@ fn cell_u64(cell: &Data) -> Option<u64> {
     }
 }
 
-/// Extract the canonical `urn:li:activity:<id>` from a post URL such as
-/// `https://www.linkedin.com/feed/update/urn:li:activity:7463470632568008704`.
-/// Any trailing path or query after the id is ignored.
+/// Extract the canonical `urn:li:activity:<id>` from a post URL in either
+/// form LinkedIn's exports use:
+///
+/// - the `urn:li:activity:<id>` of `Content_*` exports
+///   (`…/feed/update/urn:li:activity:7463470632568008704`), and
+/// - the share form of `AggregateAnalytics_*` exports
+///   (`…/posts/<slug>-<id>-<code>`), which carries no `urn:` substring.
+///
+/// Any trailing path or query after the id is ignored. The share form
+/// falls back to [`activity_id`] and reconstructs the canonical URN, so
+/// both layouts key to the same `urn:li:activity:<id>`.
 fn extract_urn(url: &str) -> Option<String> {
-    let start = url.find(URN_PREFIX)?;
-    let digits: String = url[start + URN_PREFIX.len()..]
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    (!digits.is_empty()).then(|| format!("{URN_PREFIX}{digits}"))
+    if let Some(start) = url.find(URN_PREFIX) {
+        let digits: String = url[start + URN_PREFIX.len()..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if !digits.is_empty() {
+            return Some(format!("{URN_PREFIX}{digits}"));
+        }
+    }
+    activity_id(url).map(|id| format!("{URN_PREFIX}{id}"))
 }
 
 /// Extract the bare LinkedIn activity id (the digit run) from any post
@@ -543,6 +555,17 @@ mod tests {
         assert_eq!(
             extract_urn("https://www.linkedin.com/feed/update/urn:li:activity:123/?utm=x"),
             Some("urn:li:activity:123".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_urn_from_share_url() {
+        // AggregateAnalytics_* exports use the share form, with no `urn:`
+        // substring; the id is the long digit run before the share code.
+        let url = "https://www.linkedin.com/posts/kolohelios_the-beaver-community-share-7456442827909005312-8FKm/?utm_source=share";
+        assert_eq!(
+            extract_urn(url),
+            Some("urn:li:activity:7456442827909005312".to_string())
         );
     }
 
