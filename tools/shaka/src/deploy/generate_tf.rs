@@ -47,6 +47,8 @@ enum Deploy {
         zone: String,
         #[serde(default)]
         cache: Option<CacheRules>,
+        #[serde(rename = "webAnalytics", default)]
+        web_analytics: bool,
     },
 }
 
@@ -188,6 +190,7 @@ fn render_project(name: &str, deploy: &Deploy) -> Result<String, String> {
             custom_domain,
             zone,
             cache,
+            web_analytics,
         } => {
             let resource_ident = tf_ident(name);
             let zone_ident = tf_ident(zone);
@@ -214,6 +217,13 @@ fn render_project(name: &str, deploy: &Deploy) -> Result<String, String> {
                     &resource_ident,
                     &zone_ident,
                     rules,
+                ));
+            }
+            if *web_analytics {
+                module.resources.push(build_web_analytics_site(
+                    &resource_ident,
+                    &zone_ident,
+                    custom_domain,
                 ));
             }
         }
@@ -341,6 +351,32 @@ fn build_cache_ruleset(
                     ]),
                 ]),
             ),
+        ],
+        blocks: vec![],
+    }
+}
+
+/// Build a `cloudflare_web_analytics_site` for the project's custom
+/// domain. `auto_install` is off: Workers Static Assets responses don't
+/// pass through Cloudflare's HTML-rewrite path, so the beacon can't be
+/// edge-injected and is hand-placed in the page shell instead. The
+/// issued `site_token` (a public, non-secret identifier) is read from TF
+/// state after apply and baked into that beacon.
+fn build_web_analytics_site(project_ident: &str, zone_ident: &str, host: &str) -> Resource {
+    Resource {
+        ty: "cloudflare_web_analytics_site".into(),
+        name: format!("{project_ident}_web_analytics"),
+        attributes: vec![
+            (
+                "account_id".into(),
+                Expr::Ref("var.cloudflare_account_id".into()),
+            ),
+            (
+                "zone_tag".into(),
+                Expr::Ref(format!("data.cloudflare_zone.{zone_ident}.zone_id")),
+            ),
+            ("host".into(), Expr::String(host.into())),
+            ("auto_install".into(), Expr::Bool(false)),
         ],
         blocks: vec![],
     }
@@ -511,6 +547,7 @@ mod tests {
             custom_domain: custom_domain.into(),
             zone: zone.into(),
             cache: None,
+            web_analytics: false,
         }
     }
 
@@ -521,6 +558,16 @@ mod tests {
             cache: Some(CacheRules {
                 bypass_paths: bypass_paths.iter().map(|s| (*s).into()).collect(),
             }),
+            web_analytics: false,
+        }
+    }
+
+    fn worker_with_web_analytics(custom_domain: &str, zone: &str) -> Deploy {
+        Deploy::CloudflareWorker {
+            custom_domain: custom_domain.into(),
+            zone: zone.into(),
+            cache: None,
+            web_analytics: true,
         }
     }
 
@@ -613,5 +660,46 @@ mod tests {
             render_project("p", &worker_with_cache("p.example.com", "example.com", &[])).unwrap();
         assert!(tf.contains(r#"ends_with(lower(http.request.uri.path), \".wasm\")"#));
         assert!(tf.contains(r#"ends_with(lower(http.request.uri.path), \".woff2\")"#));
+    }
+
+    #[test]
+    fn render_project_omits_web_analytics_when_absent() {
+        let tf = render_project(
+            "kolohelios-portfolio",
+            &worker("kolohelios.com", "kolohelios.com"),
+        )
+        .unwrap();
+        assert!(!tf.contains("cloudflare_web_analytics_site"));
+    }
+
+    #[test]
+    fn render_project_emits_web_analytics_site_when_enabled() {
+        let tf = render_project(
+            "kolohelios-portfolio",
+            &worker_with_web_analytics("kolohelios.com", "kolohelios.com"),
+        )
+        .unwrap();
+        assert!(tf.contains(
+            r#"resource "cloudflare_web_analytics_site" "kolohelios_portfolio_web_analytics""#
+        ));
+        // Manual install: the beacon is hand-placed, not edge-injected.
+        // (`tofu fmt` aligns `=` across the block, so match key + value
+        // loosely rather than exact spacing.)
+        assert!(tf.contains("auto_install") && tf.contains("false"));
+        assert!(tf.contains(r#""kolohelios.com""#));
+        // Binds the site to the zone via the shared data source.
+        assert!(tf.contains("data.cloudflare_zone.kolohelios_com.zone_id"));
+    }
+
+    #[test]
+    fn web_analytics_independent_of_cache_ruleset() {
+        let tf = render_project(
+            "kolohelios-portfolio",
+            &worker_with_web_analytics("kolohelios.com", "kolohelios.com"),
+        )
+        .unwrap();
+        // web_analytics on, cache off: site present, ruleset absent.
+        assert!(tf.contains("cloudflare_web_analytics_site"));
+        assert!(!tf.contains("cloudflare_ruleset"));
     }
 }
