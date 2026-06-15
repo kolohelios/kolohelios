@@ -119,6 +119,25 @@ jobs:
           determinate: true
           flakehub: true
       - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: cf-deploy shaka
+        # Run the deploy-orchestration `shaka ci` steps below with a shaka
+        # THIS reusable workflow controls, not the version the consumer
+        # pins in its devshell. `cf-deploy.yml@main` keeps adding `shaka ci`
+        # subcommands as it evolves (`mask-and-run`, `parse-deploy-url`,
+        # `push-worker-secrets`); resolving them from the consumer's pin
+        # made every cf-deploy change silently break a consumer's deploy
+        # until it bumped shaka — and only at deploy time, since `verify`
+        # skips the newer steps (#912). shaka and cf-deploy publish from the
+        # same `main`, so the latest FlakeHub `shaka` is always at least as
+        # new as `cf-deploy.yml@main` needs. The app toolchain
+        # (`worker-build`, `wrangler`, `op`) stays consumer-pinned via the
+        # devshell — only the CI glue is decoupled; the steps below prepend
+        # `$CFDEPLOY_SHAKA` to `$PATH` inside `nix develop` so `shaka` is
+        # this version while everything else stays the consumer's.
+        run: |
+          out=$(nix build --no-link --print-out-paths \
+            "https://flakehub.com/f/kolohelios/shaka/*.tar.gz")
+          echo "CFDEPLOY_SHAKA=$out/bin" >> "$GITHUB_ENV"
       - name: worker-build
         working-directory: ${{ inputs.project_dir }}
         # Build the worker upstream of `wrangler deploy` so the wasm
@@ -174,12 +193,15 @@ jobs:
         # next step can grep it without re-running wrangler.
         run: |
           cp .env.example .env
-          nix develop . --command shaka ci mask-and-run --env-file=.env -- \
-            wrangler deploy \
-            ${{ inputs.verify_only && '--dry-run' || '' }} \
-            ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
-            ${{ inputs.environment && format('--env {0}', inputs.environment) || '' }} \
-            2>&1 | tee /tmp/wrangler-output.log
+          # shellcheck disable=SC2016  # $CFDEPLOY_SHAKA expands in the inner bash -c, not this shell — single quotes are intentional
+          nix develop . --command bash -c '
+            export PATH="$CFDEPLOY_SHAKA:$PATH"
+            exec shaka ci mask-and-run --env-file=.env -- \
+              wrangler deploy \
+              ${{ inputs.verify_only && '--dry-run' || '' }} \
+              ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
+              ${{ inputs.environment && format('--env {0}', inputs.environment) || '' }}
+          ' 2>&1 | tee /tmp/wrangler-output.log
           # `tee` masks the inner exit code; restore it explicitly.
           exit "${PIPESTATUS[0]}"
       - name: push Worker runtime secrets
@@ -199,10 +221,14 @@ jobs:
         # submit paths work, not just the production Worker.
         if: ${{ ! inputs.verify_only }}
         run: |
-          nix develop . --command shaka ci mask-and-run --env-file=.env -- \
-            shaka ci push-worker-secrets \
-            ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
-            ${{ inputs.environment && format('--environment {0}', inputs.environment) || '' }}
+          # shellcheck disable=SC2016  # $CFDEPLOY_SHAKA expands in the inner bash -c, not this shell — single quotes are intentional
+          nix develop . --command bash -c '
+            export PATH="$CFDEPLOY_SHAKA:$PATH"
+            exec shaka ci mask-and-run --env-file=.env -- \
+              shaka ci push-worker-secrets \
+              ${{ inputs.script_name_override && format('--name {0}', inputs.script_name_override) || '' }} \
+              ${{ inputs.environment && format('--environment {0}', inputs.environment) || '' }}
+          '
       - name: parse worker URL
         id: parse-url
         working-directory: ${{ inputs.project_dir }}
@@ -217,7 +243,10 @@ jobs:
         # empty URL.
         if: ${{ ! inputs.verify_only }}
         run: |
-          if ! url=$(nix develop . --command shaka ci parse-deploy-url /tmp/wrangler-output.log); then
+          # shellcheck disable=SC2016  # $CFDEPLOY_SHAKA expands in the inner bash -c, not this shell — single quotes are intentional
+          if ! url=$(nix develop . --command bash -c '
+            export PATH="$CFDEPLOY_SHAKA:$PATH"
+            exec shaka ci parse-deploy-url /tmp/wrangler-output.log'); then
             echo "::error::could not parse worker URL from wrangler output (format change?)"
             exit 1
           fi
