@@ -119,6 +119,11 @@ asked for `--then <N>` and needs to know it didn't happen.
   preflight` already gates correctness.
 - No Claude Code attribution in commit messages or PR bodies.
 - If the change closes a GitHub issue, include `Closes #<n>` in the PR body.
+- Post-merge cleanup forgets a merged workspace with `shaka workspace
+  cleanup` alone — **never** run `shaka repo sync` in the primary tree to
+  "freshen up" first. A primary-tree sync rebases unrelated in-flight WIP
+  onto the new `main@origin` and can resurface stale conflicts that have
+  nothing to do with the shipped change. Cleanup needs no sync.
 
 ## Stop conditions
 

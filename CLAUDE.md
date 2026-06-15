@@ -438,7 +438,15 @@ Shape:
 5. `shaka workspace cleanup` forgets workspaces whose PRs have merged
    (uses the persisted issue link, so it works regardless of remote
    branch deletion). Workspaces created without `--issue` (ad-hoc
-   names) need `shaka workspace forget --force <name>`.
+   names) need `shaka workspace forget --force <name>`. **Cleanup needs
+   no preceding `shaka repo sync`** — it forgets a merged workspace from
+   the persisted link alone. Don't sync the primary tree as a cleanup
+   side effect: a primary-tree `shaka repo sync` rebases whatever
+   in-flight WIP sits on the primary `@` onto the new `main@origin`,
+   which can surface conflicts in unrelated work (and because `jj` conflict
+   markers read as ordinary modified content to `git`, a stale unresolved
+   conflict can resurface confusingly mid-cleanup). Sync the primary tree
+   only as a deliberate act, never to "freshen up" before cleanup.
 
 When briefing sub-agents to work in their own workspaces, the brief must
 restate two rules that `/start` and `/ship` would otherwise enforce:
