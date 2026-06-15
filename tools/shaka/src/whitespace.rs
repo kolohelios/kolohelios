@@ -295,10 +295,13 @@ fn is_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(BINARY_PROBE).any(|&b| b == 0)
 }
 
-// Enumerate via jj rather than git so the listing reflects the calling
-// jj workspace's `@`. `git ls-files` reads the colocated index, which is
-// pinned to the primary workspace and never sees files added in a
-// sibling workspace's `@`. See issue #210.
+// Enumerate via jj when in a jj repo so the listing reflects the calling
+// workspace's `@`: `git ls-files` reads the colocated index, which is
+// pinned to the primary workspace and never sees files added in a sibling
+// workspace's `@` (issue #210). In a plain git checkout (no jj repo —
+// e.g. a GitHub Actions `actions/checkout`) there's no `@` to honor, so
+// fall back to `git ls-files`; it's equivalent there because the index
+// matches the checked-out tree (issue #902).
 fn list_tracked_files(paths: &[String]) -> Result<Vec<PathBuf>, String> {
     let owned: Vec<String>;
     let arg_slice: &[String] = if paths.is_empty() {
@@ -307,9 +310,39 @@ fn list_tracked_files(paths: &[String]) -> Result<Vec<PathBuf>, String> {
     } else {
         paths
     };
-    jj::file_list("@", arg_slice)
-        .map(|files| files.into_iter().map(PathBuf::from).collect())
-        .map_err(|e| e.to_string())
+    if jj::in_repo() {
+        jj::file_list("@", arg_slice)
+            .map(|files| files.into_iter().map(PathBuf::from).collect())
+            .map_err(|e| e.to_string())
+    } else {
+        git_list_tracked_files(arg_slice)
+    }
+}
+
+// `git ls-files` fallback for git-only checkouts. Mirrors `jj file list`'s
+// output: tracked paths under the given pathspecs, relative to `cwd`.
+fn git_list_tracked_files(paths: &[String]) -> Result<Vec<PathBuf>, String> {
+    let mut args: Vec<&str> = vec!["ls-files", "--"];
+    for p in paths {
+        args.push(p.as_str());
+    }
+    let output = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| format!("failed to spawn git: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git ls-files: {}", stderr.trim()));
+    }
+    Ok(parse_git_ls_files(&String::from_utf8_lossy(&output.stdout)))
+}
+
+fn parse_git_ls_files(stdout: &str) -> Vec<PathBuf> {
+    stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(PathBuf::from)
+        .collect()
 }
 
 #[cfg(test)]
@@ -318,6 +351,24 @@ mod tests {
 
     fn issues(bytes: &[u8]) -> Vec<Issue> {
         scan_bytes(bytes)
+    }
+
+    #[test]
+    fn parse_git_ls_files_drops_blank_lines() {
+        let out = "src/main.rs\nCargo.toml\n\nbin/shaka\n";
+        assert_eq!(
+            parse_git_ls_files(out),
+            vec![
+                PathBuf::from("src/main.rs"),
+                PathBuf::from("Cargo.toml"),
+                PathBuf::from("bin/shaka"),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_git_ls_files_empty_is_empty() {
+        assert!(parse_git_ls_files("").is_empty());
     }
 
     #[test]

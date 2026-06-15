@@ -378,6 +378,21 @@ pub fn repo_root() -> Result<PathBuf, JjError> {
     Ok(PathBuf::from(out.trim()))
 }
 
+/// Whether the current directory is inside a jj repo, detected by walking
+/// up for a `.jj` entry. Deliberately filesystem-only (no `jj` subprocess)
+/// so it returns a correct `false` in a plain git checkout where the `jj`
+/// binary may not even be installed — e.g. a GitHub Actions
+/// `actions/checkout`. Callers use this to choose jj-vs-git behavior. See
+/// #902.
+pub fn in_repo() -> bool {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    in_repo_from(&cwd)
+}
+
+fn in_repo_from(start: &Path) -> bool {
+    start.ancestors().any(|p| p.join(".jj").exists())
+}
+
 /// Absolute path of the *default* (primary) workspace's working copy,
 /// regardless of which workspace this process is running inside.
 ///
@@ -743,5 +758,23 @@ mod tests {
         let out = format!("feat: x\n\npara 1\n\npara 2\n{TERM}\n");
         let got = parse_commits_between(&out, TERM);
         assert_eq!(got[0].body, "para 1\n\npara 2");
+    }
+
+    #[test]
+    fn in_repo_from_true_when_dot_jj_present() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(tmp.path().join(".jj")).unwrap();
+        let nested = tmp.path().join("tools/shaka/src");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert!(in_repo_from(&nested), "should find .jj in an ancestor");
+        assert!(in_repo_from(tmp.path()), "should find .jj at the start dir");
+    }
+
+    #[test]
+    fn in_repo_from_false_without_dot_jj() {
+        // A git-only checkout (`.git`, no `.jj`) must read as "not jj".
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(tmp.path().join(".git")).unwrap();
+        assert!(!in_repo_from(tmp.path()));
     }
 }
