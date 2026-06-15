@@ -141,6 +141,12 @@ struct RustCliPackageTrueRequiresCiBuild;
 struct RustCliPackageFalseRequiresOverride;
 
 const REQUIRED_CARGO_FIELDS: [&str; 3] = ["name", "version", "edition"];
+// In a virtual workspace the shared package fields live in
+// `[workspace.package]` and members inherit them via `<field>.workspace =
+// true`. `name` is never workspace-shared (each member declares its own,
+// and cargo enforces that), so the workspace-root manifest only owns
+// `version` and `edition`.
+const WORKSPACE_REQUIRED_CARGO_FIELDS: [&str; 2] = ["version", "edition"];
 const LICENSE_FILENAMES: [&str; 4] = ["LICENSE", "LICENSE.md", "LICENSE-MIT", "LICENSE-APACHE"];
 const REQUIRED_RUST_LICENSE: &str = "MIT OR Apache-2.0";
 // Appended to `rust-license-dual` failures so the wall a proprietary crate
@@ -287,22 +293,24 @@ impl Rule for RustVersionPinned {
             Ok(c) => c,
             Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
         };
-        match cargo_package_field(&contents, "rust-version") {
+        let header = package_table_header(&contents);
+        match cargo_table_field(&contents, header, "rust-version") {
             Some(v) if v == REQUIRED_RUST_VERSION => RuleResult::Pass,
             Some(v) => RuleResult::Fail(format!(
-                "Cargo.toml `[package].rust-version` must be `\"{REQUIRED_RUST_VERSION}\"` (found `\"{v}\"`)"
+                "Cargo.toml `{header}.rust-version` must be `\"{REQUIRED_RUST_VERSION}\"` (found `\"{v}\"`)"
             )),
             None => RuleResult::Fail(format!(
-                "Cargo.toml must declare `[package].rust-version = \"{REQUIRED_RUST_VERSION}\"`"
+                "Cargo.toml must declare `{header}.rust-version = \"{REQUIRED_RUST_VERSION}\"`"
             )),
         }
     }
 }
 
-// Every rust crate's `Cargo.toml` must declare the three fields cargo
-// itself requires to build a package: `name`, `version`, `edition`. Only
-// the single root crate is checked — no project in the repo is a cargo
-// workspace, so member traversal would be dead code.
+// Every rust crate's `Cargo.toml` must declare the fields cargo itself
+// requires to build a package: `name`, `version`, `edition`. A single-crate
+// project declares them in `[package]`; a virtual workspace declares the
+// shared `version`/`edition` in `[workspace.package]` (members inherit them,
+// and supply their own `name`), so the workspace manifest is checked there.
 impl Rule for RustCargoRequiredFields {
     fn name(&self) -> &'static str {
         "rust-cargo-required-fields"
@@ -316,16 +324,23 @@ impl Rule for RustCargoRequiredFields {
             Ok(c) => c,
             Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
         };
-        let missing: Vec<&str> = REQUIRED_CARGO_FIELDS
+        let (header, fields): (&str, &[&str]) = if is_virtual_workspace(&contents) {
+            ("[workspace.package]", &WORKSPACE_REQUIRED_CARGO_FIELDS)
+        } else {
+            ("[package]", &REQUIRED_CARGO_FIELDS)
+        };
+        let missing: Vec<&str> = fields
             .iter()
             .copied()
-            .filter(|field| cargo_package_field(&contents, field).is_none_or(|v| v.is_empty()))
+            .filter(|field| {
+                cargo_table_field(&contents, header, field).is_none_or(|v| v.is_empty())
+            })
             .collect();
         if missing.is_empty() {
             RuleResult::Pass
         } else {
             RuleResult::Fail(format!(
-                "Cargo.toml `[package]` missing or empty required field(s): {} ({})",
+                "Cargo.toml `{header}` missing or empty required field(s): {} ({})",
                 missing.join(", "),
                 cargo.display()
             ))
@@ -338,10 +353,10 @@ impl Rule for RustCargoRequiredFields {
 // (written by `shaka project new`) is a `[lints.clippy]` table in
 // `Cargo.toml`; a root `clippy.toml`/`.clippy.toml` also counts. rustfmt is
 // intentionally *not* checked here — the repo runs `cargo fmt` on defaults
-// with no `rustfmt.toml`, so there is no artifact to assert. Cargo-workspace
-// inheritance (`lints.workspace = true`) is not honored: no project in the
-// repo is a workspace, so the walk-up would be dead code (cf. the single-
-// crate scope of `rust-cargo-required-fields`).
+// with no `rustfmt.toml`, so there is no artifact to assert. A virtual
+// workspace declares the shared lints in `[workspace.lints.clippy]` (members
+// inherit via `lints.workspace = true`), so the workspace manifest is checked
+// there instead of `[lints.clippy]`.
 impl Rule for RustClippyLintsDeclared {
     fn name(&self) -> &'static str {
         "rust-clippy-lints-declared"
@@ -358,11 +373,16 @@ impl Rule for RustClippyLintsDeclared {
             Ok(c) => c,
             Err(_) => return RuleResult::Fail("missing Cargo.toml at project root".into()),
         };
-        if cargo_has_table(&contents, "[lints.clippy]") {
+        let header = if is_virtual_workspace(&contents) {
+            "[workspace.lints.clippy]"
+        } else {
+            "[lints.clippy]"
+        };
+        if cargo_has_table(&contents, header) {
             RuleResult::Pass
         } else {
             RuleResult::Fail(format!(
-                "no clippy config: declare `[lints.clippy]` in Cargo.toml or add a clippy.toml ({})",
+                "no clippy config: declare `{header}` in Cargo.toml or add a clippy.toml ({})",
                 cargo.display()
             ))
         }
@@ -578,22 +598,51 @@ fn is_placeholder_body_line(stripped: &str) -> bool {
     matches!(body, "true" | ":")
 }
 
-// Looks up a string-valued `[package]` field in a Cargo.toml, tolerating
-// any whitespace between key, `=`, and value (taplo's `align_entries`
-// pads to the longest key in the table, so substring matching against a
-// fixed-width assignment is brittle). Returns the literal string value
-// without quotes, or `None` if the key isn't present in `[package]`.
-// Other sections (`[dependencies]`, `[lib]`, etc.) are skipped to avoid
-// confusing `name`/`version` here with package-level fields.
+// Looks up a string-valued field in the `[package]` table of a Cargo.toml.
+// Thin wrapper over `cargo_table_field` for the common single-crate case.
 fn cargo_package_field(contents: &str, key: &str) -> Option<String> {
-    let mut in_package = false;
+    cargo_table_field(contents, "[package]", key)
+}
+
+// True when the project-root manifest is a *virtual* workspace: it declares
+// `[workspace]` but no `[package]` of its own. Such a manifest carries the
+// shared package metadata in `[workspace.package]` / `[workspace.lints]`
+// rather than `[package]`, so the rust audit rules resolve there instead
+// (#908). A root crate that is *also* a workspace root (`[package]` plus
+// `[workspace]`) is not virtual — its own `[package]` is authoritative.
+fn is_virtual_workspace(contents: &str) -> bool {
+    cargo_has_table(contents, "[workspace]") && !cargo_has_table(contents, "[package]")
+}
+
+// The table header that owns the package metadata for this manifest:
+// `[workspace.package]` for a virtual workspace, `[package]` otherwise.
+fn package_table_header(contents: &str) -> &'static str {
+    if is_virtual_workspace(contents) {
+        "[workspace.package]"
+    } else {
+        "[package]"
+    }
+}
+
+// Looks up a string-valued field in the given table `header` (for example
+// `[package]` or `[workspace.package]`) of a Cargo.toml, tolerating any
+// whitespace between key, `=`, and value (taplo's `align_entries` pads to
+// the longest key in the table, so substring matching against a fixed-width
+// assignment is brittle). Returns the literal string value without quotes,
+// or `None` if the key isn't present in that table. Other sections
+// (`[dependencies]`, `[lib]`, sub-tables like `[package.metadata]`, etc.)
+// are skipped so a `name`/`version` elsewhere isn't mistaken for the field.
+fn cargo_table_field(contents: &str, header: &str, key: &str) -> Option<String> {
+    let mut in_table = false;
     for line in contents.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with('[') {
-            in_package = trimmed.starts_with("[package]");
+            // `header` includes its closing `]`, so this won't confuse
+            // `[package]` with a sub-table like `[package.metadata]`.
+            in_table = trimmed.starts_with(header);
             continue;
         }
-        if !in_package || trimmed.starts_with('#') {
+        if !in_table || trimmed.starts_with('#') {
             continue;
         }
         let Some(after_key) = trimmed.strip_prefix(key) else {
@@ -1920,6 +1969,121 @@ mod tests {
     #[test]
     fn rust_clippy_lints_declared_does_not_apply_to_non_rust() {
         assert!(!RustClippyLintsDeclared.applies(&infra_meta()));
+    }
+
+    // ---- Cargo workspace support (#908) ----
+
+    // A buzzingo-shaped virtual workspace manifest: `[workspace]` only,
+    // shared package metadata in `[workspace.package]` / `[workspace.lints]`,
+    // and no root `[package]`.
+    const VIRTUAL_WORKSPACE_CARGO: &str = "\
+[workspace]
+members = [\"crates/*\"]
+resolver = \"2\"
+
+[workspace.package]
+version = \"0.1.0\"
+edition = \"2021\"
+rust-version = \"1.95\"
+license = \"MIT OR Apache-2.0\"
+
+[workspace.lints.clippy]
+unwrap_used = \"deny\"
+";
+
+    #[test]
+    fn is_virtual_workspace_detects_workspace_only_manifest() {
+        assert!(is_virtual_workspace(VIRTUAL_WORKSPACE_CARGO));
+        // A plain crate is not a workspace.
+        assert!(!is_virtual_workspace("[package]\nname = \"x\"\n"));
+        // A root crate that is *also* a workspace root owns its [package],
+        // so it is not virtual.
+        assert!(!is_virtual_workspace(
+            "[workspace]\nmembers = []\n\n[package]\nname = \"x\"\n"
+        ));
+    }
+
+    #[test]
+    fn rust_version_pinned_passes_for_virtual_workspace() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), VIRTUAL_WORKSPACE_CARGO).unwrap();
+        assert_eq!(
+            RustVersionPinned.check(tmp.path(), &rust_worker_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_version_pinned_fails_for_workspace_without_rust_version() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[workspace]\nmembers = []\n\n[workspace.package]\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        match RustVersionPinned.check(tmp.path(), &rust_worker_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("must declare"), "got: {msg}");
+                assert!(msg.contains("[workspace.package]"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_passes_for_virtual_workspace() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), VIRTUAL_WORKSPACE_CARGO).unwrap();
+        assert_eq!(
+            RustCargoRequiredFields.check(tmp.path(), &rust_worker_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_cargo_required_fields_fails_for_workspace_missing_edition() {
+        let tmp = TempDir::new().unwrap();
+        // `name` is intentionally absent — it's per-member, not a
+        // workspace-root field — and must not be reported missing.
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[workspace]\nmembers = []\n\n[workspace.package]\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        match RustCargoRequiredFields.check(tmp.path(), &rust_worker_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("edition"), "got: {msg}");
+                assert!(!msg.contains("name"), "name is per-member, got: {msg}");
+                assert!(msg.contains("[workspace.package]"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_passes_for_virtual_workspace() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), VIRTUAL_WORKSPACE_CARGO).unwrap();
+        assert_eq!(
+            RustClippyLintsDeclared.check(tmp.path(), &rust_worker_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_clippy_lints_declared_fails_for_workspace_without_lints() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[workspace]\nmembers = []\n\n[workspace.package]\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        match RustClippyLintsDeclared.check(tmp.path(), &rust_worker_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(msg.contains("[workspace.lints.clippy]"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
     }
 
     const UNWRAP_DENY_ATTR: &str = "#![cfg_attr(not(test), deny(clippy::unwrap_used))]";
