@@ -42,3 +42,9 @@ resource "cloudflare_ruleset" "kolohelios_portfolio_cache" {
     },
   ]
 }
+resource "cloudflare_web_analytics_site" "kolohelios_portfolio_web_analytics" {
+  account_id   = var.cloudflare_account_id
+  zone_tag     = data.cloudflare_zone.kolohelios_com.zone_id
+  host         = "kolohelios.com"
+  auto_install = false
+}
