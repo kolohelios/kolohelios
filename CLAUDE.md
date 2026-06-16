@@ -36,7 +36,7 @@ project. Project-local docs and configuration live alongside the project.
 | `apps/`      | End-user applications                                |
 | `packages/`  | Shared libraries                                     |
 | `projects/`  | Standalone projects that don't fit another slot      |
-| `services/`  | Long-running services (reserved; not yet populated)  |
+| `services/`  | Long-running services (for example, `services/notes-sync`) |
 | `tools/`     | Developer tooling (for example, `tools/shaka`)       |
 | `infra/`     | Infrastructure as code (for example, `infra/devbox`) |
 | `nix/`       | Shared nix infrastructure (for example, `nix/kolohelios-nix`) |
