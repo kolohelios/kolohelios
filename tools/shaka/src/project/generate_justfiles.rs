@@ -531,6 +531,34 @@ struct ProjectMeta {
     #[allow(dead_code)]
     name: String,
     kind: String,
+    #[serde(default)]
+    generate: Option<GenerateConfig>,
+}
+
+#[derive(Deserialize)]
+struct GenerateConfig {
+    #[serde(default)]
+    skip: Vec<GenerateSkip>,
+}
+
+#[derive(Deserialize)]
+struct GenerateSkip {
+    step: String,
+    reason: String,
+}
+
+/// The justification if this project waives `justfile` generation via
+/// `generate.skip`, else `None`. A waived project is excluded from both the
+/// write pass and the `--check` drift pass — the interim escape hatch (#924)
+/// for a hand-maintained rust-worker workspace justfile until #922 lands
+/// workspace-aware generation.
+fn waived_justfile(meta: &ProjectMeta) -> Option<&str> {
+    meta.generate
+        .as_ref()?
+        .skip
+        .iter()
+        .find(|s| s.step == "justfile")
+        .map(|s| s.reason.as_str())
 }
 
 pub fn run(check: bool) {
@@ -544,17 +572,26 @@ pub fn run(check: bool) {
     let projects = discover_projects(Path::new("."));
     for project in &projects {
         match read_meta(project) {
-            Ok(meta) => match template_for(&meta.kind, project) {
-                Some(body) => items.push((project.join("justfile"), render(&body))),
-                None => {
-                    eprintln!(
-                        "{RED}{BOLD}error:{RESET} {} has unknown kind {:?}",
-                        project.display(),
-                        meta.kind
+            Ok(meta) => {
+                if let Some(reason) = waived_justfile(&meta) {
+                    println!(
+                        "  {YELLOW}{BOLD}WAIVED{RESET}   {} {DIM}({reason}){RESET}",
+                        project.join("justfile").display()
                     );
-                    std::process::exit(1);
+                    continue;
                 }
-            },
+                match template_for(&meta.kind, project) {
+                    Some(body) => items.push((project.join("justfile"), render(&body))),
+                    None => {
+                        eprintln!(
+                            "{RED}{BOLD}error:{RESET} {} has unknown kind {:?}",
+                            project.display(),
+                            meta.kind
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
             Err(e) => {
                 eprintln!(
                     "{RED}{BOLD}error:{RESET} could not read {}: {e}",
@@ -1203,5 +1240,61 @@ mod tests {
         // and shouldn't render as a deliverable. Without the skip, every
         // document project would produce stray README.pdf/.docx outputs.
         assert!(DOCUMENT_TEMPLATE.contains(r#"[ "$md" = "README.md" ] && continue"#));
+    }
+
+    fn meta_with_skip(steps: &[&str]) -> ProjectMeta {
+        ProjectMeta {
+            name: "p".into(),
+            kind: "rust-worker".into(),
+            generate: Some(GenerateConfig {
+                skip: steps
+                    .iter()
+                    .map(|s| GenerateSkip {
+                        step: (*s).into(),
+                        reason: "because".into(),
+                    })
+                    .collect(),
+            }),
+        }
+    }
+
+    #[test]
+    fn waived_justfile_returns_reason_when_step_listed() {
+        assert_eq!(
+            waived_justfile(&meta_with_skip(&["justfile"])),
+            Some("because")
+        );
+    }
+
+    #[test]
+    fn waived_justfile_is_none_without_a_generate_block() {
+        let meta = ProjectMeta {
+            name: "p".into(),
+            kind: "rust-worker".into(),
+            generate: None,
+        };
+        assert_eq!(waived_justfile(&meta), None);
+    }
+
+    #[test]
+    fn waived_justfile_ignores_other_steps() {
+        // A future step (not yet honored) must not waive the justfile.
+        assert_eq!(waived_justfile(&meta_with_skip(&["flakes"])), None);
+    }
+
+    #[test]
+    fn project_meta_deserializes_generate_skip() {
+        // Shape of `cue export` output for a project carrying generate.skip.
+        let json = r#"{"name":"buzzingo","kind":"rust-worker","generate":{"skip":[{"step":"justfile","reason":"hand-maintained"}]}}"#;
+        let meta: ProjectMeta = serde_json::from_str(json).expect("parse");
+        assert_eq!(waived_justfile(&meta), Some("hand-maintained"));
+    }
+
+    #[test]
+    fn project_meta_without_generate_defaults_to_none() {
+        let meta: ProjectMeta =
+            serde_json::from_str(r#"{"name":"x","kind":"rust-cli"}"#).expect("parse");
+        assert!(meta.generate.is_none());
+        assert_eq!(waived_justfile(&meta), None);
     }
 }

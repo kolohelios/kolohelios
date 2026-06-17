@@ -14,6 +14,23 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	justification: string & !=""
 }
 
+// Waive a generator step for this project. shaka can't yet produce a
+// workspace-aware justfile for a rust-worker Cargo workspace (#922), so such a
+// project hand-maintains its justfile and would otherwise fail
+// `generate-justfiles --check`. Listing the step here excludes the project from
+// BOTH the write pass and the `--check` drift pass. `reason` (non-empty,
+// mirroring #AuditOverride.justification) is mandatory so the waiver is
+// auditable in git history and self-documents the interim. `step` is an enum so
+// future generator artifacts extend it without a schema migration.
+#GenerateSkip: {
+	step:   "justfile"
+	reason: string & !=""
+}
+
+#GenerateConfig: {
+	skip?: [...#GenerateSkip]
+}
+
 // Cache rules for the deploy's zone. When set, `shaka deploy
 // generate-tf` emits a `cloudflare_ruleset` (phase
 // `http_request_cache_settings`) alongside the custom-domain
@@ -261,6 +278,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	audit?: {
 		overrides: [...#AuditOverride]
 	}
+	generate?: #GenerateConfig
 	serving?: [#Serving, ...#Serving]
 } & ({
 	// Rust binary crate that ships a CLI. `cli:` carries the
