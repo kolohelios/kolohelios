@@ -364,30 +364,151 @@ fn format_pr_body(input: &str, updated: &[PathBuf], auto_merge: bool) -> String 
     body
 }
 
-// Returns true iff `flake.nix` contents declare `input_name` as a flake
-// input, in either form: `<input>.url = "..."` (inside an `inputs = { ... }`
-// block) or `inputs.<input>.url = "..."` (top-level). Block-form
-// (`<input> = { url = ...; }`) is not supported — the bumper fails closed.
-// Comments are ignored. The audit rule `kolohelios-nix-via-flakehub`
-// guarantees the URL form is canonical for any input we automate.
+// Returns true iff `flake.nix` contents declare `input_name` as a bumpable
+// flake input, in any of these forms:
+//   - `<input>.url = "..."`           (attr, inside `inputs = { ... }`)
+//   - `inputs.<input>.url = "..."`    (attr, top-level)
+//   - `<input> = { ... url = ...; }`  (block, inside `inputs = { ... }`)
+//   - `inputs.<input> = { ... }`      (block, top-level)
+// `generate-flakes` emits block form for any input that carries a `follows`
+// (e.g. buzzingo's `shaka` / `rust-overlay`), so both forms must be matched. A
+// block counts only if it declares a `url` — a follows-only block isn't
+// bumpable. Comments are ignored, and prefix-only / value-mention matches are
+// rejected (see tests). Known limitation: a non-input attrset elsewhere in the
+// file whose attr name happens to equal `input_name` and that has a `url` child
+// would also match; generated flakes don't do this.
 pub fn references_flake_input(flake_contents: &str, input_name: &str) -> bool {
-    let in_block = format!("{input_name}.url");
-    let top_level = format!("inputs.{input_name}.url");
+    // Match the top-level prefix first so `inputs.<input>...` doesn't fall
+    // through to the bare-name branch.
+    let prefixes = [format!("inputs.{input_name}"), input_name.to_string()];
+    let base = flake_contents.as_ptr() as usize;
     for line in flake_contents.lines() {
+        // Byte offset of `line` within `flake_contents` (`lines()` yields
+        // subslices), robust to `\n` vs `\r\n`.
+        let line_start = line.as_ptr() as usize - base;
         let trimmed = line.trim_start();
         if trimmed.starts_with('#') {
             continue;
         }
-        let after = trimmed
-            .strip_prefix(top_level.as_str())
-            .or_else(|| trimmed.strip_prefix(in_block.as_str()));
-        if let Some(rest) = after {
-            if rest.trim_start().starts_with('=') {
-                return true;
+        for prefix in &prefixes {
+            let Some(rest) = trimmed.strip_prefix(prefix.as_str()) else {
+                continue;
+            };
+            let rest = rest.trim_start();
+            // Attr form: `<input>.url = ...`
+            if let Some(after_url) = rest.strip_prefix(".url") {
+                if after_url.trim_start().starts_with('=') {
+                    return true;
+                }
+            }
+            // Block form: `<input> = { ... url = ...; }`. Verify the block
+            // declares a `url` so a follows-only block isn't bumped.
+            if let Some(after_eq) = rest.strip_prefix('=') {
+                if after_eq.trim_start().starts_with('{') {
+                    if let Some(brace) = line.find('{') {
+                        if block_declares_url(flake_contents, line_start + brace) {
+                            return true;
+                        }
+                    }
+                }
             }
         }
     }
     false
+}
+
+// Starting at the block-opening `{` at byte `open`, return true iff the block
+// declares a `url` attribute before it closes. Lexes the block so nothing in a
+// string or comment is mistaken for structure: it skips `"..."` (with `\`
+// escapes; `${...}` interpolation braces stay inside the string), `''...''` nix
+// multiline strings, and `#` line comments, while tracking brace depth — so a
+// single-line block or a `url` on the opener line is handled. A follows-only
+// block (no `url`) returns false.
+fn block_declares_url(flake: &str, open: usize) -> bool {
+    enum State {
+        Normal,
+        DQuote,
+        SQuote,
+    }
+    let bytes = flake.as_bytes();
+    let mut depth = 1usize; // already inside the opener's `{`
+    let mut state = State::Normal;
+    let mut escaped = false;
+    let mut i = open + 1;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match state {
+            State::DQuote => {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'"' {
+                    state = State::Normal;
+                }
+                i += 1;
+            }
+            // Nix `''...''` multiline string: ends at the next `''`; its
+            // contents (including braces and `"`) are ignored.
+            State::SQuote => {
+                if b == b'\'' && bytes.get(i + 1) == Some(&b'\'') {
+                    state = State::Normal;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            State::Normal => match b {
+                b'#' => {
+                    while i < bytes.len() && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                }
+                b'\'' if bytes.get(i + 1) == Some(&b'\'') => {
+                    state = State::SQuote;
+                    i += 2;
+                }
+                b'"' => {
+                    state = State::DQuote;
+                    i += 1;
+                }
+                b'{' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return false; // block closed without a `url`
+                    }
+                    i += 1;
+                }
+                b'u' if depth == 1 && is_url_attr(bytes, i) => return true,
+                _ => i += 1,
+            },
+        }
+    }
+    false
+}
+
+// `bytes[i]` is `b'u'`; return true iff it begins a `url` attribute: preceded
+// by an attribute boundary (`{`, `;`, or whitespace), spelled exactly `url`
+// (not `urls` / `url_x`), and followed by optional whitespace then `=`.
+fn is_url_attr(bytes: &[u8], i: usize) -> bool {
+    let boundary = i == 0 || matches!(bytes[i - 1], b'{' | b';' | b' ' | b'\t' | b'\n' | b'\r');
+    if !boundary || !bytes[i..].starts_with(b"url") {
+        return false;
+    }
+    let mut j = i + 3;
+    // Reject identifiers that merely start with `url` (`urls`, `url_x`, ...).
+    if matches!(bytes.get(j), Some(c) if c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-' || *c == b'\'')
+    {
+        return false;
+    }
+    while matches!(bytes.get(j), Some(b' ' | b'\t')) {
+        j += 1;
+    }
+    bytes.get(j) == Some(&b'=')
 }
 
 #[cfg(test)]
@@ -403,6 +524,83 @@ mod tests {
     #[test]
     fn references_top_level_form() {
         let nix = "{\n  inputs.foo.url = \"https://example.com\";\n}\n";
+        assert!(references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn references_block_form_in_inputs_block() {
+        // generate-flakes emits block form for an input carrying a `follows`
+        // (e.g. buzzingo's shaka).
+        let nix = "{\n  inputs = {\n    shaka = {\n      url = \"https://flakehub.com/f/kolohelios/shaka/*.tar.gz\";\n      inputs.kolohelios-nix.follows = \"kolohelios-nix\";\n    };\n  };\n}\n";
+        assert!(references_flake_input(nix, "shaka"));
+    }
+
+    #[test]
+    fn references_block_form_top_level() {
+        let nix = "{\n  inputs.shaka = {\n    url = \"https://example.com\";\n  };\n}\n";
+        assert!(references_flake_input(nix, "shaka"));
+    }
+
+    #[test]
+    fn rejects_follows_only_block_without_url() {
+        // A block that only sets `follows` (no url) is not a bumpable input.
+        let nix = "{\n  inputs = {\n    foo = {\n      inputs.nixpkgs.follows = \"nixpkgs\";\n    };\n  };\n}\n";
+        assert!(!references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn references_single_line_block() {
+        // Opens and closes on one line — the scan must not bail at the closing
+        // brace before seeing the url.
+        let nix = "{\n  inputs.shaka = { url = \"https://x\"; };\n}\n";
+        assert!(references_flake_input(nix, "shaka"));
+    }
+
+    #[test]
+    fn references_url_on_opener_line() {
+        let nix = "{\n  inputs = {\n    shaka = { url = \"https://x\";\n      inputs.nixpkgs.follows = \"nixpkgs\";\n    };\n  };\n}\n";
+        assert!(references_flake_input(nix, "shaka"));
+    }
+
+    #[test]
+    fn brace_inside_sibling_string_does_not_break_scan() {
+        // A `{`/`}` inside a sibling string value must not skew brace depth.
+        let nix =
+            "{\n  inputs.shaka = {\n    meta = \"a}b{c\";\n    url = \"https://x\";\n  };\n}\n";
+        assert!(references_flake_input(nix, "shaka"));
+    }
+
+    #[test]
+    fn url_with_interpolation_is_recognized() {
+        let nix = "{\n  inputs.shaka = {\n    url = \"github:o/r/${rev}\";\n  };\n}\n";
+        assert!(references_flake_input(nix, "shaka"));
+    }
+
+    #[test]
+    fn rejects_urls_lookalike_attr_in_block() {
+        // `urls = ...` is not a `url` attribute.
+        let nix = "{\n  inputs.foo = {\n    urls = \"x\";\n  };\n}\n";
+        assert!(!references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn rejects_commented_url_in_follows_only_block() {
+        // A commented-out `url` must not count — the block is follows-only.
+        let nix = "{\n  inputs.foo = {\n    # url = \"x\";\n    inputs.nixpkgs.follows = \"nixpkgs\";\n  };\n}\n";
+        assert!(!references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn brace_in_comment_does_not_break_block_scan() {
+        // A `}` in a comment must not prematurely close the block.
+        let nix = "{\n  inputs.foo = {\n    # closes here }\n    url = \"https://x\";\n  };\n}\n";
+        assert!(references_flake_input(nix, "foo"));
+    }
+
+    #[test]
+    fn multiline_string_sibling_does_not_break_block_scan() {
+        // A `''...''` sibling value with a brace must not skew the scan.
+        let nix = "{\n  inputs.foo = {\n    a = ''x{y'';\n    url = \"https://x\";\n  };\n}\n";
         assert!(references_flake_input(nix, "foo"));
     }
 
