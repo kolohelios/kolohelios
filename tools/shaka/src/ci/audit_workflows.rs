@@ -27,6 +27,10 @@ const HAND_AUTHORED: &[&str] = &[
     "auto-rebase-prs.yaml",
     "bump-kolohelios-nix.yaml",
     "bump-nixpkgs.yaml",
+    // Cross-repo: bumps the external buzzingo repo's `shaka` flake input via
+    // `bump-locks --repo` (buzzingo has no in-monorepo project.cue to generate
+    // from). Schedule + manual-dispatch driven.
+    "bump-buzzingo-shaka.yaml",
     "codeql.yml",
     // Repo-wide backstop: deletes any preview Worker whose PR has
     // closed. Runs on `push: main` + a daily cron + manual dispatch
