@@ -695,6 +695,14 @@ pub fn run(check: bool) {
     for project in &projects {
         match read_meta(project) {
             Ok(meta) => {
+                // native-app is host-built (iOS/Android): the platform
+                // build runs in Xcode/Gradle, not `just validate`, so
+                // shaka emits no justfile for it. Skip rather than error
+                // like a genuinely unknown kind — this absence is by
+                // design. (#941)
+                if meta.kind == "native-app" {
+                    continue;
+                }
                 if let Some(reason) = waived_justfile(&meta) {
                     println!(
                         "  {YELLOW}{BOLD}WAIVED{RESET}   {} {DIM}({reason}){RESET}",

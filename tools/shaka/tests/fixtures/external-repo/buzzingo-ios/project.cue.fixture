@@ -1,0 +1,16 @@
+package project
+
+// A host-built native-app (SwiftUI/iOS) in an external repo: it consumes
+// the buzzingo-ffi uniffi bindings but shaka generates no flake/justfile
+// for it and preflight never builds it (iOS needs macOS + Xcode). The
+// project.cue still validates so the "every project declares a kind"
+// invariant holds. (#941)
+#Project & {
+	name: "buzzingo-ios"
+	kind: "native-app"
+	nativeApp: {
+		platform: "ios"
+		ffiCrate: "buzzingo-ffi"
+		appId:    "com.buzzingo.app"
+	}
+}

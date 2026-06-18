@@ -52,6 +52,7 @@ pub enum ProjectKind {
     Infra,
     NixLib,
     Document,
+    NativeApp,
 }
 
 impl ProjectKind {
@@ -510,8 +511,11 @@ impl Rule for ValidateRecipeMeaningful {
     fn name(&self) -> &'static str {
         "validate-recipe-meaningful"
     }
-    fn applies(&self, _meta: &ProjectMeta) -> bool {
-        true
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        // native-app is host-built (iOS/Android): shaka generates no
+        // justfile and preflight skips its per-project `just validate`,
+        // so there's no recipe to hold meaningful. (#941)
+        meta.kind != ProjectKind::NativeApp
     }
     fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
         let justfile = project_dir.join("justfile");
@@ -1227,6 +1231,36 @@ mod tests {
             },
             ..rust_meta()
         }
+    }
+
+    fn native_app_meta() -> ProjectMeta {
+        ProjectMeta {
+            name: "demo".into(),
+            kind: ProjectKind::NativeApp,
+            coverage: None,
+            audit: None,
+            cli: None,
+            ci: None,
+        }
+    }
+
+    #[test]
+    fn project_kind_deserializes_native_app() {
+        // audit reads every project's kind via `cue export` -> serde; an
+        // unknown variant would abort the whole `shaka project audit` run,
+        // so the enum must accept the kebab-case `native-app`. (#941)
+        let meta: ProjectMeta =
+            serde_json::from_str(r#"{"name":"buzzingo-ios","kind":"native-app"}"#).expect("parse");
+        assert_eq!(meta.kind, ProjectKind::NativeApp);
+    }
+
+    #[test]
+    fn validate_recipe_rule_skips_native_app() {
+        // native-app is host-built: no justfile, so the validate-recipe
+        // rule must not apply (its check hard-fails on a missing justfile).
+        // It still applies to a kind that carries one. (#941)
+        assert!(!ValidateRecipeMeaningful.applies(&native_app_meta()));
+        assert!(ValidateRecipeMeaningful.applies(&rust_meta()));
     }
 
     #[test]

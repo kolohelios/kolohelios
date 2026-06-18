@@ -47,6 +47,19 @@ fn staged_repo() -> tempfile::TempDir {
     root
 }
 
+/// Add a host-built `native-app` project to a staged repo. iOS/Android
+/// app shells consume the FFI crate but shaka generates nothing for them
+/// and preflight never builds them — see #941.
+fn add_native_app(root: &Path) {
+    let dst = root.join("apps/buzzingo-ios");
+    std::fs::create_dir_all(&dst).unwrap();
+    std::fs::copy(
+        fixtures_root().join("buzzingo-ios/project.cue.fixture"),
+        dst.join("project.cue"),
+    )
+    .unwrap();
+}
+
 fn run(root: &Path, args: &[&str]) -> std::process::Output {
     Command::new(SHAKA_BIN)
         .args(args)
@@ -162,4 +175,64 @@ fn generate_workflows_round_trips_without_a_domain_registry() {
         "--check drifted right after generate: {}",
         String::from_utf8_lossy(&check.stderr)
     );
+}
+
+#[test]
+fn native_app_validates_but_generates_no_flake_or_justfile() {
+    // #941: a host-built native-app (iOS/Android) keeps the "every project
+    // declares a kind" invariant — its project.cue validates — but shaka
+    // generates nothing for it (no nix toolchain, no `just validate`), and
+    // the generators must skip it rather than erroring on a missing
+    // template. Staged alongside the rust-worker so the generators see a
+    // mixed repo, exactly as the buzzingo monorepo will.
+    let repo = staged_repo();
+    add_native_app(repo.path());
+
+    // schema-check accepts both projects.
+    let schema = run(repo.path(), &["project", "schema-check"]);
+    assert!(
+        schema.status.success(),
+        "schema-check rejected a native-app project: {}",
+        String::from_utf8_lossy(&schema.stderr)
+    );
+
+    // generate-flakes succeeds and writes NO flake for the native-app
+    // (the rust-worker still gets one).
+    let flakes = run(repo.path(), &["project", "generate-flakes"]);
+    assert!(
+        flakes.status.success(),
+        "generate-flakes errored on a native-app project: {}",
+        String::from_utf8_lossy(&flakes.stderr)
+    );
+    assert!(
+        !repo.path().join("apps/buzzingo-ios/flake.nix").exists(),
+        "shaka generated a flake.nix for a host-built native-app"
+    );
+
+    // generate-justfiles succeeds and writes NO justfile for the
+    // native-app — skipped, not treated as an unknown kind (which exits 1).
+    let justfiles = run(repo.path(), &["project", "generate-justfiles"]);
+    assert!(
+        justfiles.status.success(),
+        "generate-justfiles errored on a native-app project: {}",
+        String::from_utf8_lossy(&justfiles.stderr)
+    );
+    assert!(
+        !repo.path().join("apps/buzzingo-ios/justfile").exists(),
+        "shaka generated a justfile for a host-built native-app"
+    );
+
+    // ...and both --check passes agree byte-for-byte (no drift introduced
+    // by the native-app project).
+    for cmd in [
+        ["project", "generate-flakes", "--check"],
+        ["project", "generate-justfiles", "--check"],
+    ] {
+        let check = run(repo.path(), &cmd);
+        assert!(
+            check.status.success(),
+            "{cmd:?} drifted with a native-app present: {}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
 }
