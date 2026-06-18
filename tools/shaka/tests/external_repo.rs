@@ -102,6 +102,42 @@ fn generate_flakes_emits_shaka_consumer_knobs_for_external_repo() {
 }
 
 #[test]
+fn generate_flakes_renders_extra_rust_targets_and_drift_checks_the_worker_flake() {
+    // Regression guard for #937: a rust-worker flake is generated and
+    // drift-gated like any other kind — `extraRustTargets` from
+    // `project.cue` must land in the toolchain, and `--check` must catch a
+    // hand-edit. (The bug report's "wrote 0 files / --check passes after
+    // editing" was a stale-FlakeHub-pin artifact; this locks the live
+    // behavior so it can't silently regress.)
+    let repo = staged_repo();
+    let gen = run(repo.path(), &["project", "generate-flakes"]);
+    assert!(
+        gen.status.success(),
+        "generate-flakes failed for a domain-free repo: {}",
+        String::from_utf8_lossy(&gen.stderr)
+    );
+
+    let flake = repo.path().join("apps/buzzingo/flake.nix");
+    let body = std::fs::read_to_string(&flake).expect("apps/buzzingo/flake.nix written");
+    // The declared targets union onto the fixed wasm32 target, one-per-line.
+    assert!(
+        body.contains(
+            "          targets = [\n            \"wasm32-unknown-unknown\"\n            \"aarch64-apple-ios\"\n            \"aarch64-linux-android\"\n          ];\n"
+        ),
+        "extraRustTargets did not render into the toolchain targets:\n{body}"
+    );
+
+    // Hand-edit the generated flake; `--check` must flag the drift rather
+    // than treating a rust-worker flake as hand-authored.
+    std::fs::write(&flake, format!("{body}\n# stray hand edit\n")).unwrap();
+    let check = run(repo.path(), &["project", "generate-flakes", "--check"]);
+    assert!(
+        !check.status.success(),
+        "--check did not detect drift in a hand-edited rust-worker flake"
+    );
+}
+
+#[test]
 fn generate_workflows_round_trips_without_a_domain_registry() {
     let repo = staged_repo();
     // First emit the deploy/cleanup workflows from the ci.deploy block...

@@ -7,12 +7,16 @@ package project
 // for its prod-only route (#869). Validating it must not require a
 // vendored domain registry (#863). As an external consumer it sets
 // `consumesShaka` so the generated flake PATH-prepends a FlakeHub
-// `shaka` ahead of the `workflowPackages` shim (#831).
+// `shaka` ahead of the `workflowPackages` shim (#831). It also declares
+// `extraRustTargets` so the generated toolchain cross-compiles the
+// `uniffi` FFI crate to native mobile targets alongside wasm32 (#932,
+// #936).
 #Project & {
 	name: "buzzingo"
 	kind: "rust-worker"
 	worker: {
 		consumesShaka: true
+		extraRustTargets: ["aarch64-apple-ios", "aarch64-linux-android"]
 	}
 	ci: {
 		deploy: {
