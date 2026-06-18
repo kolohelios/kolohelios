@@ -26,8 +26,10 @@ pub enum ProjectCommand {
         #[arg(long)]
         check: bool,
     },
-    /// Generate per-project flake.nix from each project.cue's `cli:` block
-    /// (rust-cli kind only; other kinds keep their hand-authored flake)
+    /// Generate per-project flake.nix from each project.cue's kind block
+    /// (rust-cli, rust-lib, rust-worker, wasm-app, document, and opt-in
+    /// infra/nix-lib; kinds without a flake template keep their
+    /// hand-authored flake)
     GenerateFlakes {
         /// Compare generated content to disk and fail on any drift instead of writing
         #[arg(long)]
