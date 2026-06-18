@@ -144,6 +144,12 @@ struct WorkerMeta {
     description: Option<String>,
     #[serde(default)]
     extra_dev_shell_packages: Vec<String>,
+    /// Extra Rust target triples unioned into the toolchain's `targets`
+    /// on top of the fixed `wasm32-unknown-unknown`. Lets a `rust-worker`
+    /// cross-compile the same crate elsewhere (e.g. a `uniffi` FFI crate
+    /// to iOS/Android targets) without a hand-authored flake holdout.
+    #[serde(default)]
+    extra_rust_targets: Vec<String>,
     /// External consumers (no kolohelios checkout) need a real `shaka`
     /// on PATH ahead of the `workflowPackages` shim, which can't resolve
     /// `tools/shaka/bin/shaka` outside the monorepo. When set, the flake
@@ -644,7 +650,10 @@ fn render_worker_flake(name: &str, worker: &WorkerMeta) -> String {
     out.push_str(&format!("{{\n  description = \"{description}\";\n\n"));
     out.push_str(&render_worker_inputs(worker.consumes_shaka));
     out.push_str("\n  outputs =\n");
-    out.push_str(&render_worker_output_header(worker.consumes_shaka));
+    out.push_str(&render_worker_output_header(
+        worker.consumes_shaka,
+        &worker.extra_rust_targets,
+    ));
     out.push_str("    in\n    {\n");
     out.push_str(&render_worker_devshell(
         &worker.extra_dev_shell_packages,
@@ -674,21 +683,51 @@ fn render_worker_inputs(consumes_shaka: bool) -> String {
 
 /// `outputs` header for a worker flake. With `consumes_shaka`, add
 /// `shaka` to the destructured inputs so the devShell `shellHook` can
-/// reference `shaka.packages.${system}.default`.
-fn render_worker_output_header(consumes_shaka: bool) -> String {
-    if !consumes_shaka {
-        return WORKER_OUTPUT_HEADER.to_string();
+/// reference `shaka.packages.${system}.default`. `extra_rust_targets`
+/// are unioned into the toolchain `targets` on top of the fixed
+/// `wasm32-unknown-unknown`.
+fn render_worker_output_header(consumes_shaka: bool, extra_rust_targets: &[String]) -> String {
+    let mut header = WORKER_OUTPUT_HEADER.replace(
+        "          targets = [ \"wasm32-unknown-unknown\" ];\n",
+        &render_worker_targets(extra_rust_targets),
+    );
+    if consumes_shaka {
+        header = header.replace(
+            "      rust-overlay,\n",
+            "      rust-overlay,\n      shaka,\n",
+        );
     }
-    WORKER_OUTPUT_HEADER.replace(
-        "      rust-overlay,\n",
-        "      rust-overlay,\n      shaka,\n",
-    )
+    header
+}
+
+/// Render the toolchain `targets` list. `wasm32-unknown-unknown` is the
+/// fixed Worker target and always leads; `extra_rust_targets` are unioned
+/// in after it (deduped, order preserved). With no extras the list stays
+/// on one line; with extras it renders one-per-line to match nixfmt.
+fn render_worker_targets(extra_rust_targets: &[String]) -> String {
+    let mut targets = vec!["wasm32-unknown-unknown".to_string()];
+    for t in extra_rust_targets {
+        if !targets.contains(t) {
+            targets.push(t.clone());
+        }
+    }
+    if targets.len() == 1 {
+        return "          targets = [ \"wasm32-unknown-unknown\" ];\n".to_string();
+    }
+    let mut out = String::from("          targets = [\n");
+    for t in &targets {
+        out.push_str(&format!("            \"{t}\"\n"));
+    }
+    out.push_str("          ];\n");
+    out
 }
 
 /// Like `OUTPUT_HEADER` but tailored for workers: the toolchain gains
 /// the `wasm32-unknown-unknown` target (so `cargo check --target
 /// wasm32-unknown-unknown` and `worker-build` find the stdlib), and
 /// `rustPlatform` is omitted since workers never call `buildRustPackage`.
+/// The `targets` line is a placeholder rewritten by
+/// `render_worker_targets` when `worker.extraRustTargets` adds more.
 const WORKER_OUTPUT_HEADER: &str = r#"    {
       self,
       kolohelios-nix,
@@ -1218,6 +1257,42 @@ mod tests {
     fn worker_toolchain_targets_wasm() {
         let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
         assert!(out.contains(r#"targets = [ "wasm32-unknown-unknown" ];"#));
+    }
+
+    #[test]
+    fn worker_extra_rust_targets_render_multiline_after_wasm() {
+        let worker = WorkerMeta {
+            extra_rust_targets: vec!["aarch64-apple-ios".into(), "aarch64-linux-android".into()],
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("buzzingo", &worker);
+        // Extras union into the list one-per-line, wasm32 still leading.
+        assert!(out.contains(
+            "          targets = [\n            \"wasm32-unknown-unknown\"\n            \"aarch64-apple-ios\"\n            \"aarch64-linux-android\"\n          ];\n"
+        ));
+        // The single-line form is gone once extras are present.
+        assert!(!out.contains(r#"targets = [ "wasm32-unknown-unknown" ];"#));
+    }
+
+    #[test]
+    fn worker_extra_rust_targets_dedup_wasm() {
+        // Redundantly listing wasm32 doesn't duplicate it in the output.
+        let worker = WorkerMeta {
+            extra_rust_targets: vec!["wasm32-unknown-unknown".into(), "aarch64-apple-ios".into()],
+            ..WorkerMeta::default()
+        };
+        let out = render_worker_flake("buzzingo", &worker);
+        assert!(out.contains(
+            "          targets = [\n            \"wasm32-unknown-unknown\"\n            \"aarch64-apple-ios\"\n          ];\n"
+        ));
+        assert_eq!(out.matches("wasm32-unknown-unknown").count(), 1);
+    }
+
+    #[test]
+    fn worker_no_extra_rust_targets_stays_single_line() {
+        let out = render_worker_flake("pollen-alert", &WorkerMeta::default());
+        assert!(out.contains(r#"          targets = [ "wasm32-unknown-unknown" ];"#));
+        assert!(!out.contains("          targets = [\n"));
     }
 
     #[test]
