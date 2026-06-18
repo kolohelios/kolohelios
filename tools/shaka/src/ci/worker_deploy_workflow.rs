@@ -59,6 +59,15 @@ pub struct CiDeploy {
     /// `project_dir` (the single-crate default).
     #[serde(default)]
     pub worker_build_dir: Option<String>,
+    /// Worker runtime secret names pushed at deploy by
+    /// `push-worker-secrets`. Modelled here only so this
+    /// `deny_unknown_fields` struct (which `generate-workflows`
+    /// deserializes `ci.deploy` through) tolerates the field; workflow
+    /// generation never reads it (hence `allow(dead_code)`), so the
+    /// emitted deploy workflow is unchanged.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub secrets: Option<Vec<String>>,
 }
 
 pub fn build(spec: &WorkerDeploySpec) -> Workflow {
@@ -433,6 +442,7 @@ mod tests {
                 preview_script_prefix: "portfolio".to_string(),
                 environment: None,
                 worker_build_dir: None,
+                secrets: None,
             },
         }
     }
@@ -603,6 +613,7 @@ mod tests {
                 preview_script_prefix: "buzzingo".to_string(),
                 environment: None,
                 worker_build_dir: Some("crates/buzzingo-server".to_string()),
+                secrets: None,
             },
         }
     }
@@ -657,6 +668,7 @@ mod tests {
                 preview_script_prefix: "buzzingo".to_string(),
                 environment: Some("production".to_string()),
                 worker_build_dir: None,
+                secrets: None,
             },
         }
     }

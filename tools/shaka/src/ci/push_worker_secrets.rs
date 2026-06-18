@@ -4,15 +4,18 @@
 //! The reusable `cf-deploy` workflow runs this under
 //! `shaka ci mask-and-run --env-file=.env --`, so each declared secret's
 //! `op://` reference is already resolved into an env var (and masked)
-//! by the time this runs. For every name in the project's
-//! `wrangler.secrets`, we read the matching env var and pipe it to
-//! `wrangler secret put <NAME>`, which is idempotent — re-uploading the
-//! same value is a no-op from the consumer's perspective.
+//! by the time this runs. For every declared name we read the matching
+//! env var and pipe it to `wrangler secret put <NAME>`, which is
+//! idempotent — re-uploading the same value is a no-op from the
+//! consumer's perspective.
 //!
-//! Secret *names* live in `project.cue`'s `wrangler:` block (the same
-//! source `generate-wrangler` reads); secret *values* never touch the
-//! repo — they arrive only through the resolved environment. A project
-//! with no declared secrets is a clean no-op.
+//! Secret *names* come from two sources, unioned: `wrangler.secrets`
+//! (for a shaka-managed `wrangler.toml`, the same source
+//! `generate-wrangler` reads) and `ci.deploy.secrets` (for a
+//! hand-authored `wrangler.toml`, which can't carry a `wrangler:` block
+//! without tripping `generate-wrangler` drift). Secret *values* never
+//! touch the repo — they arrive only through the resolved environment. A
+//! project with no declared secrets is a clean no-op.
 //!
 //! `--name` / `--env` mirror `wrangler deploy`'s flags so the secret
 //! lands on the same Worker the deploy targeted: `--name` for a
@@ -28,15 +31,31 @@ use serde::Deserialize;
 use crate::project::schema_check::cue_project;
 use crate::term::{BOLD, GREEN, RED, RESET, YELLOW};
 
-/// Subset of a project's CUE export — just the declared secret names.
+/// Subset of a project's CUE export — just the declared secret names,
+/// from either `wrangler.secrets` or `ci.deploy.secrets` (see
+/// `secrets_from_export`).
 #[derive(Deserialize)]
 struct ProjectExport {
     #[serde(default)]
     wrangler: Option<Wrangler>,
+    #[serde(default)]
+    ci: Option<Ci>,
 }
 
 #[derive(Deserialize)]
 struct Wrangler {
+    #[serde(default)]
+    secrets: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+struct Ci {
+    #[serde(default)]
+    deploy: Option<CiDeploy>,
+}
+
+#[derive(Deserialize)]
+struct CiDeploy {
     #[serde(default)]
     secrets: Option<Vec<String>>,
 }
@@ -95,9 +114,9 @@ fn run_inner(
     Ok(())
 }
 
-/// Read the project's CUE export and return its declared
-/// `wrangler.secrets` names (empty when the project has no `wrangler:`
-/// block or no `secrets`).
+/// Read the project's CUE export and return its declared secret names —
+/// the union of `wrangler.secrets` and `ci.deploy.secrets` (empty when
+/// the project declares neither).
 fn declared_secrets(project_file: &Path) -> Result<Vec<String>, String> {
     let output =
         cue_project(&["export"], project_file).map_err(|e| format!("failed to spawn cue: {e}"))?;
@@ -116,10 +135,24 @@ fn declared_secrets(project_file: &Path) -> Result<Vec<String>, String> {
     })
 }
 
-/// Parse declared secret names out of a project's `cue export` JSON.
+/// Parse declared secret names out of a project's `cue export` JSON —
+/// the union of `wrangler.secrets` and `ci.deploy.secrets`, order-stable
+/// (wrangler names first) and de-duplicated so a name declared in both
+/// is pushed once.
 fn secrets_from_export(json: &[u8]) -> Result<Vec<String>, serde_json::Error> {
     let export: ProjectExport = serde_json::from_slice(json)?;
-    Ok(export.wrangler.and_then(|w| w.secrets).unwrap_or_default())
+    let mut names = export.wrangler.and_then(|w| w.secrets).unwrap_or_default();
+    let ci = export
+        .ci
+        .and_then(|c| c.deploy)
+        .and_then(|d| d.secrets)
+        .unwrap_or_default();
+    for name in ci {
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    Ok(names)
 }
 
 /// Run `wrangler secret put <name>`, piping `value` on stdin so the
@@ -197,6 +230,32 @@ mod tests {
     fn secrets_from_export_is_empty_without_secrets_field() {
         let json = br#"{"name":"x","wrangler":{"main":"shim.mjs"}}"#;
         assert!(secrets_from_export(json).unwrap().is_empty());
+    }
+
+    #[test]
+    fn secrets_from_export_reads_ci_deploy_secrets() {
+        // A hand-authored-wrangler project declares secrets under
+        // `ci.deploy.secrets` (no `wrangler:` block at all).
+        let json = br#"{"name":"x","ci":{"deploy":{"secrets":["OPENROUTER_API_KEY"]}}}"#;
+        assert_eq!(
+            secrets_from_export(json).unwrap(),
+            vec!["OPENROUTER_API_KEY".to_string()]
+        );
+    }
+
+    #[test]
+    fn secrets_from_export_unions_wrangler_and_ci_deploy_dedup() {
+        // Both sources contribute; `SHARED` appears in both and is pushed
+        // once, with wrangler names ordered first.
+        let json = br#"{"name":"x","wrangler":{"secrets":["KIT_API_KEY","SHARED"]},"ci":{"deploy":{"secrets":["SHARED","OPENROUTER_API_KEY"]}}}"#;
+        assert_eq!(
+            secrets_from_export(json).unwrap(),
+            vec![
+                "KIT_API_KEY".to_string(),
+                "SHARED".to_string(),
+                "OPENROUTER_API_KEY".to_string()
+            ]
+        );
     }
 
     #[test]
