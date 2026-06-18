@@ -404,6 +404,16 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// needs none.
 		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 
+		// Extra Rust target triples appended to the toolchain's
+		// `targets`, on top of the fixed `wasm32-unknown-unknown` the
+		// Worker is built for. rust-overlay supplies each target's std
+		// components, so this is the only knob a `rust-worker` needs to
+		// cross-compile the same crate elsewhere (for example a `uniffi`
+		// FFI crate to `aarch64-apple-ios` / `aarch64-linux-android`).
+		// Platform cross-linkers/SDKs are out of scope here — the
+		// Android NDK and friends go through `extraDevShellPackages`.
+		extraRustTargets?: [...string & =~"^[a-z0-9_]+(-[a-z0-9_]+)+$"]
+
 		// Pull a FlakeHub-built `shaka` into the devShell and
 		// PATH-prepend it ahead of the `workflowPackages` shim. Only
 		// external consumers (repos with no kolohelios checkout) need
