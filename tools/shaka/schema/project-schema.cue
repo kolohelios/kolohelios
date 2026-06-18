@@ -261,6 +261,17 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// run in the member crate holding the cdylib (e.g. `crates/<name>-server`).
 	// Omit for a single-crate Worker (worker-build runs in `project_dir`).
 	workerBuildDir?: string & =~"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+
+	// Worker runtime secret names to push at deploy via
+	// `shaka ci push-worker-secrets` (the reusable `cf-deploy.yml` runs
+	// it). Names only — values arrive from the resolved `op://`
+	// environment at deploy, never the repo. Unlike `wrangler.secrets`,
+	// this lives outside `#Wrangler`, so a project with a hand-authored
+	// `wrangler.toml` (Durable Objects, migrations, `[env.production]` —
+	// none modelled by `#Wrangler`) can declare push-able secrets without
+	// enrolling in `generate-wrangler` drift. `push-worker-secrets`
+	// pushes the union of these and `wrangler.secrets`.
+	secrets?: [...string & =~"^[A-Z][A-Z0-9_]*$"]
 }
 
 // Where a project serves content. Decoupled from `#Deploy` (which is
