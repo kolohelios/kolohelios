@@ -348,6 +348,97 @@ whitespace-check:
 validate: fmt-check lint doc-check deny machete test coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
 "#;
 
+// Workspace variant of `RUST_WORKER_TEMPLATE` for a `rust-worker` whose root is
+// a virtual Cargo workspace (members under `crates/`, no `[package]` at the
+// root). Differs from the single-crate template in the crate-scoped recipes:
+//
+//   - `wasm-check` checks the wasm-consumable library member(s) — `{LIB_PKGS}`
+//     expands to one `-p <crate>` per non-worker member. The worker crate's own
+//     wasm build is covered by `worker-build-check`, not a plain `cargo check`.
+//   - `worker-build` needs a `[package]` in its CWD (the virtual root has none),
+//     so it runs from the worker crate dir: `{WORKER_DIR}`.
+//   - `test` / `lint` / `doc-check` / `coverage` take `--workspace` so every
+//     member is exercised.
+//
+// `{LIB_PKGS}` and `{WORKER_DIR}` are substituted by `rust_worker_workspace`.
+const RUST_WORKER_WORKSPACE_TEMPLATE: &str = r#"# Only the wasm-consumable library member(s) are checked for wasm32 here; the
+# worker crate's wasm build is covered by `worker-build-check`.
+wasm-check:
+    cargo check {LIB_PKGS} --target wasm32-unknown-unknown
+
+# `worker-build` needs a `[package]` in its CWD; the workspace root is a virtual
+# manifest, so build from the worker crate's directory.
+worker-build-check:
+    cd {WORKER_DIR} && worker-build --release
+
+test:
+    cargo test --workspace
+
+fmt:
+    cargo fmt
+
+fmt-check:
+    cargo fmt --check
+
+fmt-toml:
+    taplo fmt
+
+lint:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+doc-check:
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
+
+deny:
+    cargo deny check
+
+# Macro-only deps can register as false positives — allowlist via
+# `package.metadata.cargo-machete.ignored` in the offending Cargo.toml.
+machete:
+    cargo machete
+
+coverage:
+    #!/usr/bin/env bash
+    # Line coverage only — see the rust-cli template for why.
+    set -euo pipefail
+    # cargo-llvm-cov is Linux-only in our devshells (nixpkgs marks it broken
+    # on darwin), so skip cleanly off-Linux rather than hard-erroring or
+    # silently using an unpinned global install. CI runs on Linux, so the
+    # gate is still enforced there. To measure locally on darwin:
+    # `cargo install cargo-llvm-cov`.
+    if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+        echo "coverage: skipped (cargo-llvm-cov unavailable on this platform; gated in CI)"
+        exit 0
+    fi
+    thresholds=$(shaka project coverage-thresholds)
+    if [ "$(jq -r '.coverage // "absent"' <<<"$thresholds")" = "absent" ]; then
+        echo "coverage: not declared (optional on rust-worker); skipping"
+        exit 0
+    fi
+    fail_line=$(jq <<<"$thresholds" '.coverage.line.fail')
+    measured=$(cargo llvm-cov --workspace --json --summary-only)
+    line=$(jq <<<"$measured" '.data[0].totals.lines.percent')
+    printf 'coverage: line=%.1f%% (gate: line>=%s%%)\n' "$line" "$fail_line"
+    awk -v l="$line" -v fl="$fail_line" \
+        'BEGIN { exit (l < fl) ? 1 : 0 }'
+
+nix-fmt-check:
+    nix fmt -- --check $(find . -type f -name '*.nix' -not -path './.*')
+
+flake-check:
+    nix flake check
+
+whitespace-check:
+    shaka whitespace check
+
+# `test` runs the native unit tests: coverage is optional on rust-worker
+# (cargo-llvm-cov can't see the wasm request paths), so unlike rust-cli
+# and rust-lib — where `coverage` runs the tests — a worker's host-side
+# logic would otherwise never run in CI. The worker glue compiles on the
+# host even though it serves on wasm, so pure modules test natively.
+validate: fmt-check lint doc-check deny machete test coverage wasm-check worker-build-check nix-fmt-check flake-check whitespace-check
+"#;
+
 // Infra projects intentionally do NOT run `nix flake check` in `validate`.
 // The devbox eval-check forces `system.build.toplevel.drvPath` evaluation,
 // which pulls a NixOS closure larger than a stock GitHub runner's disk
@@ -547,6 +638,37 @@ struct GenerateSkip {
     reason: String,
 }
 
+/// The subset of `cargo metadata --no-deps` output used to detect a virtual
+/// workspace and classify its members (worker cdylib vs. consumable libs).
+#[derive(Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoPackage>,
+}
+
+#[derive(Deserialize)]
+struct CargoPackage {
+    name: String,
+    manifest_path: String,
+    #[serde(default)]
+    targets: Vec<CargoTarget>,
+}
+
+#[derive(Deserialize)]
+struct CargoTarget {
+    #[serde(default)]
+    crate_types: Vec<String>,
+}
+
+impl CargoPackage {
+    /// Whether any target builds a `cdylib` — the signal for the worker crate
+    /// (`worker-build` links the cdylib).
+    fn is_cdylib(&self) -> bool {
+        self.targets
+            .iter()
+            .any(|t| t.crate_types.iter().any(|c| c == "cdylib"))
+    }
+}
+
 /// The justification if this project waives `justfile` generation via
 /// `generate.skip`, else `None`. A waived project is excluded from both the
 /// write pass and the `--check` drift pass — the interim escape hatch (#924)
@@ -625,18 +747,7 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
                 RUST_TEMPLATE.to_string()
             },
         ),
-        "rust-worker" => Some(
-            // `src/bin/build-site.rs` signals a static-site build
-            // pipeline (templates + tailwind → committed `dist/`).
-            // Add a `build-check` recipe that re-runs the pipeline
-            // and diffs against committed output, and fold it into
-            // `validate` so CI catches drift.
-            if project_dir.join("src/bin/build-site.rs").is_file() {
-                rust_worker_with_build_site()
-            } else {
-                RUST_WORKER_TEMPLATE.to_string()
-            },
-        ),
+        "rust-worker" => Some(rust_worker_body(project_dir)),
         "infra" => Some(
             if project_dir.join("terraform").is_dir() {
                 // `.env.example` signals the project resolves secrets via
@@ -658,6 +769,125 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
         "document" => Some(DOCUMENT_TEMPLATE.to_string()),
         _ => None,
     }
+}
+
+/// The justfile body for a `rust-worker` project. A virtual Cargo workspace
+/// (members under `crates/`, no root `[package]`) gets the workspace template
+/// with crate-scoped recipes; a single-crate worker keeps the flat template
+/// (plus the `build-site` variant when it ships a static-site generator).
+///
+/// Workspace detection falls back to the single-crate template if `cargo
+/// metadata` can't be read or the layout isn't the expected one-cdylib shape —
+/// generation stays best-effort rather than failing the whole run.
+fn rust_worker_body(project_dir: &Path) -> String {
+    if let Some(layout) = workspace_layout(project_dir) {
+        return rust_worker_workspace(&layout);
+    }
+    // `src/bin/build-site.rs` signals a static-site build pipeline (templates +
+    // tailwind → committed `dist/`). Add a `build-check` recipe that re-runs the
+    // pipeline and diffs against committed output, folded into `validate` so CI
+    // catches drift.
+    if project_dir.join("src/bin/build-site.rs").is_file() {
+        rust_worker_with_build_site()
+    } else {
+        RUST_WORKER_TEMPLATE.to_string()
+    }
+}
+
+/// A `rust-worker` virtual-workspace layout: the wasm-consumable library members
+/// (everything that isn't the worker) and the worker crate's directory relative
+/// to the project root.
+struct WorkspaceLayout {
+    /// Package names of the non-worker library members, in `cargo metadata`
+    /// order, used as `-p <name>` flags on `wasm-check`.
+    lib_pkgs: Vec<String>,
+    /// The worker (cdylib) crate's directory, relative to the project root —
+    /// where `worker-build` runs (e.g. `crates/buzzingo-server`).
+    worker_dir: String,
+}
+
+/// Inspect `project_dir` via `cargo metadata` and, if it is a virtual workspace
+/// with exactly one cdylib (worker) member, return its [`WorkspaceLayout`].
+/// Returns `None` for a single-crate package, a non-Cargo project, an
+/// unreadable/failed `cargo metadata`, or any layout that isn't the expected
+/// one-worker shape — callers fall back to the single-crate template.
+fn workspace_layout(project_dir: &Path) -> Option<WorkspaceLayout> {
+    let manifest = project_dir.join("Cargo.toml");
+    if !manifest.is_file() {
+        return None;
+    }
+    let output = std::process::Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let meta: CargoMetadata = serde_json::from_slice(&output.stdout).ok()?;
+
+    // Canonicalize both sides before comparing paths: `cargo metadata` resolves
+    // symlinks in `manifest_path` (e.g. macOS `/var` → `/private/var`), so the
+    // project root must be resolved too or none of the prefix/equality checks
+    // below would match.
+    let root_dir = std::fs::canonicalize(project_dir).ok()?;
+    let root_manifest = root_dir.join("Cargo.toml");
+
+    // A virtual workspace has no root package: no member's manifest is the root
+    // Cargo.toml. A single-crate package is left to the flat template.
+    let is_virtual = !meta
+        .packages
+        .iter()
+        .any(|p| std::fs::canonicalize(&p.manifest_path).is_ok_and(|m| m == root_manifest));
+    if !is_virtual {
+        return None;
+    }
+
+    // The worker is the lone cdylib member; everything else is a library
+    // checked for wasm32. Bail to the flat template on any other shape.
+    let workers: Vec<&CargoPackage> = meta.packages.iter().filter(|p| p.is_cdylib()).collect();
+    let [worker] = workers.as_slice() else {
+        return None;
+    };
+    let worker_dir = relative_crate_dir(&root_dir, &worker.manifest_path)?;
+    let lib_pkgs: Vec<String> = meta
+        .packages
+        .iter()
+        .filter(|p| p.name != worker.name)
+        .map(|p| p.name.clone())
+        .collect();
+    if lib_pkgs.is_empty() {
+        return None;
+    }
+    Some(WorkspaceLayout {
+        lib_pkgs,
+        worker_dir,
+    })
+}
+
+/// The directory of `manifest_path` (a member's `Cargo.toml`) relative to the
+/// canonicalized project root `root_dir`, with forward slashes — e.g.
+/// `crates/buzzingo-server`. Both sides are canonicalized so symlinked roots
+/// (macOS tempdirs) still strip cleanly.
+fn relative_crate_dir(root_dir: &Path, manifest_path: &str) -> Option<String> {
+    let crate_dir = std::fs::canonicalize(Path::new(manifest_path).parent()?).ok()?;
+    let rel = crate_dir.strip_prefix(root_dir).ok()?;
+    Some(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// Render [`RUST_WORKER_WORKSPACE_TEMPLATE`] for a discovered workspace layout,
+/// substituting the `-p <lib>` flags and the worker crate directory.
+fn rust_worker_workspace(layout: &WorkspaceLayout) -> String {
+    let lib_pkgs = layout
+        .lib_pkgs
+        .iter()
+        .map(|p| format!("-p {p}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    RUST_WORKER_WORKSPACE_TEMPLATE
+        .replace("{LIB_PKGS}", &lib_pkgs)
+        .replace("{WORKER_DIR}", &layout.worker_dir)
 }
 
 /// `RUST_WORKER_TEMPLATE` with the `build-check` recipe prepended and
@@ -870,11 +1100,96 @@ mod tests {
 
     #[test]
     fn template_for_rust_worker_returns_rust_worker_template() {
+        // An empty project dir (no Cargo.toml) is not a workspace, so the flat
+        // single-crate template is used.
         let dir = tmp_project("rust-worker");
         assert_eq!(
             template_for("rust-worker", dir.path()).as_deref(),
             Some(RUST_WORKER_TEMPLATE)
         );
+    }
+
+    /// Write a minimal virtual Cargo workspace: a rootless `[workspace]` with a
+    /// `core` library member and a `server` cdylib (worker) member.
+    fn write_workspace(root: &Path) {
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"crates/core\", \"crates/server\"]\n",
+        )
+        .unwrap();
+        for (name, lib) in [
+            ("core", ""),
+            ("server", "\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n"),
+        ] {
+            let crate_dir = root.join("crates").join(name);
+            std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+            std::fs::write(
+                crate_dir.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n{lib}"
+                ),
+            )
+            .unwrap();
+            std::fs::write(crate_dir.join("src/lib.rs"), "").unwrap();
+        }
+    }
+
+    #[test]
+    fn template_for_rust_worker_workspace_uses_workspace_template() {
+        let dir = tmp_project("rust-worker-ws");
+        write_workspace(dir.path());
+        let body = template_for("rust-worker", dir.path()).expect("template");
+        // wasm-check scopes to the library member; worker-build runs in the
+        // cdylib member's dir; lifecycle recipes go workspace-wide.
+        assert!(
+            body.contains("cargo check -p core --target wasm32-unknown-unknown"),
+            "{body}"
+        );
+        assert!(
+            body.contains("cd crates/server && worker-build --release"),
+            "{body}"
+        );
+        assert!(body.contains("cargo test --workspace"), "{body}");
+        assert!(
+            body.contains("cargo clippy --workspace --all-targets"),
+            "{body}"
+        );
+        assert!(
+            !body.contains("{LIB_PKGS}") && !body.contains("{WORKER_DIR}"),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn template_for_single_crate_rust_worker_with_manifest_stays_flat() {
+        // A non-virtual rust-worker (root `[package]`) keeps the flat template,
+        // even though it is a cdylib — workspace detection requires a rootless
+        // virtual manifest.
+        let dir = tmp_project("rust-worker-solo");
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"solo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("src/lib.rs"), "").unwrap();
+        assert_eq!(
+            template_for("rust-worker", dir.path()).as_deref(),
+            Some(RUST_WORKER_TEMPLATE)
+        );
+    }
+
+    #[test]
+    fn rust_worker_workspace_repeats_p_flag_per_lib() {
+        let body = rust_worker_workspace(&WorkspaceLayout {
+            lib_pkgs: vec!["core".into(), "proto".into()],
+            worker_dir: "crates/server".into(),
+        });
+        assert!(
+            body.contains("cargo check -p core -p proto --target wasm32-unknown-unknown"),
+            "{body}"
+        );
+        assert!(body.contains("cargo llvm-cov --workspace --json"), "{body}");
     }
 
     #[test]
