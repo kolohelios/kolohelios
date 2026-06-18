@@ -30,4 +30,10 @@ package repopolicy
 	security?: {
 		dependabotAlerts: bool
 	}
+	// Workflow filenames under `.github/workflows/` that are hand-authored
+	// rather than emitted by `shaka ci generate-workflows`. `ci audit-workflows`
+	// unions this with its built-in allowlist, letting an external consumer
+	// account for its own hand-authored workflows (e.g. a `just validate` gate)
+	// without hardcoding them in shaka's source. Omit when there are none.
+	handAuthoredWorkflows?: [...string & !=""]
 }
