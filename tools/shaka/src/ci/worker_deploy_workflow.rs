@@ -51,6 +51,14 @@ pub struct CiDeploy {
     /// `[env.production]` stays off route-free previews.
     #[serde(default)]
     pub environment: Option<String>,
+    /// The Cargo-workspace member crate (a subdir of `project_dir`) that
+    /// `cf-deploy.yml` runs `worker-build` in, via its `worker_build_dir`
+    /// input. Threaded into all three calls (verify/preview/deploy) so the
+    /// Worker builds from the member crate rather than the virtual workspace
+    /// root (which has no `[package]`). Unset → omitted, so worker-build runs in
+    /// `project_dir` (the single-crate default).
+    #[serde(default)]
+    pub worker_build_dir: Option<String>,
 }
 
 pub fn build(spec: &WorkerDeploySpec) -> Workflow {
@@ -193,6 +201,16 @@ echo "ref=$BASE" >> "$GITHUB_OUTPUT"
 
 // ── verify / preview / deploy: cf-deploy.yml callers ─────────────────────
 
+/// Add `worker_build_dir` to a reusable-call `with:` block when the project set
+/// it — the Cargo-workspace member crate cf-deploy runs `worker-build` in. Used
+/// by all three calls (verify/preview/deploy) so the Worker always builds from
+/// the member crate, not the virtual workspace root (which has no `[package]`).
+fn insert_worker_build_dir(with: &mut BTreeMap<String, Value>, spec: &WorkerDeploySpec) {
+    if let Some(dir) = &spec.deploy.worker_build_dir {
+        with.insert("worker_build_dir".to_string(), Value::String(dir.clone()));
+    }
+}
+
 fn verify_call(spec: &WorkerDeploySpec) -> ReusableCall {
     let mut with: BTreeMap<String, Value> = BTreeMap::new();
     with.insert(
@@ -200,6 +218,7 @@ fn verify_call(spec: &WorkerDeploySpec) -> ReusableCall {
         Value::String(spec.project_dir.to_string_lossy().to_string()),
     );
     with.insert("verify_only".to_string(), Value::Bool(true));
+    insert_worker_build_dir(&mut with, spec);
     ReusableCall {
         needs: Needs::Single("changes".to_string()),
         if_: Some(pr_gate()),
@@ -222,6 +241,7 @@ fn preview_call(spec: &WorkerDeploySpec) -> ReusableCall {
             spec.deploy.preview_script_prefix,
         )),
     );
+    insert_worker_build_dir(&mut with, spec);
     ReusableCall {
         needs: Needs::Multiple(vec!["changes".to_string(), "verify".to_string()]),
         if_: Some(pr_gate()),
@@ -248,6 +268,7 @@ fn deploy_call(spec: &WorkerDeploySpec) -> ReusableCall {
             Value::String(environment.clone()),
         );
     }
+    insert_worker_build_dir(&mut with, spec);
     // `workflow_dispatch` bypasses the changes filter so a manual
     // re-deploy isn't blocked by an unchanged push base. Real
     // `push: main` deploys still gate on the filter.
@@ -411,6 +432,7 @@ mod tests {
                 reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
                 preview_script_prefix: "portfolio".to_string(),
                 environment: None,
+                worker_build_dir: None,
             },
         }
     }
@@ -580,6 +602,7 @@ mod tests {
                     .to_string(),
                 preview_script_prefix: "buzzingo".to_string(),
                 environment: None,
+                worker_build_dir: Some("crates/buzzingo-server".to_string()),
             },
         }
     }
@@ -633,6 +656,7 @@ mod tests {
                 reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
                 preview_script_prefix: "buzzingo".to_string(),
                 environment: Some("production".to_string()),
+                worker_build_dir: None,
             },
         }
     }
@@ -663,5 +687,32 @@ mod tests {
         // `with` map carries no `environment` key (today's behavior).
         let parsed = emit_fixture();
         assert!(parsed["jobs"]["deploy"]["with"]["environment"].is_null());
+    }
+
+    #[test]
+    fn worker_build_dir_emitted_in_all_three_calls() {
+        // cross_repo_spec sets `worker_build_dir`; unlike `environment` (deploy
+        // only), it must thread into every cf-deploy call so the Worker always
+        // builds from the member crate, not the virtual workspace root.
+        let parsed = emit_cross_repo();
+        for job in ["verify", "preview", "deploy"] {
+            assert_eq!(
+                parsed["jobs"][job]["with"]["worker_build_dir"].as_str(),
+                Some("crates/buzzingo-server"),
+                "{job} should pass worker_build_dir"
+            );
+        }
+    }
+
+    #[test]
+    fn worker_build_dir_omitted_when_unset() {
+        // The portfolio fixture has `worker_build_dir: None`; no call carries it.
+        let parsed = emit_fixture();
+        for job in ["verify", "preview", "deploy"] {
+            assert!(
+                parsed["jobs"][job]["with"]["worker_build_dir"].is_null(),
+                "{job} should omit worker_build_dir"
+            );
+        }
     }
 }

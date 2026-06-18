@@ -253,6 +253,14 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// route lives under `[env.production]` while route-free previews
 	// stay on `*.workers.dev`. Omit to deploy with the top-level config.
 	environment?: string & =~"^[a-z][a-z0-9_-]*$"
+
+	// The Cargo-workspace member crate (a subdir of `project_dir`) that
+	// `cf-deploy.yml` runs `worker-build` in, threaded to its `worker_build_dir`
+	// input in all three (verify/preview/deploy) `with:` blocks. A workspace
+	// Worker's virtual root manifest has no `[package]`, so worker-build must
+	// run in the member crate holding the cdylib (e.g. `crates/<name>-server`).
+	// Omit for a single-crate Worker (worker-build runs in `project_dir`).
+	workerBuildDir?: string & =~"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
 }
 
 // Where a project serves content. Decoupled from `#Deploy` (which is
