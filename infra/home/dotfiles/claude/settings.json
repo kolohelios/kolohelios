@@ -6,6 +6,11 @@
     "swift-lsp@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true
   },
+  "permissions": {
+    "allow": [
+      "Skill(file-issue)"
+    ]
+  },
   "agentPushNotifEnabled": true,
   "hooks": {
     "PreToolUse": [
