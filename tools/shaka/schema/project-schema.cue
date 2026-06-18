@@ -577,4 +577,43 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// `packages` knob.
 		description?: string & !=""
 	}
+} | {
+	// Native mobile app shell — a SwiftUI/iOS or Jetpack Compose/Android
+	// app that links the bindings and libraries a `uniffi` FFI crate
+	// produces. One kind covers both platforms because shaka's behavior is
+	// identical for each: it never builds the app. iOS needs macOS + Xcode
+	// (`xcodebuild`, an XCFramework, a Simulator); Android needs the
+	// Android SDK + Gradle (+ NDK for the `.so`s) — none of which the Linux
+	// `shaka preflight` lane carries.
+	//
+	// So `native-app` is a *host-built* kind: the `project.cue` validates
+	// (keeping the "every project declares a kind" invariant), but shaka
+	// generates no `flake.nix` and no `justfile` for it, and `preflight`
+	// skips it in the per-project `just validate` loop rather than failing
+	// on a build it can't run. Repo-level checks (whitespace, typos, vale,
+	// taplo) still scan its files. The developer assembles the
+	// XCFramework/AAR from the FFI crate (`just ffi-ios` / `ffi-android`
+	// in the consuming repo), links it, and builds in Xcode/Gradle on a
+	// host with the platform toolchain. shaka holds no opinion on project
+	// representation (`.xcodeproj` vs SPM vs XcodeGen/Tuist; Gradle
+	// layout) — that's the consumer's call until a second consumer wants a
+	// shared one.
+	kind: "native-app"
+	nativeApp: {
+		// Target platform. Selects the host toolchain the developer
+		// builds with (Xcode for `ios`, Gradle for `android`); shaka
+		// treats the two identically otherwise.
+		platform: "ios" | "android"
+
+		// The `uniffi` FFI crate (a sibling project elsewhere in the
+		// repo, or in a repo this one consumes) whose generated
+		// bindings/libraries this app links. Recorded so the app's
+		// provenance is declared even though shaka doesn't wire the build.
+		ffiCrate: string & =~"^[a-z][a-z0-9-]*$"
+
+		// Reverse-DNS application identifier — the iOS bundle identifier
+		// or the Android `applicationId` (same grammar). Lowercase
+		// dot-separated segments, e.g. `com.example.app`.
+		appId: string & =~"^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+	}
 })
