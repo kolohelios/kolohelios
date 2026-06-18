@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Deserialize;
@@ -405,6 +405,12 @@ impl Rule for RustClippyLintsDeclared {
 // leaving every flavor of test code untouched. The attribute must live in
 // each crate root that exists (`src/main.rs` and/or `src/lib.rs`): a bin and
 // a lib compile as separate crates and don't share crate-level attributes.
+//
+// A virtual workspace has no crate root of its own, and the attribute can't be
+// hoisted to `[workspace.lints]` (that is the all-targets table this rule
+// avoids). So the deny must live in *every member's* crate root: members are
+// enumerated via `cargo metadata` and each is checked exactly like a single
+// crate.
 impl Rule for RustUnwrapDenied {
     fn name(&self) -> &'static str {
         "rust-unwrap-denied"
@@ -413,27 +419,24 @@ impl Rule for RustUnwrapDenied {
         meta.kind.is_rust_flavored()
     }
     fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
-        let roots: Vec<&str> = ["src/main.rs", "src/lib.rs"]
-            .into_iter()
-            .filter(|r| project_dir.join(r).is_file())
-            .collect();
-        if roots.is_empty() {
+        // A missing/unreadable manifest is not a workspace — fall through to the
+        // single-crate path, which reports "no crate root" as before.
+        let manifest = std::fs::read_to_string(project_dir.join("Cargo.toml")).unwrap_or_default();
+        if !is_virtual_workspace(&manifest) {
+            return check_crate_roots(project_dir);
+        }
+        let members = workspace_member_dirs(project_dir);
+        if members.is_empty() {
             return RuleResult::Fail(
-                "no crate root (src/main.rs or src/lib.rs) to carry the unwrap-deny attribute"
+                "could not enumerate workspace members to check for the unwrap-deny attribute \
+                 (cargo metadata)"
                     .into(),
             );
         }
-        for root in roots {
-            let path = project_dir.join(root);
-            let Ok(contents) = std::fs::read_to_string(&path) else {
-                return RuleResult::Fail(format!("could not read {}", path.display()));
-            };
-            if !has_unwrap_deny_attr(&contents) {
-                return RuleResult::Fail(format!(
-                    "{root} must deny `unwrap()` in non-test code: add \
-                     `#![cfg_attr(not(test), deny(clippy::unwrap_used))]` at the crate root ({})",
-                    path.display()
-                ));
+        for member in &members {
+            match check_crate_roots(member) {
+                RuleResult::Pass => {}
+                fail => return fail,
             }
         }
         RuleResult::Pass
@@ -686,6 +689,74 @@ fn has_unwrap_deny_attr(contents: &str) -> bool {
         compact.contains("#![cfg_attr(not(test),deny(clippy::unwrap_used))]")
             || compact.contains("#![cfg_attr(not(test),forbid(clippy::unwrap_used))]")
     })
+}
+
+// Check the crate root(s) in `dir` (`src/main.rs` and/or `src/lib.rs`) for the
+// non-test unwrap-deny attribute. A bin and a lib compile as separate crates,
+// so the deny must appear in each root that exists. `Fail` when `dir` has no
+// crate root at all, or any root lacks the attribute. Used for both a
+// single-crate project and each member of a virtual workspace.
+fn check_crate_roots(dir: &Path) -> RuleResult {
+    let roots: Vec<&str> = ["src/main.rs", "src/lib.rs"]
+        .into_iter()
+        .filter(|r| dir.join(r).is_file())
+        .collect();
+    if roots.is_empty() {
+        return RuleResult::Fail(format!(
+            "no crate root (src/main.rs or src/lib.rs) to carry the unwrap-deny attribute ({})",
+            dir.display()
+        ));
+    }
+    for root in roots {
+        let path = dir.join(root);
+        let Ok(contents) = std::fs::read_to_string(&path) else {
+            return RuleResult::Fail(format!("could not read {}", path.display()));
+        };
+        if !has_unwrap_deny_attr(&contents) {
+            return RuleResult::Fail(format!(
+                "{root} must deny `unwrap()` in non-test code: add \
+                 `#![cfg_attr(not(test), deny(clippy::unwrap_used))]` at the crate root ({})",
+                path.display()
+            ));
+        }
+    }
+    RuleResult::Pass
+}
+
+// Member crate directories of a virtual workspace at `project_dir`, via
+// `cargo metadata --no-deps` (offline, members only). Returns empty on any
+// failure — cargo absent, a metadata error, or a parse error — which the caller
+// surfaces as "could not enumerate". Using cargo metadata (rather than parsing
+// `members` by hand) resolves globs like `members = ["crates/*"]` correctly.
+fn workspace_member_dirs(project_dir: &Path) -> Vec<PathBuf> {
+    let Ok(output) = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .arg("--manifest-path")
+        .arg(project_dir.join("Cargo.toml"))
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let Ok(meta) = serde_json::from_slice::<CargoMetadata>(&output.stdout) else {
+        return Vec::new();
+    };
+    meta.packages
+        .iter()
+        .filter_map(|p| Path::new(&p.manifest_path).parent().map(Path::to_path_buf))
+        .collect()
+}
+
+#[derive(Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoMetadataPackage>,
+}
+
+#[derive(Deserialize)]
+struct CargoMetadataPackage {
+    manifest_path: String,
 }
 
 fn cargo_has_table(contents: &str, header: &str) -> bool {
@@ -2166,6 +2237,57 @@ unwrap_used = \"deny\"
     #[test]
     fn rust_unwrap_denied_does_not_apply_to_non_rust() {
         assert!(!RustUnwrapDenied.applies(&infra_meta()));
+    }
+
+    /// Write a virtual-workspace member crate with the given `lib.rs` body.
+    fn write_member(root: &Path, name: &str, lib_body: &str) {
+        let src = root.join("crates").join(name).join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(
+            root.join("crates").join(name).join("Cargo.toml"),
+            format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+        )
+        .unwrap();
+        fs::write(src.join("lib.rs"), lib_body).unwrap();
+    }
+
+    #[test]
+    fn rust_unwrap_denied_passes_for_workspace_when_all_members_deny() {
+        // `members = ["crates/*"]` exercises glob resolution via cargo metadata.
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\"]\n",
+        )
+        .unwrap();
+        write_member(tmp.path(), "core", &format!("{UNWRAP_DENY_ATTR}\n"));
+        write_member(tmp.path(), "server", &format!("{UNWRAP_DENY_ATTR}\n"));
+        assert_eq!(
+            RustUnwrapDenied.check(tmp.path(), &rust_worker_meta()),
+            RuleResult::Pass
+        );
+    }
+
+    #[test]
+    fn rust_unwrap_denied_fails_for_workspace_when_a_member_lacks_deny() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"crates/core\", \"crates/server\"]\n",
+        )
+        .unwrap();
+        write_member(tmp.path(), "core", &format!("{UNWRAP_DENY_ATTR}\n"));
+        write_member(tmp.path(), "server", "// no deny here\nfn f() {}\n");
+        match RustUnwrapDenied.check(tmp.path(), &rust_worker_meta()) {
+            RuleResult::Fail(msg) => {
+                assert!(
+                    msg.contains("server"),
+                    "should name the offending member: {msg}"
+                );
+                assert!(msg.contains("unwrap"), "got: {msg}");
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
     }
 
     #[test]
