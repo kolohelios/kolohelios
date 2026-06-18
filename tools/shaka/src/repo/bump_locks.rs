@@ -109,28 +109,48 @@ fn run_remote(input: &str, branch: &str, slug: &str, auto_merge: bool) -> Result
         return Err(format!("gh repo clone {slug}: {}", stderr.trim()));
     }
 
-    match bump_one(&work, input) {
-        BumpResult::Updated => {
-            println!("  {GREEN}{BOLD}updated{RESET}   {slug}");
+    // A consumer's flake may live at the repo root (single-flake repos) or in a
+    // project subdir (e.g. buzzingo's `apps/buzzingo`), so discover every
+    // consuming project rather than assuming a root flake.
+    let targets = consuming_projects(&work, input);
+    if targets.is_empty() {
+        return Err(format!(
+            "remote {slug} does not declare `{input}` as a flake input \
+             (checked the root flake and project subdirs)"
+        ));
+    }
+    let mut updated = false;
+    for project in &targets {
+        let label = project
+            .strip_prefix(&work)
+            .ok()
+            .filter(|rel| !rel.as_os_str().is_empty())
+            .map_or_else(|| ".".to_string(), |rel| rel.display().to_string());
+        match bump_one(project, input) {
+            BumpResult::Updated => {
+                println!("  {GREEN}{BOLD}updated{RESET}   {slug} ({label})");
+                updated = true;
+            }
+            BumpResult::Unchanged => {
+                println!("  {DIM}unchanged{RESET} {slug} ({label})");
+            }
+            // `consuming_projects` already filtered to flakes that declare the
+            // input, so a non-consumer can't reach here; ignore for safety.
+            BumpResult::Skipped => {}
+            BumpResult::Failed(msg) => {
+                return Err(format!("nix flake update failed in {label}: {msg}"));
+            }
         }
-        BumpResult::Unchanged => {
-            println!("  {DIM}unchanged{RESET} {slug}");
-            println!("{DIM}no changes to publish{RESET}");
-            return Ok(());
-        }
-        BumpResult::Skipped => {
-            return Err(format!(
-                "remote {slug} does not declare `{input}` as a flake input \
-                 (checked root flake.nix)"
-            ));
-        }
-        BumpResult::Failed(msg) => {
-            return Err(format!("nix flake update failed: {msg}"));
-        }
+    }
+    if !updated {
+        println!("{DIM}no changes to publish{RESET}");
+        return Ok(());
     }
 
     git_in(&work, &["checkout", "-B", branch])?;
-    git_in(&work, &["add", "flake.lock"])?;
+    // `-A` so a subdir consumer's `<project>/flake.lock` is staged, not just a
+    // root-level `flake.lock`.
+    git_in(&work, &["add", "-A"])?;
     let title = format!("chore(deps): bump {input} flake input");
     git_in(&work, &["commit", "-m", &title])?;
     // Re-anchor on live `main`: previous bump's PR may have merged since the clone (#563).
@@ -225,6 +245,22 @@ pub(crate) fn bump_one(project: &Path, input: &str) -> BumpResult {
     } else {
         BumpResult::Updated
     }
+}
+
+/// Projects within `root` whose `flake.nix` declares `input` as a flake input —
+/// the repo root flake (single-flake repos) plus every discovered project slot,
+/// so a consumer whose flake lives in a subdir (e.g. buzzingo's `apps/buzzingo`)
+/// is found, not only a root flake. Pure: reads `flake.nix` and string-matches,
+/// no `nix` invocation.
+fn consuming_projects(root: &Path, input: &str) -> Vec<PathBuf> {
+    let mut candidates = vec![root.to_path_buf()];
+    candidates.extend(schema_check::discover(root));
+    candidates.retain(|project| {
+        std::fs::read_to_string(project.join("flake.nix"))
+            .map(|contents| references_flake_input(&contents, input))
+            .unwrap_or(false)
+    });
+    candidates
 }
 
 /// The wasm-bindgen crates a `rust-worker` pins in lockstep — their
@@ -436,5 +472,59 @@ mod tests {
         let body = format_pr_body("kolohelios-nix", &[PathBuf::from("./apps/blogctl")], true);
         assert!(body.contains("Auto-merge queued"));
         assert!(!body.contains("No auto-merge"));
+    }
+
+    #[test]
+    fn consuming_projects_finds_subdir_flake_not_just_root() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // buzzingo-shaped: the flake lives in a project subdir, no root flake.
+        let consumer = root.join("apps/buzzingo");
+        std::fs::create_dir_all(&consumer).unwrap();
+        std::fs::write(
+            consumer.join("flake.nix"),
+            "{\n  inputs.shaka.url = \"https://flakehub.com/f/kolohelios/shaka/*.tar.gz\";\n}\n",
+        )
+        .unwrap();
+        // Sibling project that doesn't pin the input.
+        let other = root.join("apps/other");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(
+            other.join("flake.nix"),
+            "{\n  inputs.nixpkgs.url = \"x\";\n}\n",
+        )
+        .unwrap();
+
+        assert_eq!(consuming_projects(root, "shaka"), vec![consumer]);
+    }
+
+    #[test]
+    fn consuming_projects_includes_a_root_flake() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("flake.nix"),
+            "{\n  inputs.blogctl.url = \"https://flakehub.com/f/kolohelios/blogctl/*.tar.gz\";\n}\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            consuming_projects(root, "blogctl"),
+            vec![root.to_path_buf()]
+        );
+    }
+
+    #[test]
+    fn consuming_projects_empty_when_input_absent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let proj = tmp.path().join("apps/thing");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(
+            proj.join("flake.nix"),
+            "{\n  inputs.nixpkgs.url = \"x\";\n}\n",
+        )
+        .unwrap();
+
+        assert!(consuming_projects(tmp.path(), "shaka").is_empty());
     }
 }
