@@ -2,7 +2,7 @@ mod audit;
 mod bump;
 pub(crate) mod bump_locks;
 pub mod describe;
-mod policy;
+pub(crate) mod policy;
 mod pr;
 mod rebase_open_prs;
 mod rebase_wip;

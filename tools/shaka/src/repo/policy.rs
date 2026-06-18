@@ -30,6 +30,13 @@ pub struct RepoPolicy {
     pub rulesets: Option<RulesetsPolicy>,
     #[serde(default)]
     pub security: Option<SecurityPolicy>,
+    /// Workflow filenames under `.github/workflows/` that are hand-authored
+    /// (not emitted by `shaka ci generate-workflows`). `ci audit-workflows`
+    /// unions this with its built-in allowlist, so an external consumer can
+    /// account for its own hand-authored workflows (e.g. a `just validate`
+    /// gate) without hardcoding them in shaka's source.
+    #[serde(default)]
+    pub hand_authored_workflows: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -204,5 +211,42 @@ mod tests {
 "#;
         let err = load_from_string(cue).expect_err("incomplete policy rejected");
         assert!(err.contains("autoMerge"), "actual error: {err}");
+    }
+
+    fn minimal_policy_with(extra: &str) -> String {
+        format!(
+            r#"package repopolicy
+
+#RepoPolicy & {{
+    defaultBranch: "main"
+    merge: {{
+        rebase:              true
+        merge:               false
+        squash:              false
+        deleteBranchOnMerge: true
+        autoMerge:           true
+    }}
+{extra}
+}}
+"#
+        )
+    }
+
+    #[test]
+    fn load_from_string_parses_hand_authored_workflows() {
+        let policy = load_from_string(&minimal_policy_with(
+            r#"    handAuthoredWorkflows: ["buzzingo-validate.yml"]"#,
+        ))
+        .expect("policy parses");
+        assert_eq!(
+            policy.hand_authored_workflows,
+            vec!["buzzingo-validate.yml"]
+        );
+    }
+
+    #[test]
+    fn hand_authored_workflows_defaults_to_empty() {
+        let policy = load_from_string(&minimal_policy_with("")).expect("policy parses");
+        assert!(policy.hand_authored_workflows.is_empty());
     }
 }
