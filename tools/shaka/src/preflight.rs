@@ -318,11 +318,24 @@ pub fn run(keep_going: bool, since: Option<String>, json: bool) {
     repo_skipped.extend(repo_inapplicable);
 
     let projects: Vec<PathBuf> = crate::project::schema_check::discover(Path::new("."));
-    let (project_to_run, project_skipped): (Vec<PathBuf>, Vec<PathBuf>) =
+    let (candidates, mut project_skipped): (Vec<PathBuf>, Vec<PathBuf>) =
         projects.into_iter().partition(|p| match &changed {
             None => true,
             Some(paths) => paths.iter().any(|cp| under_project(cp, p)),
         });
+    // Among the path-selected candidates, `native-app` is a host-built
+    // kind (iOS/Android): it has no generated flake or justfile, so there
+    // is no `nix develop . --command just validate` to run on the Linux
+    // preflight lane. Move it to `skipped` rather than failing on a build
+    // this lane can't do — repo-level checks (whitespace, typos, vale,
+    // taplo) still cover its files. Reading the kind only for in-scope
+    // candidates keeps the common `--since` run from shelling `cue export`
+    // for every project. (#941)
+    let (project_to_run, host_built): (Vec<PathBuf>, Vec<PathBuf>) =
+        candidates.into_iter().partition(|p| {
+            crate::project::schema_check::project_kind(p).as_deref() != Some("native-app")
+        });
+    project_skipped.extend(host_built);
 
     let total = repo_to_run.len() + project_to_run.len();
     let total_skipped = repo_skipped.len() + project_skipped.len();

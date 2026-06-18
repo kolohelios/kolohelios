@@ -267,6 +267,11 @@ pub fn run(check: bool) {
                     render_worker_flake(&meta.name, worker),
                 ));
             }
+            // native-app is host-built (iOS/Android): it has no nix
+            // toolchain — the app builds in Xcode/Gradle — so shaka emits
+            // no flake.nix for it at all. Deliberately flake-less, not a
+            // hand-authored holdout awaiting a template. (#941)
+            "native-app" => continue,
             // Other kinds keep their hand-authored flake.nix until the
             // generator grows a template for them.
             _ => continue,
