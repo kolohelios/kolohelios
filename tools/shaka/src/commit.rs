@@ -406,9 +406,16 @@ pub(crate) fn inject_autoclose(description: &str, tied: &[u64]) -> Option<String
     if tied.is_empty() {
         return None;
     }
-    let body = description.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
+    let body = description
+        .split_once('\n')
+        .map(|(_, rest)| rest)
+        .unwrap_or("");
     let present = issue_ref::extract_autoclose_refs(body);
-    let missing: Vec<u64> = tied.iter().copied().filter(|n| !present.contains(n)).collect();
+    let missing: Vec<u64> = tied
+        .iter()
+        .copied()
+        .filter(|n| !present.contains(n))
+        .collect();
     if missing.is_empty() {
         return None;
     }
@@ -921,7 +928,10 @@ mod tests {
     #[test]
     fn inject_autoclose_handles_multiple_missing() {
         let got = inject_autoclose("feat: x\n\nWhy.", &[7, 9]);
-        assert_eq!(got.as_deref(), Some("feat: x\n\nWhy.\n\nCloses #7\nCloses #9"));
+        assert_eq!(
+            got.as_deref(),
+            Some("feat: x\n\nWhy.\n\nCloses #7\nCloses #9")
+        );
     }
 
     #[test]

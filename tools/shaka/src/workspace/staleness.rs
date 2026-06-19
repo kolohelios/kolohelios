@@ -104,9 +104,16 @@ pub(super) fn resolve_merged_pr(
         .filter(|_| issue_from_link.is_none());
 
     if let Some(issue) = issue_from_link.or(issue_from_name) {
-        match gh::merged_pr_for_issue(repo, issue) {
-            Ok(Some(pr)) => return Some(pr.url),
-            Ok(None) => {}
+        // A merged closing PR means the work landed — even if GitHub left
+        // the issue open because the rebase merge skipped the body-keyword
+        // autoclose (#946). `issue_closure` reports that case; the older
+        // `merged_pr_for_issue` missed it by gating on a closed issue.
+        match gh::issue_closure(repo, issue) {
+            Ok(c) => {
+                if let Some(pr) = c.merged_closing_pr {
+                    return Some(pr.url);
+                }
+            }
             Err(e) => {
                 eprintln!("{DIM}warn:{RESET} could not query PR for issue #{issue}: {e}");
             }

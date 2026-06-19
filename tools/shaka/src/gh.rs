@@ -258,26 +258,86 @@ pub fn pr_for_head(repo: &str, head: &str) -> Result<Option<PrInfo>, GhError> {
     Ok(Some(PrInfo { number, url, state }))
 }
 
-/// Find the merged PR that closed the given issue, if any.
+/// An issue's open/closed state together with the merged PR (if any) that
+/// GitHub links as closing it. Crucially this does *not* gate on the issue
+/// being closed — it surfaces the "PR merged but issue still open" case
+/// that shaka's rebase merge leaves behind (#946), so `workspace cleanup`
+/// can close the orphaned issue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueClosure {
+    /// True when the issue is still open on the remote.
+    pub issue_open: bool,
+    /// The first *merged* PR among the issue's closing references, if any.
+    pub merged_closing_pr: Option<PrInfo>,
+}
+
+/// Query an issue's state and its linked closing PRs in one GraphQL call.
 ///
-/// Uses `gh issue view N --json state,closedByPullRequestsReferences`. GitHub
-/// only populates `closedByPullRequestsReferences` for PRs that were merged
-/// with an autoclose keyword (`Closes #N`, `Fixes #N`, …) — exactly the
-/// signal we want for `shaka workspace cleanup` to identify a workspace whose
-/// work has landed, even after `repo sync` has deleted the local bookmark.
-///
-/// Returns `Ok(None)` if the issue is open, has no closing PR reference, or
-/// the issue does not exist. Returns the first referenced PR if multiple.
-pub fn merged_pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError> {
+/// `closedByPullRequestsReferences` lists the PRs GitHub has linked to the
+/// issue via an autoclose keyword, regardless of whether the issue itself
+/// closed — which is exactly the gap that the rebase-merge path opens.
+/// `repo` is `owner/name`.
+pub fn issue_closure(repo: &str, n: u64) -> Result<IssueClosure, GhError> {
+    let mut parts = repo.splitn(2, '/');
+    let owner = parts.next().unwrap_or("");
+    let name = parts.next().unwrap_or("");
+    const QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){\
+        repository(owner:$owner,name:$name){\
+        issue(number:$number){state \
+        closedByPullRequestsReferences(first:10,includeClosedPrs:true){\
+        nodes{number url state}}}}}";
+    let result = api_graphql(
+        QUERY,
+        &[("owner", owner), ("name", name)],
+        &[("number", n as i64)],
+    )?;
+    parse_issue_closure(&result, n, repo)
+}
+
+/// Pure: extract an [`IssueClosure`] from the GraphQL response envelope.
+/// Errors if the issue node is absent (not found / no access).
+fn parse_issue_closure(result: &Value, n: u64, repo: &str) -> Result<IssueClosure, GhError> {
+    let issue = &result["data"]["repository"]["issue"];
+    if issue.is_null() {
+        return SchemaSnafu {
+            message: format!("issue #{n} not found in {repo}"),
+        }
+        .fail();
+    }
+
+    let issue_open = issue["state"].as_str() == Some("OPEN");
+    let merged_closing_pr = issue["closedByPullRequestsReferences"]["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|node| node["state"].as_str() == Some("MERGED"))
+        .and_then(|node| {
+            let number = node["number"].as_u64()?;
+            let url = node["url"].as_str()?.to_string();
+            Some(PrInfo {
+                number,
+                url,
+                state: PrState::Merged,
+            })
+        });
+
+    Ok(IssueClosure {
+        issue_open,
+        merged_closing_pr,
+    })
+}
+
+/// Close an issue, leaving an explanatory comment. Wraps `gh issue close`.
+pub fn close_issue(repo: &str, n: u64, comment: &str) -> Result<(), GhError> {
     let output = Command::new("gh")
         .args([
             "issue",
-            "view",
+            "close",
             &n.to_string(),
             "--repo",
             repo,
-            "--json",
-            "state,closedByPullRequestsReferences",
+            "--comment",
+            comment,
         ])
         .output()
         .context(SpawnSnafu)?;
@@ -285,54 +345,21 @@ pub fn merged_pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return GhCommandSnafu {
-            command: format!("gh issue view {n} --repo {repo}"),
+            command: format!("gh issue close {n} --repo {repo}"),
             stderr: stderr.trim().to_string(),
         }
         .fail();
     }
-
-    let body = String::from_utf8_lossy(&output.stdout);
-    if body.trim().is_empty() {
-        return Ok(None);
-    }
-    let parsed: Value = serde_json::from_str(&body).context(JsonParseSnafu {
-        context: format!("failed to parse JSON from gh issue view {n}"),
-    })?;
-
-    if parsed["state"].as_str() != Some("CLOSED") {
-        return Ok(None);
-    }
-
-    let Some(first) = parsed["closedByPullRequestsReferences"]
-        .as_array()
-        .and_then(|arr| arr.first())
-    else {
-        return Ok(None);
-    };
-
-    let number = first["number"].as_u64().with_context(|| SchemaSnafu {
-        message: format!("closing PR for issue #{n} missing 'number' field"),
-    })?;
-    let url = first["url"]
-        .as_str()
-        .with_context(|| SchemaSnafu {
-            message: format!("closing PR for issue #{n} missing 'url' field"),
-        })?
-        .to_string();
-    Ok(Some(PrInfo {
-        number,
-        url,
-        state: PrState::Merged,
-    }))
+    Ok(())
 }
 
 /// Find a PR (open, closed, or merged) whose body references `Closes #n`.
 /// Returns the first match (most recently updated by gh's default sort).
 ///
 /// Relies on the repo convention of `Closes #N` in PR bodies (CLAUDE.md);
-/// `Fixes`/`Resolves` aren't matched. For merged PRs that closed the issue
-/// you can also use [`merged_pr_for_issue`] — this helper additionally
-/// catches *open* PRs, which `closedByPullRequestsReferences` does not.
+/// `Fixes`/`Resolves` aren't matched. For the merged PR linked to an issue
+/// you can also use [`issue_closure`] — this helper additionally catches
+/// *open* PRs, which `closedByPullRequestsReferences` does not.
 pub fn pr_for_issue(repo: &str, n: u64) -> Result<Option<PrInfo>, GhError> {
     let query = format!("in:body Closes #{n}");
     let output = Command::new("gh")
@@ -1313,6 +1340,82 @@ mod tests {
     #[test]
     fn parse_open_prs_empty() {
         assert!(parse_open_prs("[]").unwrap().is_empty());
+    }
+
+    fn closure_envelope(state: &str, refs: Value) -> Value {
+        serde_json::json!({
+            "data": { "repository": { "issue": {
+                "state": state,
+                "closedByPullRequestsReferences": { "nodes": refs }
+            }}}
+        })
+    }
+
+    #[test]
+    fn parse_issue_closure_open_with_merged_pr() {
+        // The #946 case: issue still open, but its linked PR has merged.
+        let env = closure_envelope(
+            "OPEN",
+            serde_json::json!([{"number": 77, "url": "https://x/pull/77", "state": "MERGED"}]),
+        );
+        let c = parse_issue_closure(&env, 33, "o/r").unwrap();
+        assert!(c.issue_open);
+        let pr = c.merged_closing_pr.unwrap();
+        assert_eq!(pr.number, 77);
+        assert_eq!(pr.state, PrState::Merged);
+    }
+
+    #[test]
+    fn parse_issue_closure_ignores_open_linked_pr() {
+        // A linked-but-unmerged PR doesn't count — nothing has landed yet.
+        let env = closure_envelope(
+            "OPEN",
+            serde_json::json!([{"number": 5, "url": "https://x/pull/5", "state": "OPEN"}]),
+        );
+        let c = parse_issue_closure(&env, 1, "o/r").unwrap();
+        assert!(c.issue_open);
+        assert!(c.merged_closing_pr.is_none());
+    }
+
+    #[test]
+    fn parse_issue_closure_picks_merged_among_many() {
+        let env = closure_envelope(
+            "OPEN",
+            serde_json::json!([
+                {"number": 5, "url": "https://x/pull/5", "state": "CLOSED"},
+                {"number": 9, "url": "https://x/pull/9", "state": "MERGED"},
+            ]),
+        );
+        let pr = parse_issue_closure(&env, 1, "o/r")
+            .unwrap()
+            .merged_closing_pr
+            .unwrap();
+        assert_eq!(pr.number, 9);
+    }
+
+    #[test]
+    fn parse_issue_closure_closed_issue() {
+        let env = closure_envelope(
+            "CLOSED",
+            serde_json::json!([{"number": 77, "url": "https://x/pull/77", "state": "MERGED"}]),
+        );
+        let c = parse_issue_closure(&env, 1, "o/r").unwrap();
+        assert!(!c.issue_open);
+        assert!(c.merged_closing_pr.is_some());
+    }
+
+    #[test]
+    fn parse_issue_closure_no_refs() {
+        let c = parse_issue_closure(&closure_envelope("OPEN", serde_json::json!([])), 1, "o/r")
+            .unwrap();
+        assert!(c.issue_open);
+        assert!(c.merged_closing_pr.is_none());
+    }
+
+    #[test]
+    fn parse_issue_closure_missing_issue_errors() {
+        let env = serde_json::json!({"data": {"repository": {"issue": null}}});
+        assert!(parse_issue_closure(&env, 42, "o/r").is_err());
     }
 
     #[test]

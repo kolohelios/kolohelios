@@ -9,6 +9,10 @@ use std::path::Path;
 struct MergedWorkspace {
     name: String,
     pr_url: String,
+    /// A linked issue still open despite the merged PR — GitHub's
+    /// body-keyword autoclose doesn't fire on shaka's rebase merge (#946),
+    /// so cleanup closes it as a belt-and-suspenders.
+    open_issue: Option<u64>,
 }
 
 /// Walk all workspaces, find ones whose work has landed via a merged PR,
@@ -62,6 +66,7 @@ pub fn run(dry_run: bool) {
             candidates.push(MergedWorkspace {
                 name: ws.name.clone(),
                 pr_url,
+                open_issue: open_linked_issue(&repo_root, &repo, &ws.name),
             });
         }
     }
@@ -73,11 +78,19 @@ pub fn run(dry_run: bool) {
 
     for candidate in &candidates {
         if dry_run {
+            if let Some(issue) = candidate.open_issue {
+                println!(
+                    "{DIM}dry-run:{RESET} would close issue {BOLD}#{issue}{RESET} (merged: {})",
+                    candidate.pr_url
+                );
+            }
             println!(
                 "{DIM}dry-run:{RESET} would forget workspace {BOLD}{}{RESET} (merged: {})",
                 candidate.name, candidate.pr_url
             );
         } else {
+            close_open_issue(&repo, candidate);
+
             let path = workspace_path(&repo_root, &candidate.name);
 
             if let Err(e) = jj::workspace_forget(&candidate.name) {
@@ -129,4 +142,41 @@ fn resolve_merged_pr(repo_root: &Path, repo: &str, name: &str) -> Option<String>
     let bookmarks = jj::bookmarks_on(&revset).unwrap_or_default();
 
     staleness::resolve_merged_pr(repo, name, &bookmarks, issue_from_link)
+}
+
+/// If the workspace has a persisted issue link whose issue is still open
+/// despite a merged closing PR, return the issue number. This is the #946
+/// case: the rebase merge that landed the PR didn't trigger GitHub's
+/// body-keyword autoclose, so the issue lingers open.
+fn open_linked_issue(repo_root: &Path, repo: &str, name: &str) -> Option<u64> {
+    let issue = issue_link::read(repo_root, name).ok().flatten()?.issue;
+    match gh::issue_closure(repo, issue) {
+        Ok(c) if c.issue_open && c.merged_closing_pr.is_some() => Some(issue),
+        Ok(_) => None,
+        Err(e) => {
+            eprintln!("{DIM}warn:{RESET} could not check issue #{issue} state: {e}");
+            None
+        }
+    }
+}
+
+/// Close the candidate's still-open linked issue, leaving a comment that
+/// explains why shaka closed it. Soft-fails so a close error doesn't block
+/// forgetting the workspace.
+fn close_open_issue(repo: &str, candidate: &MergedWorkspace) {
+    let Some(issue) = candidate.open_issue else {
+        return;
+    };
+    let comment = format!(
+        "Closing automatically: {} merged via shaka's rebase flow, which doesn't \
+         trigger GitHub's PR-body autoclose. (shaka workspace cleanup, #946)",
+        candidate.pr_url
+    );
+    match gh::close_issue(repo, issue, &comment) {
+        Ok(()) => println!(
+            "{GREEN}{BOLD}closed{RESET} issue {BOLD}#{issue}{RESET} (merged: {})",
+            candidate.pr_url
+        ),
+        Err(e) => eprintln!("{RED}{BOLD}error:{RESET} failed to close issue #{issue}: {e}"),
+    }
 }
