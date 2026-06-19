@@ -311,7 +311,7 @@ mod tests {
                 env: BTreeMap::new(),
                 outputs: BTreeMap::new(),
                 steps: vec![Step::Action(ActionStep {
-                    uses: "actions/checkout@v6".to_string(),
+                    uses: "actions/checkout@v7".to_string(),
                     id: None,
                     name: None,
                     if_: None,
@@ -334,7 +334,7 @@ mod tests {
         let yaml = emit(&wf);
         assert!(yaml.contains("runs-on: ubuntu-latest"));
         assert!(yaml.contains("fetch-depth: 0"));
-        assert!(yaml.contains("uses: actions/checkout@v6"));
+        assert!(yaml.contains("uses: actions/checkout@v7"));
     }
 
     #[test]

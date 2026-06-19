@@ -172,7 +172,7 @@ fn changes_job(spec: &WorkerDeploySpec) -> InlineJob {
         outputs,
         steps: vec![
             Step::Action(ActionStep {
-                uses: "actions/checkout@v6".to_string(),
+                uses: "actions/checkout@v7".to_string(),
                 id: None,
                 name: None,
                 if_: None,
