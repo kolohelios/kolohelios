@@ -23,7 +23,7 @@ jobs:
           echo "::error::OP_SERVICE_ACCOUNT_TOKEN is empty; check repo/org secret"
           exit 1
         fi
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
