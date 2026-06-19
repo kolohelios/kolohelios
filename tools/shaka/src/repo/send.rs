@@ -1,8 +1,13 @@
+use crate::commit;
 use crate::gh;
 use crate::jj;
 use crate::preflight;
 use crate::repo::describe;
 use crate::term::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
+
+/// Revset for the commits this branch lands on `main` — the tip (`@`) is
+/// the load-bearing commit that must carry the autoclose keyword.
+const BRANCH_REVSET: &str = "main@origin..@";
 
 pub fn run(bookmark_arg: Option<String>, no_pr: bool, no_auto_merge: bool, dry_run: bool) {
     let description = match jj::current_description() {
@@ -32,6 +37,12 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, no_auto_merge: bool, dry_r
         },
     };
 
+    // Land the autoclose keyword in the commit, not just the PR body: a
+    // rebase merge doesn't trigger GitHub's body-keyword autoclose (#946).
+    if !dry_run {
+        inject_autoclose();
+    }
+
     let synthesized = match describe::for_current_branch() {
         Ok(d) => d,
         Err(e) => {
@@ -45,6 +56,14 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, no_auto_merge: bool, dry_r
     if dry_run {
         println!("would run: jj git fetch");
         println!("would run: jj rebase -b @ -d main@origin");
+        match commit::tip_autoclose_plan(BRANCH_REVSET) {
+            Ok(missing) if !missing.is_empty() => {
+                let refs = format_refs(&missing);
+                println!("would run: jj describe @ {DIM}(inject {refs}){RESET}");
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("{YELLOW}{BOLD}warn:{RESET} could not plan autoclose: {e}"),
+        }
         println!(
             "would run: shaka preflight --since main@origin {DIM}(only if rebase moved @){RESET}"
         );
@@ -144,6 +163,29 @@ pub fn run(bookmark_arg: Option<String>, no_pr: bool, no_auto_merge: bool, dry_r
     if !no_auto_merge {
         queue_auto_merge(&pr_url);
     }
+}
+
+/// Inject `Closes #N` into the tip commit for any tied issue missing it,
+/// reporting what changed. Soft-fails: the keyword is a convenience, so a
+/// jj error here shouldn't abort the send — `commit lint` still gates the
+/// commit, and the user can add it by hand.
+fn inject_autoclose() {
+    match commit::ensure_tip_autocloses(BRANCH_REVSET) {
+        Ok(injected) if !injected.is_empty() => {
+            println!(
+                "{DIM}injected {} into tip commit{RESET}",
+                format_refs(&injected)
+            );
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("{YELLOW}{BOLD}warn:{RESET} could not inject autoclose keyword: {e}"),
+    }
+}
+
+/// Render issue numbers as a `Closes #a, #b` phrase for status output.
+fn format_refs(issues: &[u64]) -> String {
+    let refs: Vec<String> = issues.iter().map(|n| format!("#{n}")).collect();
+    format!("Closes {}", refs.join(", "))
 }
 
 /// Queue GitHub auto-merge (rebase strategy) on the PR. Soft-fails:

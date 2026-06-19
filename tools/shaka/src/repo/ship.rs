@@ -37,6 +37,17 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
     if dry_run {
         println!("would run: jj git fetch");
         println!("would run: jj rebase -b @ -d main@origin");
+        match commit::tip_autoclose_plan(SHIP_REVSET) {
+            Ok(missing) if !missing.is_empty() => {
+                let refs: Vec<String> = missing.iter().map(|n| format!("#{n}")).collect();
+                println!(
+                    "would run: jj describe @ {DIM}(inject Closes {}){RESET}",
+                    refs.join(", ")
+                );
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("{YELLOW}{BOLD}warn:{RESET} could not plan autoclose: {e}"),
+        }
         println!("would run: shaka commit lint -r {SHIP_REVSET}");
         println!("would run: jj diff -r {SHIP_REVSET}");
         if skip_preflight {
@@ -72,6 +83,21 @@ pub fn run(bookmark_arg: Option<String>, skip_preflight: bool, dry_run: bool) {
             "{YELLOW}{BOLD}nothing to ship{RESET} (no non-empty commits ahead of main@origin)"
         );
         return;
+    }
+
+    // Inject `Closes #N` before linting so the issue-link rule passes on
+    // an issue-tied branch instead of failing — and so the keyword lands
+    // in the commit that hits `main`, surviving the rebase merge (#946).
+    match commit::ensure_tip_autocloses(SHIP_REVSET) {
+        Ok(injected) if !injected.is_empty() => {
+            let refs: Vec<String> = injected.iter().map(|n| format!("#{n}")).collect();
+            println!(
+                "{DIM}injected Closes {} into tip commit{RESET}",
+                refs.join(", ")
+            );
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("{YELLOW}{BOLD}warn:{RESET} could not inject autoclose keyword: {e}"),
     }
 
     println!("{BOLD}step 3/6: linting commits in {SHIP_REVSET}{RESET}");

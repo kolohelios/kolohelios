@@ -390,6 +390,78 @@ fn check_issue_link(commit: &Commit, tied_issues: &[u64]) -> Option<Finding> {
     })
 }
 
+/// Pure: given a commit `description` (title line + body) and the issue
+/// numbers the branch is tied to, return an amended description that
+/// appends a `Closes #N` line for every tied issue whose autoclose
+/// reference is missing from the body. Returns `None` when nothing needs
+/// adding (no tied issues, or every one is already referenced).
+///
+/// New references are appended as a trailing block, separated from the
+/// existing message by a blank line, one `Closes #N` per line in the
+/// order given. The keyword has to live in the commit that lands on the
+/// default branch: shaka merges via rebase, and GitHub only runs its
+/// body-keyword autoclose on its own merge event — not on the rebased
+/// commits it records by detection (#946).
+pub(crate) fn inject_autoclose(description: &str, tied: &[u64]) -> Option<String> {
+    if tied.is_empty() {
+        return None;
+    }
+    let body = description.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
+    let present = issue_ref::extract_autoclose_refs(body);
+    let missing: Vec<u64> = tied.iter().copied().filter(|n| !present.contains(n)).collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let trailer = missing
+        .iter()
+        .map(|n| format!("Closes #{n}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(format!("{}\n\n{trailer}", description.trim_end()))
+}
+
+/// Shared computation for the autoclose-injection helpers: read `@`'s
+/// description and the tied-issue numbers whose autoclose reference is
+/// missing from its body. Tied issues come from the same heuristics
+/// `commit lint` uses (`gather_tied_issues`).
+fn autoclose_gap(revset: &str) -> Result<(String, Vec<u64>), String> {
+    let description = jj::current_description().map_err(|e| e.to_string())?;
+    let tied = gather_tied_issues(revset);
+    if tied.is_empty() {
+        return Ok((description, Vec::new()));
+    }
+    let body = description
+        .split_once('\n')
+        .map(|(_, rest)| rest)
+        .unwrap_or("");
+    let present = issue_ref::extract_autoclose_refs(body);
+    let missing = tied.into_iter().filter(|n| !present.contains(n)).collect();
+    Ok((description, missing))
+}
+
+/// Read-only: the issue numbers `ensure_tip_autocloses` would inject for
+/// `revset`. Used by `--dry-run` callers to preview the amendment without
+/// mutating the commit.
+pub fn tip_autoclose_plan(revset: &str) -> Result<Vec<u64>, String> {
+    Ok(autoclose_gap(revset)?.1)
+}
+
+/// Ensure the working-copy commit (`@`, the tip that lands on `main`)
+/// carries a `Closes #N` reference for every issue the current branch is
+/// tied to, amending its description in place when one is missing.
+/// Idempotent: a no-op when the branch isn't issue-tied or the references
+/// are already present. Returns the issue numbers it injected (empty when
+/// nothing changed) so callers can report the amendment.
+pub fn ensure_tip_autocloses(revset: &str) -> Result<Vec<u64>, String> {
+    let (description, missing) = autoclose_gap(revset)?;
+    if missing.is_empty() {
+        return Ok(Vec::new());
+    }
+    let updated = inject_autoclose(&description, &missing).expect("missing non-empty yields Some");
+    jj::describe(&updated).map_err(|e| e.to_string())?;
+    Ok(missing)
+}
+
 fn lint_commit(commit: &Commit, ctx: &LintContext) -> Vec<Finding> {
     let mut findings = Vec::new();
     let desc = commit.description.trim_end();
@@ -818,6 +890,63 @@ mod tests {
         // plus workspace link to #99). Closing either satisfies the rule.
         let commit = commit_at_tip("feat: x\n\nCloses #99");
         assert!(check_issue_link(&commit, &[42, 99]).is_none());
+    }
+
+    // -- autoclose injection -------------------------------------------
+
+    #[test]
+    fn inject_autoclose_appends_when_missing() {
+        let got = inject_autoclose("feat(shaka): add thing\n\nWhy this matters.", &[42]);
+        assert_eq!(
+            got.as_deref(),
+            Some("feat(shaka): add thing\n\nWhy this matters.\n\nCloses #42")
+        );
+    }
+
+    #[test]
+    fn inject_autoclose_noop_when_already_present() {
+        // Any autoclose keyword for the tied issue satisfies the rule.
+        for body in ["Closes #42", "Fixes #42", "resolves #42"] {
+            let desc = format!("feat: x\n\n{body}");
+            assert_eq!(inject_autoclose(&desc, &[42]), None, "for body {body:?}");
+        }
+    }
+
+    #[test]
+    fn inject_autoclose_appends_only_missing_of_multiple() {
+        let got = inject_autoclose("feat: x\n\nCloses #42", &[42, 99]);
+        assert_eq!(got.as_deref(), Some("feat: x\n\nCloses #42\n\nCloses #99"));
+    }
+
+    #[test]
+    fn inject_autoclose_handles_multiple_missing() {
+        let got = inject_autoclose("feat: x\n\nWhy.", &[7, 9]);
+        assert_eq!(got.as_deref(), Some("feat: x\n\nWhy.\n\nCloses #7\nCloses #9"));
+    }
+
+    #[test]
+    fn inject_autoclose_title_only_commit() {
+        let got = inject_autoclose("feat: solo", &[42]);
+        assert_eq!(got.as_deref(), Some("feat: solo\n\nCloses #42"));
+    }
+
+    #[test]
+    fn inject_autoclose_none_when_no_tied_issues() {
+        assert_eq!(inject_autoclose("feat: x\n\nWhy.", &[]), None);
+    }
+
+    #[test]
+    fn inject_autoclose_refs_keyword_does_not_count() {
+        // `Refs #N` isn't an autoclose keyword, so the issue is still
+        // missing a real close and gets one appended.
+        let got = inject_autoclose("feat: x\n\nRefs #42", &[42]);
+        assert_eq!(got.as_deref(), Some("feat: x\n\nRefs #42\n\nCloses #42"));
+    }
+
+    #[test]
+    fn inject_autoclose_trims_trailing_whitespace_before_appending() {
+        let got = inject_autoclose("feat: x\n\nWhy.\n\n", &[42]);
+        assert_eq!(got.as_deref(), Some("feat: x\n\nWhy.\n\nCloses #42"));
     }
 
     #[test]
