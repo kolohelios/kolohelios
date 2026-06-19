@@ -293,8 +293,22 @@ fn deploy_call(spec: &WorkerDeploySpec) -> ReusableCall {
     }
 }
 
+/// PR-scoped gate for the credential-bearing jobs (`verify`/`preview`)
+/// and the `comment` job that depends on them.
+///
+/// Excludes Dependabot: GitHub runs Dependabot-triggered workflows
+/// against the isolated Dependabot secret store, where repo/org Actions
+/// secrets — including `OP_SERVICE_ACCOUNT_TOKEN` — resolve to empty. The
+/// `cf-deploy.yml` reusable workflow hard-fails on an empty token, so
+/// these jobs can *never* succeed on a Dependabot PR; running them only
+/// turns the required `gate` red on every dependency bump. Skipping them
+/// (the `gate` job treats `skipped` as passing) lets a green `validate`
+/// carry the bump. The real `deploy` job runs on `push: main` only, which
+/// Dependabot never triggers, so it needs no such guard.
 fn pr_gate() -> String {
-    "github.event_name == 'pull_request' && needs.changes.outputs.portfolio == 'true'".to_string()
+    "github.event_name == 'pull_request' && needs.changes.outputs.portfolio == 'true' \
+     && github.actor != 'dependabot[bot]'"
+        .to_string()
 }
 
 fn op_secret() -> BTreeMap<String, String> {
@@ -350,10 +364,7 @@ fi
         // Match the hand-authored shape — no display name on this job.
         name: None,
         needs: Needs::Multiple(vec!["changes".to_string(), "preview".to_string()]),
-        if_: Some(
-            "github.event_name == 'pull_request' && needs.changes.outputs.portfolio == 'true'"
-                .to_string(),
-        ),
+        if_: Some(pr_gate()),
         runs_on: "ubuntu-latest".to_string(),
         permissions: Some(Permissions {
             id_token: None,
@@ -549,6 +560,32 @@ mod tests {
         assert_eq!(verify["with"]["verify_only"].as_bool(), Some(true));
         let if_ = verify["if"].as_str().expect("verify has an if");
         assert!(if_.contains("github.event_name == 'pull_request'"), "{if_}");
+    }
+
+    #[test]
+    fn credential_jobs_skip_dependabot_prs() {
+        // Dependabot runs can't read `OP_SERVICE_ACCOUNT_TOKEN` (isolated
+        // secret store), so the secret-bearing jobs and the comment that
+        // depends on them must skip — otherwise the required `gate` is red
+        // on every dependency bump. `deploy` runs on push only, so it
+        // carries no Dependabot guard.
+        let parsed = emit_fixture();
+        for job in ["verify", "preview", "comment"] {
+            let if_ = parsed["jobs"][job]["if"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{job} has an if"));
+            assert!(
+                if_.contains("github.actor != 'dependabot[bot]'"),
+                "{job} should skip Dependabot PRs: {if_}"
+            );
+        }
+        let deploy_if = parsed["jobs"]["deploy"]["if"]
+            .as_str()
+            .expect("deploy has an if");
+        assert!(
+            !deploy_if.contains("dependabot"),
+            "deploy runs on push only, no Dependabot guard needed: {deploy_if}"
+        );
     }
 
     #[test]
