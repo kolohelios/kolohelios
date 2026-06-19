@@ -85,7 +85,7 @@ fi
                 env: BTreeMap::new(),
             }),
             Step::Action(ActionStep {
-                uses: "actions/checkout@v6".to_string(),
+                uses: "actions/checkout@v7".to_string(),
                 id: None,
                 name: None,
                 if_: None,

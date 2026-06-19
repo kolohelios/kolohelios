@@ -172,7 +172,7 @@ fn changes_job(specs: &[MainBuildSpec]) -> InlineJob {
         outputs,
         steps: vec![
             Step::Action(ActionStep {
-                uses: "actions/checkout@v6".to_string(),
+                uses: "actions/checkout@v7".to_string(),
                 id: None,
                 name: None,
                 if_: None,
@@ -271,7 +271,7 @@ fn preflight_job() -> InlineJob {
         outputs: BTreeMap::new(),
         steps: vec![
             Step::Action(ActionStep {
-                uses: "actions/checkout@v6".to_string(),
+                uses: "actions/checkout@v7".to_string(),
                 id: None,
                 name: None,
                 if_: None,
@@ -368,7 +368,7 @@ fn build_job(spec: &MainBuildSpec) -> InlineJob {
 
     let mut steps: Vec<Step> = vec![
         Step::Action(ActionStep {
-            uses: "actions/checkout@v6".to_string(),
+            uses: "actions/checkout@v7".to_string(),
             id: None,
             name: None,
             if_: None,
