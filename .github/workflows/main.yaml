@@ -30,7 +30,7 @@ jobs:
       nix-lib: ${{ steps.filter.outputs.nix-lib }}
       shaka: ${{ steps.filter.outputs.shaka }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - id: base
@@ -71,7 +71,7 @@ jobs:
       TF_VAR_linode_token: ${{ secrets.LINODE_TOKEN }}
       TF_VAR_root_pass: ${{ secrets.DEVBOX_ROOT_PASS }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - uses: DeterminateSystems/nix-installer-action@main
@@ -109,7 +109,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
@@ -152,7 +152,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
@@ -177,7 +177,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
@@ -202,7 +202,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
@@ -242,7 +242,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
@@ -285,7 +285,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
@@ -310,7 +310,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
       with:
         determinate: true
