@@ -4,6 +4,7 @@
 # module stays platform-agnostic.
 {
   pkgs,
+  lib,
   claude-hooks,
   shaka,
   ...
@@ -67,7 +68,12 @@ in
     # kolohelios checkout it runs the in-tree build; everywhere else it
     # execs the FlakeHub package (see `shakaGlobal` above).
     shakaGlobal
-  ];
+  ]
+  # wezterm on Linux comes from nixpkgs (builds cleanly there); macOS
+  # installs it via the homebrew cask in `modules/darwin.nix` because
+  # `pkgs.wezterm` is fragile on aarch64-darwin. Config (`wezterm.lua`)
+  # is shared across both via `xdg.configFile` below.
+  ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.wezterm;
 
   programs.git = {
     enable = true;
@@ -127,7 +133,7 @@ in
   # Zellij's keybind tree is too elaborate to express idiomatically in
   # nix. Ship the kdl file as-is and let home-manager symlink it.
   xdg.configFile."zellij/config.kdl".source = ../dotfiles/zellij/config.kdl;
-  xdg.configFile."ghostty/config".source = ../dotfiles/ghostty/config;
+  xdg.configFile."wezterm/wezterm.lua".source = ../dotfiles/wezterm/wezterm.lua;
 
   # Claude Code skills that aren't tied to a specific project. Lifted
   # from `kolohelios/.claude/commands/` so they apply to claude
