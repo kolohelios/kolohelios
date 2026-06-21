@@ -59,6 +59,19 @@ pub struct CiDeploy {
     /// `project_dir` (the single-crate default).
     #[serde(default)]
     pub worker_build_dir: Option<String>,
+    /// Shell command `cf-deploy.yml` runs (cwd = `project_dir`, `nix` on
+    /// PATH) before `worker-build`, in all three calls. Threaded to its
+    /// `pre_build_command` input. Stages another project's build artifacts
+    /// into this Worker's asset dir (e.g. notes-web building the
+    /// notes-editor WASM bundle into `dist/editor/`). Unset → omitted.
+    #[serde(default)]
+    pub pre_build_command: Option<String>,
+    /// Extra `dorny/paths-filter` globs added to the `changes` job, beyond
+    /// `<project_dir>/**` and the workflow files. For a deploy that depends
+    /// on sources outside `project_dir` (e.g. notes-web rebuilds when
+    /// `apps/notes-editor/**` changes). Unset/empty → only the defaults.
+    #[serde(default)]
+    pub extra_watch_paths: Option<Vec<String>>,
     /// Worker runtime secret names pushed at deploy by
     /// `push-worker-secrets`. Modelled here only so this
     /// `deny_unknown_fields` struct (which `generate-workflows`
@@ -143,8 +156,19 @@ fn changes_job(spec: &WorkerDeploySpec) -> InlineJob {
     } else {
         String::new()
     };
+    // Sources outside `project_dir` the deploy depends on — e.g. notes-web
+    // rebuilds the notes-editor bundle via `preBuildCommand`, so an editor
+    // change must trigger a notes-web redeploy.
+    let extra_watch = spec
+        .deploy
+        .extra_watch_paths
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|p| format!("\n  - '{p}'"))
+        .collect::<String>();
     let filter_body = format!(
-        "portfolio:\n  - '{project_dir_str}/**'\n  - '.github/workflows/{name}-deploy.yml'{reusable_watch}\n",
+        "portfolio:\n  - '{project_dir_str}/**'\n  - '.github/workflows/{name}-deploy.yml'{reusable_watch}{extra_watch}\n",
         name = spec.project_name,
     );
 
@@ -220,6 +244,17 @@ fn insert_worker_build_dir(with: &mut BTreeMap<String, Value>, spec: &WorkerDepl
     }
 }
 
+/// Add `pre_build_command` to a reusable-call `with:` block when the project
+/// set it — the cross-project asset-staging command cf-deploy runs before
+/// `worker-build`. Like `worker_build_dir`, threaded into all three calls
+/// (verify/preview/deploy): a preview Worker serves the same assets and a PR
+/// verify must catch a broken cross-project build before merge.
+fn insert_pre_build_command(with: &mut BTreeMap<String, Value>, spec: &WorkerDeploySpec) {
+    if let Some(cmd) = &spec.deploy.pre_build_command {
+        with.insert("pre_build_command".to_string(), Value::String(cmd.clone()));
+    }
+}
+
 fn verify_call(spec: &WorkerDeploySpec) -> ReusableCall {
     let mut with: BTreeMap<String, Value> = BTreeMap::new();
     with.insert(
@@ -228,6 +263,7 @@ fn verify_call(spec: &WorkerDeploySpec) -> ReusableCall {
     );
     with.insert("verify_only".to_string(), Value::Bool(true));
     insert_worker_build_dir(&mut with, spec);
+    insert_pre_build_command(&mut with, spec);
     ReusableCall {
         needs: Needs::Single("changes".to_string()),
         if_: Some(pr_gate()),
@@ -251,6 +287,7 @@ fn preview_call(spec: &WorkerDeploySpec) -> ReusableCall {
         )),
     );
     insert_worker_build_dir(&mut with, spec);
+    insert_pre_build_command(&mut with, spec);
     ReusableCall {
         needs: Needs::Multiple(vec!["changes".to_string(), "verify".to_string()]),
         if_: Some(pr_gate()),
@@ -278,6 +315,7 @@ fn deploy_call(spec: &WorkerDeploySpec) -> ReusableCall {
         );
     }
     insert_worker_build_dir(&mut with, spec);
+    insert_pre_build_command(&mut with, spec);
     // `workflow_dispatch` bypasses the changes filter so a manual
     // re-deploy isn't blocked by an unchanged push base. Real
     // `push: main` deploys still gate on the filter.
@@ -453,6 +491,8 @@ mod tests {
                 preview_script_prefix: "portfolio".to_string(),
                 environment: None,
                 worker_build_dir: None,
+                pre_build_command: None,
+                extra_watch_paths: None,
                 secrets: None,
             },
         }
@@ -650,6 +690,8 @@ mod tests {
                 preview_script_prefix: "buzzingo".to_string(),
                 environment: None,
                 worker_build_dir: Some("crates/buzzingo-server".to_string()),
+                pre_build_command: None,
+                extra_watch_paths: None,
                 secrets: None,
             },
         }
@@ -705,6 +747,8 @@ mod tests {
                 preview_script_prefix: "buzzingo".to_string(),
                 environment: Some("production".to_string()),
                 worker_build_dir: None,
+                pre_build_command: None,
+                extra_watch_paths: None,
                 secrets: None,
             },
         }
@@ -763,5 +807,91 @@ mod tests {
                 "{job} should omit worker_build_dir"
             );
         }
+    }
+
+    // ── pre-build command + extra watch paths (cross-project assets) ─────
+
+    /// A consumer (notes-web) whose deploy stages another project's build
+    /// artifacts (the notes-editor WASM bundle) before worker-build, and
+    /// must therefore also watch the other project's sources.
+    fn asset_build_spec() -> WorkerDeploySpec {
+        WorkerDeploySpec {
+            project_dir: PathBuf::from("apps/notes-web"),
+            project_name: "notes-web".to_string(),
+            deploy: CiDeploy {
+                reusable_workflow: "./.github/workflows/cf-deploy.yml".to_string(),
+                preview_script_prefix: "notes-web".to_string(),
+                environment: None,
+                worker_build_dir: None,
+                pre_build_command: Some(
+                    "nix develop ../notes-editor --command just wasm-build".to_string(),
+                ),
+                extra_watch_paths: Some(vec!["apps/notes-editor/**".to_string()]),
+                secrets: None,
+            },
+        }
+    }
+
+    fn emit_asset_build() -> serde_yaml_ng::Value {
+        let yaml = super::super::workflow::emit(&build(&asset_build_spec()));
+        serde_yaml_ng::from_str(&yaml).expect("valid YAML")
+    }
+
+    #[test]
+    fn pre_build_command_emitted_in_all_three_calls() {
+        // Like worker_build_dir, the pre-build command threads into every
+        // cf-deploy call: a preview Worker serves the same staged assets,
+        // and a PR verify must catch a broken cross-project build pre-merge.
+        let parsed = emit_asset_build();
+        for job in ["verify", "preview", "deploy"] {
+            assert_eq!(
+                parsed["jobs"][job]["with"]["pre_build_command"].as_str(),
+                Some("nix develop ../notes-editor --command just wasm-build"),
+                "{job} should pass pre_build_command"
+            );
+        }
+    }
+
+    #[test]
+    fn pre_build_command_omitted_when_unset() {
+        // The portfolio fixture has `pre_build_command: None`; no call carries it.
+        let parsed = emit_fixture();
+        for job in ["verify", "preview", "deploy"] {
+            assert!(
+                parsed["jobs"][job]["with"]["pre_build_command"].is_null(),
+                "{job} should omit pre_build_command"
+            );
+        }
+    }
+
+    #[test]
+    fn changes_filter_includes_extra_watch_paths() {
+        let parsed = emit_asset_build();
+        let filters = parsed["jobs"]["changes"]["steps"]
+            .as_sequence()
+            .expect("steps")
+            .iter()
+            .find_map(|s| s["with"].get("filters").and_then(|f| f.as_str()))
+            .expect("paths-filter step with a filters body");
+        // Defaults stay watched...
+        assert!(filters.contains("apps/notes-web/**"), "{filters}");
+        // ...plus the extra cross-project source.
+        assert!(filters.contains("apps/notes-editor/**"), "{filters}");
+    }
+
+    #[test]
+    fn changes_filter_omits_extra_watch_paths_when_unset() {
+        // The portfolio fixture sets none; the filter carries only the
+        // project dir, the deploy workflow, and the reusable workflow.
+        let parsed = emit_fixture();
+        let filters = parsed["jobs"]["changes"]["steps"]
+            .as_sequence()
+            .expect("steps")
+            .iter()
+            .find_map(|s| s["with"].get("filters").and_then(|f| f.as_str()))
+            .expect("paths-filter step with a filters body");
+        assert!(filters.contains("apps/portfolio/**"), "{filters}");
+        // No stray editor-style glob leaked in.
+        assert!(!filters.contains("notes-editor"), "{filters}");
     }
 }

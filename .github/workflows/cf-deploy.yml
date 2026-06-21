@@ -80,6 +80,11 @@ on:
         required: false
         type: string
         default: ""
+      pre_build_command:
+        description: "If non-empty, a shell command run (cwd = project_dir, with nix on PATH) before worker-build in every mode. Use to stage build artifacts produced by another project into this Worker's asset directory (the command picks its own devshell, e.g. `nix develop ../other`). Empty = skip."
+        required: false
+        type: string
+        default: ""
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN:
         description: "1Password Service Account token used by `op run` to resolve `.env` references"
@@ -138,6 +143,25 @@ jobs:
           out=$(nix build --no-link --print-out-paths \
             "https://flakehub.com/f/kolohelios/shaka/*.tar.gz")
           echo "CFDEPLOY_SHAKA=$out/bin" >> "$GITHUB_ENV"
+      - name: pre-build assets
+        # Stage build artifacts produced by *another* project into this
+        # Worker's asset directory before `worker-build`/`wrangler deploy`.
+        # E.g. notes-web builds the notes-editor WASM bundle into
+        # `dist/editor/` here so `[assets]` ships it. The command picks
+        # its own devshell (only `nix` is guaranteed on PATH) — typically
+        # `nix develop ../<other> --command ...` — because the artifact's
+        # toolchain lives in *its* flake, not this project's. Runs in
+        # every mode (verify/preview/deploy) so a broken cross-project
+        # build fails the PR verify, not just the production deploy.
+        #
+        # Passed via `env` and run through `bash -c "$VAR"` rather than
+        # interpolated into `run:` directly, so the command can't be a
+        # workflow-expression injection vector.
+        if: ${{ inputs.pre_build_command != '' }}
+        working-directory: ${{ inputs.project_dir }}
+        env:
+          PRE_BUILD_COMMAND: ${{ inputs.pre_build_command }}
+        run: bash -c "$PRE_BUILD_COMMAND"
       - name: worker-build
         working-directory: ${{ inputs.project_dir }}
         # Build the worker upstream of `wrangler deploy` so the wasm

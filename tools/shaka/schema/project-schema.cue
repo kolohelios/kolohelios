@@ -262,6 +262,25 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// Omit for a single-crate Worker (worker-build runs in `project_dir`).
 	workerBuildDir?: string & =~"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
 
+	// Shell command run inside the deploy's checkout *before*
+	// `worker-build`, in every mode (verify/preview/deploy), with
+	// `project_dir` as the cwd. Threaded to `cf-deploy.yml`'s
+	// `pre_build_command` input. Use to stage build artifacts produced by
+	// *another* project into this Worker's asset directory — e.g.
+	// `notes-web` building the `notes-editor` WASM bundle into
+	// `dist/editor/`. The command picks its own devshell (the deploy only
+	// guarantees `nix` on PATH), so it can `nix develop ../<other>`. Omit
+	// when the Worker has no cross-project build dependency.
+	preBuildCommand?: string
+
+	// Extra `dorny/paths-filter` globs added to the generated deploy's
+	// change detection, beyond `<project_dir>/**` and the workflow files.
+	// Use when a deploy depends on sources *outside* `project_dir` — e.g.
+	// `notes-web` must redeploy when `apps/notes-editor/**` changes because
+	// `preBuildCommand` rebuilds that bundle. Omit for a self-contained
+	// project.
+	extraWatchPaths?: [...string]
+
 	// Worker runtime secret names to push at deploy via
 	// `shaka ci push-worker-secrets` (the reusable `cf-deploy.yml` runs
 	// it). Names only — values arrive from the resolved `op://`

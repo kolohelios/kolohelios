@@ -157,6 +157,8 @@ mod tests {
                 preview_script_prefix: "example-notes".to_string(),
                 environment: None,
                 worker_build_dir: None,
+                pre_build_command: None,
+                extra_watch_paths: None,
                 secrets: None,
             },
         }
