@@ -1,0 +1,14 @@
+package project
+
+#Project & {
+	name: "buzzingo"
+	kind: "rust-worker"
+	worker: {}
+	deploy: {
+		target: "cloudflare-worker"
+		d1: {
+			binding:      "DB"
+			databaseName: "buzzingo-users"
+		}
+	}
+}

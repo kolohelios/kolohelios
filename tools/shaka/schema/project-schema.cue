@@ -43,23 +43,56 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	bypassPaths: [...string & =~"^/"]
 }
 
-// Deploy intent for an app. The TF that materializes the attachment
-// (Worker custom domain + zone data source, plus optional cache
-// ruleset) is generated from this block by `shaka deploy generate-tf`
-// and committed under
+// A Cloudflare D1 database provisioned for a worker. When set, `shaka
+// deploy generate-tf` emits a `cloudflare_d1_database` resource
+// (account-scoped: `account_id` + `name = databaseName`) plus a
+// Terraform `output` exposing its computed `id`. After `tofu apply`,
+// read that id (`tofu state show
+// 'module.generated.cloudflare_d1_database.<project>_d1'`) and paste it
+// into the consumer's `wrangler.toml` `[[d1_databases]]` `database_id` —
+// the same read-from-state-then-commit flow `webAnalytics` uses for its
+// `site_token`. `binding` names the wrangler binding the worker reads
+// (e.g. `DB`); it's recorded so the emitted output points at the right
+// binding (and a future `generate-wrangler`, #819, can wire it
+// automatically). Migrations stay consumer-side (`wrangler d1 migrations
+// apply`); shaka only provisions the database resource.
+#D1Database: {
+	binding:      string & !=""
+	databaseName: string & !=""
+}
+
+// Deploy intent for an app. The TF that materializes it is generated
+// from this block by `shaka deploy generate-tf` and committed under
 // `infra/cloudflare-deploy/terraform/generated/<project>.tf`.
 //
-// `customDomain` and `zone` are constrained to the registered
-// hostnames in `infra/cloudflare-dns/domains/` — a typo fails
-// `cue vet` before any TF runs.
+// A deploy block carries up to two independent halves; at least one must
+// be present:
 //
-// Future targets (`cloudflare-pages`, `fly`, `hetzner`, ...) extend
-// this as an additional disjunction branch when they have a consumer.
+//   - A **custom-domain attachment** — `customDomain` + `zone`,
+//     optionally with a `cache` ruleset and a `webAnalytics` site.
+//     `customDomain` and `zone` are constrained to the registered
+//     hostnames in `infra/cloudflare-dns/domains/`, so a typo fails
+//     `cue vet` before any TF runs.
+//   - A **D1 database** (`d1`) — account-scoped, so it needs no zone and
+//     can stand alone. A worker that only needs a datastore declares
+//     `d1` without graduating its domain to Terraform.
+//
+// All four attachment fields are optional so a D1-only deploy validates,
+// but their *combinations* are constrained by `shaka deploy generate-tf`
+// rather than CUE (a presence-discriminated disjunction can't `cue
+// export`): `customDomain` and `zone` are both-or-neither, `cache` /
+// `webAnalytics` require them (the rules and the site attach to the
+// zone), and a block with neither a domain nor a `d1` is rejected. Those
+// checks run in preflight via `generate-tf --check`.
+//
+// Future targets (`cloudflare-pages`, `fly`, `hetzner`, ...) extend the
+// `target` discriminator as an additional disjunction branch when they
+// have a consumer.
 #Deploy: {
 	target:       "cloudflare-worker"
-	customDomain: domain.#KnownHostnames
-	zone:         domain.#KnownHostnames
-	cache?:       #CacheRules
+	customDomain?: domain.#KnownHostnames
+	zone?:         domain.#KnownHostnames
+	cache?:        #CacheRules
 
 	// When true, `shaka deploy generate-tf` emits a
 	// `cloudflare_web_analytics_site` (manual install — `auto_install`
@@ -68,8 +101,13 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	// 'module.generated.cloudflare_web_analytics_site.<project>'`) and
 	// baked into the site's HTML beacon — it's a public, non-secret
 	// identifier. Workers Static Assets responses can't be auto-injected,
-	// so the beacon is hand-placed in the page shell.
+	// so the beacon is hand-placed in the page shell. Requires a
+	// `customDomain`/`zone` (enforced by the generator).
 	webAnalytics?: bool
+
+	// A D1 database. Account-scoped, so it stands alone (no domain) or
+	// rides alongside a custom-domain attachment.
+	d1?: #D1Database
 }
 
 // A Cloudflare `[[unsafe.bindings]]` entry — the escape hatch for
