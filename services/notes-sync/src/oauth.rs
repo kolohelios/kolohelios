@@ -33,6 +33,25 @@ pub fn client_metadata(base_url: &str) -> Value {
     })
 }
 
+/// Escape the five HTML-significant characters so authorization-server
+/// strings (the OAuth `error`/`error_description` echoed back on the
+/// callback) can't inject markup into the rendered error page. Pure and
+/// native-tested; the page that uses it is wasm-only glue.
+pub fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(target_arch = "wasm32")]
 pub use flow::{handle_callback, handle_login, AuthFlow};
 
@@ -352,6 +371,17 @@ mod flow {
                 .find(|(k, _)| k == name)
                 .map(|(_, v)| v.into_owned())
         };
+        // Bluesky can redirect back with an OAuth error instead of a code
+        // (the user declined, "This request was initiated from another
+        // device", an expired request, etc.). Surface it as a readable page
+        // rather than letting the `missing ?code` path throw into an opaque
+        // `INTERNAL SERVER ERROR`.
+        if let Some(error) = q("error") {
+            let description = q("error_description").unwrap_or_default();
+            console_log!("oauth callback error: {error}: {description}");
+            return oauth_error_page(&env, &error, &description);
+        }
+
         let code = q("code").ok_or_else(|| err("missing ?code"))?;
         let state = q("state").ok_or_else(|| err("missing ?state"))?;
         let iss = q("iss").ok_or_else(|| err("missing ?iss"))?;
@@ -423,6 +453,36 @@ mod flow {
             .to_string())
     }
 
+    /// Render an OAuth `error` redirect from the authorization server as a
+    /// readable HTML page (400) with a link back to the app, instead of
+    /// letting the missing-`code` path throw into an opaque 500. The
+    /// `error`/`error_description` values come from the query string (the
+    /// authorization server's own copy), so they're escaped before
+    /// interpolation.
+    fn oauth_error_page(env: &Env, error: &str, description: &str) -> Result<Response> {
+        let app_url = env
+            .var("OAUTH_APP_URL")
+            .map(|v| v.to_string())
+            .unwrap_or_else(|_| "/".to_owned());
+        let body = format!(
+            "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
+             <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+             <title>sign-in didn't complete</title></head>\
+             <body><h1>Sign-in didn't complete</h1>\
+             <p><strong>{}</strong></p><p>{}</p>\
+             <p><a href=\"{}\">Back to notes</a></p></body></html>",
+            super::html_escape(error),
+            super::html_escape(description),
+            super::html_escape(&app_url),
+        );
+        let headers = Headers::new();
+        headers.set("Content-Type", "text/html; charset=utf-8")?;
+        Ok(ResponseBuilder::new()
+            .with_status(400)
+            .with_headers(headers)
+            .fixed(body.into_bytes()))
+    }
+
     /// Minimal percent-encoding for the two query values we put in the
     /// authorize redirect (the rest of the flow uses form bodies).
     fn urlencode(s: &str) -> String {
@@ -465,5 +525,21 @@ mod tests {
         let a = client_metadata("https://x.example");
         let b = client_metadata("https://x.example/");
         assert_eq!(a["client_id"], b["client_id"]);
+    }
+
+    #[test]
+    fn html_escape_neutralizes_markup() {
+        // An authorization server's `error_description` is echoed into the
+        // callback error page; a crafted value must not inject markup.
+        assert_eq!(
+            html_escape(r#"<script>alert("x&y")</script>'"#),
+            "&lt;script&gt;alert(&quot;x&amp;y&quot;)&lt;/script&gt;&#x27;"
+        );
+    }
+
+    #[test]
+    fn html_escape_leaves_plain_text_untouched() {
+        let s = "This request was initiated from another device";
+        assert_eq!(html_escape(s), s);
     }
 }
