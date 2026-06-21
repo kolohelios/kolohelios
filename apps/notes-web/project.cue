@@ -27,6 +27,16 @@ package project
 		deploy: {
 			reusableWorkflow:    "./.github/workflows/cf-deploy.yml"
 			previewScriptPrefix: "notes-web"
+			// The editing surface is the Rust-WASM bundle built from
+			// apps/notes-editor; `dist/editor/` is a build artifact (not
+			// committed). Build it in the editor's own devshell and stage it
+			// into this Worker's `[assets]` dir before worker-build/wrangler,
+			// so the deployed shell can import `/editor/notes_editor.js`.
+			// Mirrors the manual steps in apps/notes-web/README.md.
+			preBuildCommand: "nix develop ../notes-editor --command bash -c 'cd ../notes-editor && just wasm-build' && mkdir -p dist/editor && cp ../notes-editor/dist/* dist/editor/"
+			// An editor source change must redeploy notes-web — the bundle it
+			// ships is rebuilt by preBuildCommand above.
+			extraWatchPaths: ["apps/notes-editor/**"]
 		}
 	}
 }
