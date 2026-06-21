@@ -1,0 +1,16 @@
+package project
+
+#Project & {
+	name: "store-web"
+	kind: "rust-worker"
+	worker: {}
+	deploy: {
+		target:       "cloudflare-worker"
+		customDomain: "store.kolohelios.com"
+		zone:         "kolohelios.com"
+		d1: {
+			binding:      "DB"
+			databaseName: "store-users"
+		}
+	}
+}
