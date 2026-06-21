@@ -667,6 +667,16 @@ impl CargoPackage {
             .iter()
             .any(|t| t.crate_types.iter().any(|c| c == "cdylib"))
     }
+
+    /// Whether any target builds a plain Rust library (`lib`/`rlib`) — the
+    /// signal for a wasm-consumable member checked by `wasm-check`. A
+    /// cdylib-only crate (e.g. a browser-wasm or FFI member) or a bin-only
+    /// crate has no such target and is excluded.
+    fn is_rust_lib(&self) -> bool {
+        self.targets
+            .iter()
+            .any(|t| t.crate_types.iter().any(|c| c == "lib" || c == "rlib"))
+    }
 }
 
 /// The justification if this project waives `justfile` generation via
@@ -852,17 +862,29 @@ fn workspace_layout(project_dir: &Path) -> Option<WorkspaceLayout> {
         return None;
     }
 
-    // The worker is the lone cdylib member; everything else is a library
-    // checked for wasm32. Bail to the flat template on any other shape.
-    let workers: Vec<&CargoPackage> = meta.packages.iter().filter(|p| p.is_cdylib()).collect();
-    let [worker] = workers.as_slice() else {
-        return None;
+    // Identify the worker among the cdylib members. With a single cdylib it's
+    // unambiguous; with several (e.g. a worker plus browser-wasm/FFI cdylibs)
+    // the worker is the one the project's `wrangler.toml` `main` shim points
+    // at — `worker-build` runs in that crate's dir, so `main` carries its path
+    // prefix. Bail to the flat template if there's no cdylib or the multiple
+    // can't be disambiguated.
+    let cdylibs: Vec<&CargoPackage> = meta.packages.iter().filter(|p| p.is_cdylib()).collect();
+    let worker = match cdylibs.as_slice() {
+        [only] => *only,
+        [] => return None,
+        _ => disambiguate_worker(project_dir, &root_dir, &cdylibs)?,
     };
+
     let worker_dir = relative_crate_dir(&root_dir, &worker.manifest_path)?;
+
+    // The wasm-checked members are the wasm-consumable libraries — members
+    // that produce a Rust `lib`/`rlib` — excluding the worker itself (its wasm
+    // build is covered by `worker-build-check`). Cdylib-only and bin-only
+    // members drop out.
     let lib_pkgs: Vec<String> = meta
         .packages
         .iter()
-        .filter(|p| p.name != worker.name)
+        .filter(|p| p.name != worker.name && p.is_rust_lib())
         .map(|p| p.name.clone())
         .collect();
     if lib_pkgs.is_empty() {
@@ -872,6 +894,55 @@ fn workspace_layout(project_dir: &Path) -> Option<WorkspaceLayout> {
         lib_pkgs,
         worker_dir,
     })
+}
+
+/// Pick the worker among several cdylib members by matching the project's
+/// `wrangler.toml` `main` path against each member's directory: the worker is
+/// the cdylib whose crate dir prefixes `main` (e.g.
+/// `main = "crates/foo-server/build/worker/shim.mjs"` → `crates/foo-server`).
+/// Returns `None` if there's no readable `wrangler.toml`, no `main`, or no
+/// unambiguous match — callers fall back to the flat template.
+fn disambiguate_worker<'a>(
+    project_dir: &Path,
+    root_dir: &Path,
+    cdylibs: &[&'a CargoPackage],
+) -> Option<&'a CargoPackage> {
+    let main = wrangler_main(project_dir)?;
+    cdylibs.iter().copied().find(|p| {
+        relative_crate_dir(root_dir, &p.manifest_path)
+            .is_some_and(|dir| !dir.is_empty() && path_has_prefix(&main, &dir))
+    })
+}
+
+/// Read the top-level `main = "..."` value from `<project_dir>/wrangler.toml`.
+/// A line scan (stopping at the first table header) is enough: shaka's
+/// generated `wrangler.toml` declares `main` as a top-level key, and `main`
+/// isn't a valid key inside any of the tables that follow.
+fn wrangler_main(project_dir: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(project_dir.join("wrangler.toml")).ok()?;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            break;
+        }
+        if let Some(rest) = trimmed.strip_prefix("main") {
+            let rest = rest.trim_start();
+            if let Some(value) = rest.strip_prefix('=') {
+                return Some(value.trim().trim_matches(['"', '\'']).to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Whether `path` equals `prefix` or begins with `prefix/` — a path-segment
+/// prefix test, so `crates/foo` matches `crates/foo/...` but not
+/// `crates/foobar`.
+fn path_has_prefix(path: &str, prefix: &str) -> bool {
+    path == prefix
+        || path
+            .strip_prefix(prefix)
+            .is_some_and(|r| r.starts_with('/'))
 }
 
 /// The directory of `manifest_path` (a member's `Cargo.toml`) relative to the
@@ -1142,6 +1213,50 @@ mod tests {
         }
     }
 
+    /// A buzzingo-shaped virtual workspace: a `core` library, a `server`
+    /// worker cdylib, two more cdylibs (`wasm`/`ffi`), and a `tui` bin. The
+    /// `wrangler.toml` `main` shim points into `crates/server`, the signal
+    /// that disambiguates the worker among the three cdylibs.
+    fn write_multi_cdylib_workspace(root: &Path) {
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\
+             \"crates/core\", \"crates/server\", \"crates/wasm\", \"crates/ffi\", \"crates/tui\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("wrangler.toml"),
+            "name = \"buzzingo\"\nmain = \"crates/server/build/worker/shim.mjs\"\n\
+             compatibility_date = \"2024-01-01\"\n",
+        )
+        .unwrap();
+        let cdylib = "\n[lib]\ncrate-type = [\"cdylib\"]\n";
+        // (name, lib-section, is_bin)
+        for (name, lib, is_bin) in [
+            ("core", "", false),
+            ("server", cdylib, false),
+            ("wasm", cdylib, false),
+            ("ffi", cdylib, false),
+            ("tui", "", true),
+        ] {
+            let crate_dir = root.join("crates").join(name);
+            std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+            std::fs::write(
+                crate_dir.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n{lib}"
+                ),
+            )
+            .unwrap();
+            let (src, body) = if is_bin {
+                ("src/main.rs", "fn main() {}\n")
+            } else {
+                ("src/lib.rs", "")
+            };
+            std::fs::write(crate_dir.join(src), body).unwrap();
+        }
+    }
+
     #[test]
     fn template_for_rust_worker_workspace_uses_workspace_template() {
         let dir = tmp_project("rust-worker-ws");
@@ -1198,6 +1313,77 @@ mod tests {
             "{body}"
         );
         assert!(body.contains("cargo llvm-cov --workspace --json"), "{body}");
+    }
+
+    #[test]
+    fn template_for_multi_cdylib_workspace_disambiguates_worker_via_wrangler() {
+        let dir = tmp_project("rust-worker-multi-cdylib");
+        write_multi_cdylib_workspace(dir.path());
+        let body = template_for("rust-worker", dir.path()).expect("template");
+        // wasm-check scopes to the lib member only — not the cdylib siblings
+        // (wasm/ffi) nor the bin (tui).
+        assert!(
+            body.contains("cargo check -p core --target wasm32-unknown-unknown"),
+            "{body}"
+        );
+        for excluded in ["-p server", "-p wasm", "-p ffi", "-p tui"] {
+            assert!(
+                !body.contains(excluded),
+                "{excluded} should not appear:\n{body}"
+            );
+        }
+        // worker-build runs in the crate the wrangler `main` shim points at.
+        assert!(
+            body.contains("cd crates/server && worker-build --release"),
+            "{body}"
+        );
+        assert!(
+            !body.contains("{LIB_PKGS}") && !body.contains("{WORKER_DIR}"),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn multi_cdylib_without_wrangler_falls_back_to_flat() {
+        // No wrangler.toml means the worker can't be disambiguated among the
+        // cdylibs, so generation stays best-effort and uses the flat template.
+        let dir = tmp_project("rust-worker-multi-no-wrangler");
+        write_multi_cdylib_workspace(dir.path());
+        std::fs::remove_file(dir.path().join("wrangler.toml")).unwrap();
+        assert_eq!(
+            template_for("rust-worker", dir.path()).as_deref(),
+            Some(RUST_WORKER_TEMPLATE)
+        );
+    }
+
+    #[test]
+    fn wrangler_main_reads_top_level_key() {
+        let dir = tmp_project("wrangler-main");
+        std::fs::write(
+            dir.path().join("wrangler.toml"),
+            "name = \"x\"\nmain = \"crates/server/build/worker/shim.mjs\"\n\n[vars]\nmain = \"trap\"\n",
+        )
+        .unwrap();
+        // Reads the top-level `main`, not the `main` inside the `[vars]` table.
+        assert_eq!(
+            wrangler_main(dir.path()).as_deref(),
+            Some("crates/server/build/worker/shim.mjs")
+        );
+    }
+
+    #[test]
+    fn wrangler_main_absent_file_is_none() {
+        let dir = tmp_project("wrangler-missing");
+        assert_eq!(wrangler_main(dir.path()), None);
+    }
+
+    #[test]
+    fn path_has_prefix_matches_on_segment_boundary() {
+        assert!(path_has_prefix("crates/server/build/x", "crates/server"));
+        assert!(path_has_prefix("crates/server", "crates/server"));
+        // Not a segment-boundary match — must not pick `crates/serv`.
+        assert!(!path_has_prefix("crates/server/build", "crates/serv"));
+        assert!(!path_has_prefix("crates/server-extra/x", "crates/server"));
     }
 
     #[test]
