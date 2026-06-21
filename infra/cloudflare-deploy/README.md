@@ -18,11 +18,14 @@ backend) is hand-written.
 - `terraform/generated/` — generator-owned. One `<project>.tf` per
   app with a `deploy:` block, plus `_zones.tf` aggregating one
   `data "cloudflare_zone"` per unique zone referenced across all
-  deploys. When a project declares `deploy.cache`, its `<project>.tf`
-  also carries a zone-level `cloudflare_ruleset` for the
-  `http_request_cache_settings` phase. Carries a "Do not edit by
-  hand" header; drift is caught by `shaka deploy generate-tf --check`
-  in `shaka preflight`.
+  deploys (omitted entirely when every deploy is D1-only). When a
+  project declares `deploy.cache`, its `<project>.tf` also carries a
+  zone-level `cloudflare_ruleset` for the
+  `http_request_cache_settings` phase; when it declares `deploy.d1`,
+  the file carries a `cloudflare_d1_database` (account-scoped — no
+  zone) plus an `output` for its computed id. Carries a "Do not edit
+  by hand" header; drift is caught by `shaka deploy generate-tf
+  --check` in `shaka preflight`.
 
 ## Building
 
@@ -69,3 +72,47 @@ If migrating an existing local state into the remote backend, run
 `shaka object-store tfstate migrate --module infra/cloudflare-deploy/terraform`
 once after the credentials are exported — it wraps
 `tofu init -migrate-state`.
+
+## D1 databases
+
+A `rust-worker` project that declares `deploy.d1` gets a
+`cloudflare_d1_database` provisioned here. D1 is account-scoped, so the
+database needs no zone — it can ride alongside a custom-domain
+attachment or stand alone (a worker that only needs a data store
+declares `d1` without graduating its domain to Terraform). The generator also
+emits an `output "<project>_d1_database_id"` for the database's computed
+id (`<project>` is the project name with dots and hyphens replaced by
+underscores — the same identifier used for the resource elsewhere in
+`generated/`).
+
+D1 *bindings* stay consumer-side: a worker reads its database through a
+`[[d1_databases]]` entry in its own `wrangler.toml`, which carries the
+`database_id`. Wiring that id is a one-time manual step after the first
+apply — the same read-from-state-then-commit flow `webAnalytics` uses
+for its `site_token`:
+
+1. `op run --env-file=.env -- just apply` provisions the database.
+2. Read the computed id from state:
+
+   ```
+   tofu state show 'module.generated.cloudflare_d1_database.<project>_d1'
+   ```
+
+   The `id` field is the database UUID — the provider also exposes an
+   identical `uuid` attribute, but `id` is the canonical resource id and
+   is what the generated `output` uses. (That `output` carries the same
+   value, available as `module.generated.<project>_d1_database_id` for
+   any root that re-exports it.)
+3. Paste it into the consumer's `wrangler.toml`:
+
+   ```toml
+   [[d1_databases]]
+   binding       = "DB"
+   database_name = "<databaseName>"
+   database_id   = "<id from step 2>"
+   ```
+
+The id is stable and non-secret, so it's committed to the consumer
+repo. Schema migrations stay consumer-side too
+(`wrangler d1 migrations apply`); `shaka` only provisions the database
+resource.
