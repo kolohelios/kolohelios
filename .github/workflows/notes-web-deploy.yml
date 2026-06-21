@@ -46,11 +46,13 @@ jobs:
             - 'apps/notes-web/**'
             - '.github/workflows/notes-web-deploy.yml'
             - '.github/workflows/cf-deploy.yml'
+            - 'apps/notes-editor/**'
   verify:
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.portfolio == 'true' && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/cf-deploy.yml
     with:
+      pre_build_command: nix develop ../notes-editor --command bash -c 'cd ../notes-editor && just wasm-build' && mkdir -p dist/editor && cp ../notes-editor/dist/* dist/editor/
       project_dir: apps/notes-web
       verify_only: true
     secrets:
@@ -62,6 +64,7 @@ jobs:
     if: github.event_name == 'pull_request' && needs.changes.outputs.portfolio == 'true' && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/cf-deploy.yml
     with:
+      pre_build_command: nix develop ../notes-editor --command bash -c 'cd ../notes-editor && just wasm-build' && mkdir -p dist/editor && cp ../notes-editor/dist/* dist/editor/
       project_dir: apps/notes-web
       script_name_override: notes-web-pr-${{ github.event.pull_request.number }}
     secrets:
@@ -100,6 +103,7 @@ jobs:
     if: (github.event_name == 'push' && needs.changes.outputs.portfolio == 'true') || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/cf-deploy.yml
     with:
+      pre_build_command: nix develop ../notes-editor --command bash -c 'cd ../notes-editor && just wasm-build' && mkdir -p dist/editor && cp ../notes-editor/dist/* dist/editor/
       project_dir: apps/notes-web
       verify_only: false
     secrets:
