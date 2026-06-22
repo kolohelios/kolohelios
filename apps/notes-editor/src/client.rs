@@ -2,26 +2,44 @@
 //! decisions, native-tested off the browser DOM/socket glue in `dom`.
 //! Shares the `notes-protocol` types with the Durable Object so the two
 //! ends can't drift.
+//!
+//! The state machine keeps **at most one edit in flight** and coalesces
+//! keystrokes that arrive while it's outstanding into a single `pending`
+//! body. That serialization is what makes the whole-body v1 protocol safe
+//! under fast typing: every `Edit` we send carries the current `seq` as
+//! its `base_seq`, so it can never be self-stale, so the server never
+//! answers with a `Sync` that would overwrite what the user is typing.
 
 use notes_protocol::{ClientMsg, Delta, Seq, ServerMsg};
 
-/// The editor's view of the document: the last sequence confirmed by the
-/// server and the body at that sequence.
+/// The editor's view of the document.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClientState {
+    /// Last sequence the server confirmed.
     pub seq: Seq,
+    /// Body the server has confirmed at `seq` (or is about to, once the
+    /// in-flight edit acks). Not the live textarea — the browser owns that.
     pub text: String,
+    /// Body of the edit awaiting an `Ack` (`None` when idle). At most one
+    /// is ever outstanding, so its `base_seq` is always the current `seq`.
+    sending: Option<String>,
+    /// Newest local body queued behind the in-flight edit, coalesced to
+    /// just the latest — intermediate keystrokes are dropped, not queued.
+    pending: Option<String>,
 }
 
-/// What the UI should do after folding a server message in.
+/// What the UI should do to the editing surface after folding a server
+/// frame. Only `Replace` touches the textarea.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Effect {
-    /// Adopt `text` on the editing surface (a full `Sync`).
+    /// Adopt `text` on the surface (an idle `Sync`: initial load/reconnect).
     Replace(String),
-    /// An edit was accepted — nothing to redraw.
-    Acked,
-    /// The note was committed to git (`commit_sha` when known).
+    /// The note reached git — `commit_sha` when known. For a future
+    /// "backed up" status line; the surface is untouched.
     BackedUp(Option<String>),
+    /// Nothing to redraw: an `Ack`, or a `Sync` we declined to adopt
+    /// because the user has unsaved local edits.
+    None,
 }
 
 impl ClientState {
@@ -33,35 +51,69 @@ impl ClientState {
         }
     }
 
-    /// The edit message for a new local body. v1 sends the whole body (the
-    /// always-correct fallback delta); a splice path can replace this
-    /// later without touching the protocol or this signature.
-    pub fn edit(&self, new_text: &str) -> ClientMsg {
-        ClientMsg::Edit {
-            base_seq: self.seq,
-            delta: Delta::Whole {
-                text: new_text.to_owned(),
-            },
+    /// Fold a local keystroke (the full textarea body). Returns the `Edit`
+    /// to send now, or `None` if an edit is already in flight and this was
+    /// coalesced into `pending`. The next pending body is flushed on `Ack`.
+    pub fn local_edit(&mut self, body: &str) -> Option<ClientMsg> {
+        if self.sending.is_some() {
+            self.pending = Some(body.to_owned());
+            None
+        } else {
+            Some(self.start_send(body.to_owned()))
         }
     }
 
-    /// Fold a server message into the state, returning the UI effect. A
-    /// `Sync` resets the confirmed sequence and body; an `Ack` only
-    /// advances the sequence (the local body already reflects the edit
-    /// the server just accepted).
-    pub fn apply(&mut self, msg: ServerMsg) -> Effect {
+    /// Fold a server frame into the state. Returns the surface effect and
+    /// an optional follow-up `Edit` (flushing a coalesced keystroke now
+    /// that the in-flight slot is free).
+    pub fn apply(&mut self, msg: ServerMsg) -> (Effect, Option<ClientMsg>) {
         match msg {
-            ServerMsg::Sync { seq, text } => {
-                self.seq = seq;
-                self.text = text.clone();
-                Effect::Replace(text)
-            }
             ServerMsg::Ack { seq } => {
                 self.seq = seq;
-                Effect::Acked
+                if let Some(sent) = self.sending.take() {
+                    self.text = sent;
+                }
+                (Effect::None, self.flush_pending())
             }
-            ServerMsg::BackedUp { commit_sha } => Effect::BackedUp(commit_sha),
+            ServerMsg::Sync { seq, text } => {
+                self.seq = seq;
+                if self.sending.is_some() || self.pending.is_some() {
+                    // The user has local edits outstanding, so the server's
+                    // body is behind us. Keep what they typed on screen and
+                    // re-send it on the new base rather than overwriting.
+                    self.text = text;
+                    let local = self.pending.take().or_else(|| self.sending.take());
+                    self.sending = None;
+                    (Effect::None, local.map(|b| self.start_send(b)))
+                } else {
+                    // Idle: adopt the server body (initial load / reconnect).
+                    self.text = text.clone();
+                    (Effect::Replace(text), None)
+                }
+            }
+            ServerMsg::BackedUp { commit_sha } => (Effect::BackedUp(commit_sha), None),
         }
+    }
+
+    /// Send the next coalesced body if it differs from what the server now
+    /// holds; otherwise the slot stays idle.
+    fn flush_pending(&mut self) -> Option<ClientMsg> {
+        let next = self.pending.take()?;
+        if next == self.text {
+            return None;
+        }
+        Some(self.start_send(next))
+    }
+
+    /// Build the `Edit` for `body` on top of the current `seq` and mark it
+    /// in flight (the single outstanding slot).
+    fn start_send(&mut self, body: String) -> ClientMsg {
+        let msg = ClientMsg::Edit {
+            base_seq: self.seq,
+            delta: Delta::Whole { text: body.clone() },
+        };
+        self.sending = Some(body);
+        msg
     }
 }
 
@@ -69,78 +121,123 @@ impl ClientState {
 mod tests {
     use super::*;
 
+    fn edit(base_seq: Seq, text: &str) -> ClientMsg {
+        ClientMsg::Edit {
+            base_seq,
+            delta: Delta::Whole { text: text.into() },
+        }
+    }
+
     #[test]
     fn open_resyncs_from_the_last_seen_sequence() {
         let state = ClientState {
             seq: 7,
             text: "body".into(),
+            ..Default::default()
         };
         assert_eq!(state.open(), ClientMsg::Open { since_seq: 7 });
     }
 
     #[test]
-    fn edit_sends_the_whole_body_on_top_of_the_current_sequence() {
-        let state = ClientState {
+    fn an_idle_edit_is_sent_immediately_on_the_current_sequence() {
+        let mut s = ClientState {
             seq: 3,
             text: "old".into(),
+            ..Default::default()
         };
-        assert_eq!(
-            state.edit("new body"),
-            ClientMsg::Edit {
-                base_seq: 3,
-                delta: Delta::Whole {
-                    text: "new body".into()
-                },
-            }
-        );
+        assert_eq!(s.local_edit("new body"), Some(edit(3, "new body")));
     }
 
     #[test]
-    fn sync_replaces_the_surface_and_resets_state() {
-        let mut state = ClientState::default();
-        let effect = state.apply(ServerMsg::Sync {
+    fn keystrokes_behind_an_in_flight_edit_are_coalesced() {
+        let mut s = ClientState::default();
+        // First keystroke goes out immediately.
+        assert_eq!(s.local_edit("a"), Some(edit(0, "a")));
+        // Everything typed before the Ack is coalesced to just the latest.
+        assert_eq!(s.local_edit("ab"), None);
+        assert_eq!(s.local_edit("abc"), None);
+        assert_eq!(s.local_edit("abcd"), None);
+    }
+
+    #[test]
+    fn fast_typing_never_goes_stale_or_clobbers() {
+        // The bug this fixes: pipelined edits with the same base_seq → the
+        // server marks the later ones stale → sends a Sync that overwrites
+        // the textarea. With serialization the follow-up carries the
+        // advanced base_seq, so it's never stale and no Sync is provoked.
+        let mut s = ClientState::default();
+        assert_eq!(
+            s.apply(ServerMsg::Sync {
+                seq: 0,
+                text: String::new(),
+            }),
+            (Effect::Replace(String::new()), None)
+        );
+
+        assert_eq!(s.local_edit("a"), Some(edit(0, "a"))); // sent
+        assert_eq!(s.local_edit("ab"), None); // coalesced
+        assert_eq!(s.local_edit("abc"), None); // coalesced to latest
+
+        // Ack for "a": seq → 1, and the coalesced "abc" flushes on base 1.
+        let (effect, follow) = s.apply(ServerMsg::Ack { seq: 1 });
+        assert_eq!(effect, Effect::None);
+        assert_eq!(follow, Some(edit(1, "abc"))); // base 1, never stale
+
+        // Ack for "abc": nothing pending, nothing to send.
+        let (effect, follow) = s.apply(ServerMsg::Ack { seq: 2 });
+        assert_eq!(effect, Effect::None);
+        assert_eq!(follow, None);
+        assert_eq!(s.seq, 2);
+        assert_eq!(s.text, "abc");
+    }
+
+    #[test]
+    fn ack_with_no_change_queued_sends_nothing() {
+        let mut s = ClientState::default();
+        s.local_edit("a"); // in flight
+        let (effect, follow) = s.apply(ServerMsg::Ack { seq: 1 });
+        assert_eq!(effect, Effect::None);
+        assert_eq!(follow, None);
+        assert_eq!(s.text, "a");
+    }
+
+    #[test]
+    fn an_idle_sync_adopts_the_server_body() {
+        let mut s = ClientState::default();
+        let (effect, follow) = s.apply(ServerMsg::Sync {
             seq: 5,
             text: "server body".into(),
         });
         assert_eq!(effect, Effect::Replace("server body".into()));
-        assert_eq!(state.seq, 5);
-        assert_eq!(state.text, "server body");
+        assert_eq!(follow, None);
+        assert_eq!(s.seq, 5);
+        assert_eq!(s.text, "server body");
     }
 
     #[test]
-    fn ack_only_advances_the_sequence() {
-        let mut state = ClientState {
-            seq: 4,
-            text: "local".into(),
-        };
-        assert_eq!(state.apply(ServerMsg::Ack { seq: 5 }), Effect::Acked);
-        assert_eq!(state.seq, 5);
-        // The body is untouched — it already holds what we sent.
-        assert_eq!(state.text, "local");
-    }
-
-    #[test]
-    fn backed_up_surfaces_the_commit_sha() {
-        let mut state = ClientState::default();
-        assert_eq!(
-            state.apply(ServerMsg::BackedUp {
-                commit_sha: Some("abc123".into())
-            }),
-            Effect::BackedUp(Some("abc123".into()))
-        );
-    }
-
-    #[test]
-    fn an_edit_after_an_ack_uses_the_acked_sequence_as_its_base() {
-        let mut state = ClientState::default();
-        state.apply(ServerMsg::Sync {
-            seq: 1,
-            text: "a".into(),
+    fn a_sync_with_unsaved_local_edits_keeps_local_and_resends() {
+        // A reconnect Sync must not overwrite text the user typed but the
+        // server hasn't confirmed; keep it on screen and re-send on the new
+        // base sequence.
+        let mut s = ClientState::default();
+        s.local_edit("typed locally"); // now in flight
+        let (effect, follow) = s.apply(ServerMsg::Sync {
+            seq: 9,
+            text: "stale server body".into(),
         });
-        state.apply(ServerMsg::Ack { seq: 2 });
-        match state.edit("ab") {
-            ClientMsg::Edit { base_seq, .. } => assert_eq!(base_seq, 2),
-            other => panic!("expected Edit, got {other:?}"),
-        }
+        assert_eq!(effect, Effect::None); // surface untouched
+        assert_eq!(follow, Some(edit(9, "typed locally"))); // re-sent on base 9
+        assert_eq!(s.seq, 9);
+    }
+
+    #[test]
+    fn backed_up_surfaces_the_commit_sha_without_redraw() {
+        let mut s = ClientState::default();
+        assert_eq!(
+            s.apply(ServerMsg::BackedUp {
+                commit_sha: Some("abc123".into()),
+            }),
+            (Effect::BackedUp(Some("abc123".into())), None)
+        );
     }
 }

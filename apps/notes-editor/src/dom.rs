@@ -43,10 +43,14 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
         onopen.forget();
     }
 
-    // onmessage → fold the server frame in and adopt a Sync's body.
+    // onmessage → fold the server frame in. A `Sync` may adopt the server
+    // body onto the surface; an `Ack` (or a `Sync` while we have local
+    // edits) may hand back a follow-up `Edit` flushing a coalesced
+    // keystroke, which we send.
     {
         let textarea_c = textarea.clone();
         let state_c = state.clone();
+        let ws_c = ws.clone();
         let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
             let Some(frame) = e.data().as_string() else {
                 return;
@@ -54,22 +58,30 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
             let Ok(msg) = serde_json::from_str::<ServerMsg>(&frame) else {
                 return;
             };
-            if let Effect::Replace(body) = state_c.borrow_mut().apply(msg) {
+            let (effect, follow_up) = state_c.borrow_mut().apply(msg);
+            if let Effect::Replace(body) = effect {
                 textarea_c.set_value(&body);
+            }
+            if let Some(msg) = follow_up {
+                let _ = send(&ws_c, &msg);
             }
         });
         ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
         onmessage.forget();
     }
 
-    // input → send the whole body as an edit. The server debounces the
-    // git commit, so an edit per keystroke stays cheap.
+    // input → fold the whole body in. Only the first keystroke of a burst
+    // sends immediately; the rest coalesce behind it and flush on `Ack`,
+    // so we never pipeline a self-stale edit that the server would answer
+    // with a clobbering `Sync`. The git commit is debounced server-side.
     {
         let ws_c = ws.clone();
         let state_c = state.clone();
         let textarea_c = textarea.clone();
         let oninput = Closure::<dyn FnMut()>::new(move || {
-            let _ = send(&ws_c, &state_c.borrow().edit(&textarea_c.value()));
+            if let Some(msg) = state_c.borrow_mut().local_edit(&textarea_c.value()) {
+                let _ = send(&ws_c, &msg);
+            }
         });
         textarea.add_event_listener_with_callback("input", oninput.as_ref().unchecked_ref())?;
         oninput.forget();
