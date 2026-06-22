@@ -11,7 +11,8 @@
 //!
 //! v1 input surface is a `<textarea>` and the edit delta is the whole
 //! body (the always-correct fallback); the splice/CRDT path can slot in
-//! behind [`client::ClientState::edit`] without touching the protocol.
+//! behind [`client::ClientState::local_edit`] without touching the
+//! protocol.
 
 pub mod client;
 
