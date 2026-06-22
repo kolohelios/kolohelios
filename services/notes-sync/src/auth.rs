@@ -152,6 +152,32 @@ pub fn cookie_value<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
         .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
 }
 
+/// Authorize a note-socket upgrade for the single owner. Returns true only
+/// when the `Cookie:` header carries a `session` cookie that verifies
+/// against `secret` *and* whose DID equals `owner_did`.
+///
+/// Fails **closed**: a missing secret, missing/blank owner config, an
+/// absent/malformed/expired/tampered cookie, or a DID that isn't the
+/// owner's all deny. This is the single authorization gate for the app —
+/// authn-only OAuth proves *an* identity; this proves it's *yours*.
+pub fn authorize_owner(
+    cookie_header: Option<&str>,
+    secret: Option<&[u8]>,
+    owner_did: Option<&str>,
+    now_unix: i64,
+) -> bool {
+    let (Some(header), Some(secret), Some(owner)) = (cookie_header, secret, owner_did) else {
+        return false;
+    };
+    let owner = owner.trim();
+    if owner.is_empty() {
+        return false;
+    }
+    cookie_value(header, "session")
+        .and_then(|c| verify_session(c, secret, now_unix).ok())
+        .is_some_and(|did| did == owner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,5 +292,61 @@ mod tests {
         assert_eq!(cookie_value("other=1", "session"), None);
         // No false match on a longer name sharing the prefix.
         assert_eq!(cookie_value("sessionx=1", "session"), None);
+    }
+
+    // ── owner authorization ─────────────────────────────────────────────
+
+    const OWNER: &str = "did:plc:owner";
+
+    fn header_for(did: &str, exp: i64) -> String {
+        format!("session={}", mint_session(did, exp, SECRET))
+    }
+
+    #[test]
+    fn authorize_owner_accepts_the_owner() {
+        let h = header_for(OWNER, 1_000);
+        assert!(authorize_owner(Some(&h), Some(SECRET), Some(OWNER), 500));
+    }
+
+    #[test]
+    fn authorize_owner_rejects_a_non_owner() {
+        // The load-bearing case: a perfectly valid cookie for a *different*
+        // Bluesky account must not be authorized.
+        let h = header_for("did:plc:someone-else", 1_000);
+        assert!(!authorize_owner(Some(&h), Some(SECRET), Some(OWNER), 500));
+    }
+
+    #[test]
+    fn authorize_owner_fails_closed_on_missing_config_or_cookie() {
+        let h = header_for(OWNER, 1_000);
+        assert!(!authorize_owner(Some(&h), None, Some(OWNER), 500)); // no secret
+        assert!(!authorize_owner(Some(&h), Some(SECRET), None, 500)); // no owner
+        assert!(!authorize_owner(Some(&h), Some(SECRET), Some("  "), 500)); // blank owner
+        assert!(!authorize_owner(None, Some(SECRET), Some(OWNER), 500)); // no cookie header
+        assert!(!authorize_owner(
+            Some("other=1"),
+            Some(SECRET),
+            Some(OWNER),
+            500
+        )); // no session cookie
+    }
+
+    #[test]
+    fn authorize_owner_rejects_expired_tampered_or_wrong_secret() {
+        let h = header_for(OWNER, 1_000);
+        assert!(!authorize_owner(Some(&h), Some(SECRET), Some(OWNER), 2_000)); // expired
+        assert!(!authorize_owner(
+            Some(&h),
+            Some(b"other-secret"),
+            Some(OWNER),
+            500
+        )); // wrong secret
+        let tampered = format!("session={}xx", mint_session(OWNER, 1_000, SECRET));
+        assert!(!authorize_owner(
+            Some(&tampered),
+            Some(SECRET),
+            Some(OWNER),
+            500
+        )); // tampered sig
     }
 }

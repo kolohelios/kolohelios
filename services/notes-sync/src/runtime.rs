@@ -18,7 +18,7 @@ use worker::{
     WebSocketPair,
 };
 
-use crate::auth::{cookie_value, verify_session};
+use crate::auth::authorize_owner;
 use crate::git::{commit_with_retry, CommitError, GitTarget, WorkerGitHubClient};
 use crate::route::parse_ws_note_id;
 use crate::state::{is_stale, next_alarm};
@@ -75,25 +75,24 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Response::ok("notes-sync: ok")
 }
 
-/// Whether the request carries a valid session cookie. When
-/// `SESSION_SECRET` isn't configured yet, the gate is open — the OAuth
-/// login flow that issues cookies (and the secret) lands with auth; until
-/// then the WS stays reachable for the earlier phases' runtime checks.
+/// Whether the request is the owner's authenticated session. Authn-only
+/// OAuth proves *an* identity; this proves it's *ours* — the signed
+/// cookie must verify against `SESSION_SECRET` and carry the `OWNER_DID`.
+/// Fails closed: a missing secret or owner var, or any non-owner/invalid
+/// cookie, denies. (Earlier phases ran with the gate open while the OAuth
+/// flow was being built; that fail-open default is gone now that the
+/// secret and owner are configured.)
 fn session_authorized(req: &Request, env: &Env) -> bool {
-    let secret = match env.secret("SESSION_SECRET") {
-        Ok(s) => s.to_string(),
-        Err(_) => return true,
-    };
-    let header = req
-        .headers()
-        .get("Cookie")
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let secret = env.secret("SESSION_SECRET").ok().map(|s| s.to_string());
+    let owner = env.var("OWNER_DID").ok().map(|v| v.to_string());
+    let header = req.headers().get("Cookie").ok().flatten();
     let now = Date::now().as_millis() as i64 / 1000;
-    cookie_value(&header, "session")
-        .and_then(|v| verify_session(v, secret.as_bytes(), now).ok())
-        .is_some()
+    authorize_owner(
+        header.as_deref(),
+        secret.as_deref().map(str::as_bytes),
+        owner.as_deref(),
+        now,
+    )
 }
 
 /// Per-connection state persisted across hibernation via the socket

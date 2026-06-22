@@ -51,6 +51,12 @@ tag                = "v2"
 # (optional) is the appview used to resolve a handle to a DID. The
 # cookie-signing key is a secret:
 #   wrangler secret put SESSION_SECRET
+#
+# `OWNER_DID` is the single account allowed to reach a note socket: the WS
+# gate authorizes only a session cookie carrying this DID, so authn-only
+# OAuth (any Bluesky account) can't read or write the notes. A DID is a
+# public identifier, not a secret. `did:plc:ujhuvzz7wulwh7kkxcshwwrf` is
+# `kolohelios.bsky.social`.
 [vars]
 GITHUB_BRANCH         = "main"
 GITHUB_OWNER          = "kolohelios"
@@ -58,3 +64,4 @@ GITHUB_REPO           = "notes-store"
 OAUTH_APP_URL         = "https://notes.kolohelios.com"
 OAUTH_BASE_URL        = "https://notes-sync.kolohelios.com"
 OAUTH_HANDLE_RESOLVER = "https://bsky.social"
+OWNER_DID             = "did:plc:ujhuvzz7wulwh7kkxcshwwrf"
