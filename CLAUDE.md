@@ -263,6 +263,34 @@ workflow run goes red.
 - See also #147 (`shaka repo rebase-wip`), the local-side companion
   for branches you're actively iterating on.
 
+### Auto-merge gating
+
+Branch protection is shaka-managed: each repo declares a policy in
+`.shaka/repo.cue` (`#RepoPolicy`) that `shaka repo audit [--fix]` applies
+to GitHub. Two rules keep auto-merge from misfiring — both learned the
+hard way shipping a burst of PRs (#964):
+
+- **Use `strictStatusChecks: false` with a single aggregate `Gate`
+  required check.** Strict mode (require-branch-up-to-date) plus
+  `auto-rebase-prs` is a treadmill: when `main` moves, the bot re-heads
+  every open PR, but the required `validate`/`Gate` doesn't reliably
+  re-run on the rebased head, so strict mode keeps the PR `BLOCKED` until
+  `main` happens to idle. Non-strict lets a PR merge once its checks
+  passed once; auto-rebase still keeps branches close to `main`. The
+  generated `main.yaml` exposes one `Gate` job (`if: always()`, `needs`
+  every other job) so a single required check covers the whole matrix —
+  add or remove jobs without touching branch protection.
+- **A `deploy.d1` binding must carry a real `database_id` before it
+  merges.** `shaka deploy generate-tf` provisions the D1 database and
+  emits its id as a Terraform output you paste into the consumer's
+  `wrangler.toml` `[[d1_databases]] database_id`. A placeholder id
+  *passes* the PR-time `wrangler deploy --dry-run` (`verify`) but fails
+  the real post-merge deploy (`binding … must have a valid database_id`,
+  code 10021), which breaks `main`'s deploy and blocks every deploy
+  after it. `shaka deploy check-d1` (a preflight check) fails when any
+  project declaring `deploy.d1` has a non-UUID `database_id`, so paste
+  the real id (`tofu output`) before merging.
+
 ### Daily `nixpkgs` lock bump
 
 `.github/workflows/bump-nixpkgs.yaml` runs daily at 00:00 UTC (also
