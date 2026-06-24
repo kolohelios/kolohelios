@@ -264,7 +264,7 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             slug: slug.into(),
             workdir: workdir.clone(),
             prompt: "go".into(),
-            model: "test-model".into(),
+            model: Some("test-model".into()),
             no_sync: true,
         },
     )
@@ -282,7 +282,7 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             slug: slug.into(),
             workdir: workdir.clone(),
             prompt: "write me three paragraphs about mocking".into(),
-            model: "test-model".into(),
+            model: Some("test-model".into()),
             no_sync: true,
         },
     )?;
@@ -310,7 +310,7 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             slug: slug.into(),
             workdir: workdir.clone(),
             prompt: "tighten".into(),
-            model: "test-model".into(),
+            model: Some("test-model".into()),
             no_sync: true,
         },
     )
@@ -328,7 +328,7 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             slug: slug.into(),
             workdir: workdir.clone(),
             prompt: "tighten paragraphs".into(),
-            model: "test-model".into(),
+            model: Some("test-model".into()),
             no_sync: true,
         },
     )?;
@@ -359,7 +359,7 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             slug: slug.into(),
             workdir: workdir.clone(),
             prompt: None,
-            model: "test-model".into(),
+            model: Some("test-model".into()),
             no_sync: true,
         },
     )
@@ -378,7 +378,7 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             slug: slug.into(),
             workdir: workdir.clone(),
             prompt: None,
-            model: "test-model".into(),
+            model: Some("test-model".into()),
             no_sync: true,
         },
     )?;
@@ -417,5 +417,120 @@ fn run_ai_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
         fe.prompt
     );
     assert_eq!(fe.model, "test-model");
+    Ok(())
+}
+
+/// `[defaults].model` is honored by `draft` when `--model` is omitted,
+/// and an explicit `--model` overrides it (#956). The clap default that
+/// used to populate `--model` made the config knob inert; this guards
+/// the resolution precedence end to end via the recorded
+/// `ai.draft.model` audit field.
+#[test]
+fn draft_resolves_model_from_defaults_then_flag_override() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut server = mockito::Server::new();
+    // Two drafts run back to back; each consumes one canned reply.
+    let mock_default = mock_chat_completion(&mut server, DRAFT_REPLY);
+    let mock_override = mock_chat_completion(&mut server, DRAFT_REPLY);
+
+    let prev_base = env::var("OPENROUTER_API_BASE").ok();
+    let prev_key = env::var("OPENROUTER_API_KEY").ok();
+    env::set_var(
+        "OPENROUTER_API_BASE",
+        format!("{}/chat/completions", server.url()),
+    );
+    env::set_var("OPENROUTER_API_KEY", "test-key");
+
+    let result = run_draft_model_resolution();
+
+    match prev_base {
+        Some(v) => env::set_var("OPENROUTER_API_BASE", v),
+        None => env::remove_var("OPENROUTER_API_BASE"),
+    }
+    match prev_key {
+        Some(v) => env::set_var("OPENROUTER_API_KEY", v),
+        None => env::remove_var("OPENROUTER_API_KEY"),
+    }
+
+    result.expect("draft model resolution should succeed");
+    mock_default.assert();
+    mock_override.assert();
+}
+
+fn run_draft_model_resolution() -> Result<(), Box<dyn std::error::Error>> {
+    let (_tmp, workdir) = fresh_workdir();
+    commands::init::run(&FakeJj::new(), workdir.clone(), true)?;
+
+    // Set `[defaults].model` by round-tripping the freshly written config
+    // through the typed `Config` — no string-literal config fixture.
+    let repo = Repository::open(Workdir::new(&workdir))?;
+    let mut config = repo.read_config()?;
+    config.defaults.model = Some("config/default-model".into());
+    std::fs::write(
+        Workdir::new(&workdir).config_path(),
+        toml::to_string(&config)?,
+    )?;
+
+    commands::new::run(
+        &FakeJj::new(),
+        "Model resolution".into(),
+        workdir.clone(),
+        Some("model-resolution".into()),
+        Kind::Post,
+        None,
+        true,
+    )?;
+    let slug = "model-resolution";
+    commands::promote::run(&FakeJj::new(), slug.to_string(), workdir.clone(), true)?;
+
+    // No --model → resolves to [defaults].model.
+    commands::draft::run(
+        &FakeJj::new(),
+        DraftArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: "go".into(),
+            model: None,
+            no_sync: true,
+        },
+    )?;
+    let repo = Repository::open(Workdir::new(&workdir))?;
+    let (_, post) = repo.load(slug)?;
+    assert_eq!(
+        post.metadata
+            .ai
+            .as_ref()
+            .and_then(|ai| ai.draft.as_ref())
+            .expect("ai.draft set post-draft")
+            .model,
+        "config/default-model",
+        "omitted --model should fall back to [defaults].model"
+    );
+
+    // Explicit --model overrides [defaults].model. Draft doesn't promote,
+    // so the post is still in Ideation for a second pass.
+    commands::draft::run(
+        &FakeJj::new(),
+        DraftArgs {
+            slug: slug.into(),
+            workdir: workdir.clone(),
+            prompt: "go again".into(),
+            model: Some("flag/explicit-model".into()),
+            no_sync: true,
+        },
+    )?;
+    let repo = Repository::open(Workdir::new(&workdir))?;
+    let (_, post) = repo.load(slug)?;
+    assert_eq!(
+        post.metadata
+            .ai
+            .as_ref()
+            .and_then(|ai| ai.draft.as_ref())
+            .expect("ai.draft set post-second-draft")
+            .model,
+        "flag/explicit-model",
+        "explicit --model should override [defaults].model"
+    );
+
     Ok(())
 }

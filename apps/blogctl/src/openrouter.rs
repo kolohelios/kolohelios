@@ -23,6 +23,21 @@ fn endpoint() -> String {
 
 pub const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4-6";
 
+/// Resolve which OpenRouter model a command should use, applying the
+/// precedence `--model` flag > `[defaults].model` > the built-in
+/// [`DEFAULT_MODEL`].
+///
+/// `flag` is the command's `--model` argument (`None` when the user
+/// didn't pass it); `config_default` is `[defaults].model` from the
+/// workdir's `.blog-os.toml` (`None` when unset). The `--model` clap
+/// args deliberately carry no `default_value`, so an absent `flag`
+/// genuinely means "fall through" rather than "the user typed the
+/// default" — that conflation is what made `[defaults].model` inert
+/// (#956).
+pub fn resolve_model(flag: Option<&str>, config_default: Option<&str>) -> String {
+    flag.or(config_default).unwrap_or(DEFAULT_MODEL).to_string()
+}
+
 #[derive(Debug, Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
@@ -150,6 +165,24 @@ mod tests {
             Some(v) => env::set_var(API_BASE_VAR, v),
             None => env::remove_var(API_BASE_VAR),
         }
+    }
+
+    #[test]
+    fn resolve_model_prefers_flag_over_config_and_builtin() {
+        assert_eq!(
+            resolve_model(Some("flag/model"), Some("config/model")),
+            "flag/model"
+        );
+    }
+
+    #[test]
+    fn resolve_model_falls_back_to_config_default_when_flag_absent() {
+        assert_eq!(resolve_model(None, Some("config/model")), "config/model");
+    }
+
+    #[test]
+    fn resolve_model_falls_back_to_builtin_when_neither_set() {
+        assert_eq!(resolve_model(None, None), DEFAULT_MODEL);
     }
 
     #[test]
