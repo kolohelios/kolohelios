@@ -53,7 +53,10 @@ fn ping_hits_endpoint_via_env_override() {
     );
     env::set_var("OPENROUTER_API_KEY", "test-key");
 
-    let result = commands::ai::ping("hello".into(), "test-model".into());
+    // `ping` reads `[defaults].model` best-effort from the workdir; a
+    // temp dir with no `.blog-os.toml` exercises the "no config" path,
+    // and the explicit model flag wins regardless.
+    let result = commands::ai::ping("hello".into(), Some("test-model".into()), env::temp_dir());
 
     // Restore env before asserting so a panic doesn't poison subsequent
     // tests.
@@ -76,7 +79,7 @@ fn openrouter_api_key_missing_surfaces_clean_error() {
     let prev_key = env::var("OPENROUTER_API_KEY").ok();
     env::remove_var("OPENROUTER_API_KEY");
 
-    let result = commands::ai::ping("hello".into(), "test-model".into());
+    let result = commands::ai::ping("hello".into(), Some("test-model".into()), env::temp_dir());
 
     if let Some(v) = prev_key {
         env::set_var("OPENROUTER_API_KEY", v);

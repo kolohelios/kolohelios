@@ -40,7 +40,7 @@ pub struct FinalEditArgs {
     pub slug: String,
     pub workdir: PathBuf,
     pub prompt: Option<String>,
-    pub model: String,
+    pub model: Option<String>,
     pub no_sync: bool,
 }
 
@@ -55,28 +55,29 @@ pub fn run(jj: &dyn Jj, args: FinalEditArgs) -> Result<()> {
         });
     }
 
+    let config = repo.read_config()?;
+    let model = openrouter::resolve_model(args.model.as_deref(), config.defaults.model.as_deref());
+
     let instruction = args
         .prompt
         .clone()
         .unwrap_or_else(|| DEFAULT_POLISH_PROMPT.to_string());
     let llm_prompt = build_prompt(&post.metadata.title, &post.body, &instruction);
-    let reply = openrouter::chat(&llm_prompt, &args.model)?;
+    let reply = openrouter::chat(&llm_prompt, &model)?;
 
     post.body = reply;
     post.metadata.ai = Some(merge_final_edit_record(
         post.metadata.ai.take(),
         AiFinalEditRecord {
             prompt: instruction,
-            model: args.model.clone(),
+            model: model.clone(),
             generated_at: OffsetDateTime::now_utc(),
         },
     ));
 
-    let config = repo.read_config()?;
     let opts = SyncOptions::from_config(&config.sync, args.no_sync);
-    let message = format!("post({}): final-edit via {}", args.slug, args.model);
+    let message = format!("post({}): final-edit via {}", args.slug, model);
     let path = handle.path.clone();
-    let model = args.model.clone();
     let slug = args.slug.clone();
 
     sync::commit_and_push(jj, &args.workdir, &opts, &message, || {

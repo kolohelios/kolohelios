@@ -8,7 +8,6 @@ use clap_complete::Shell;
 use crate::commands;
 use crate::error::{Error, Result};
 use crate::kind::Kind;
-use crate::openrouter;
 use crate::sync::{Jj, RealJj};
 use crate::target::Target;
 
@@ -153,9 +152,11 @@ pub enum Command {
         /// title + existing body).
         #[arg(long)]
         prompt: String,
-        /// OpenRouter model identifier.
-        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
-        model: String,
+        /// OpenRouter model identifier. When omitted, falls back to
+        /// `[defaults].model` from `.blog-os.toml`, then the built-in
+        /// default.
+        #[arg(long)]
+        model: Option<String>,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -172,9 +173,11 @@ pub enum Command {
         /// post's title + current body).
         #[arg(long)]
         prompt: String,
-        /// OpenRouter model identifier.
-        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
-        model: String,
+        /// OpenRouter model identifier. When omitted, falls back to
+        /// `[defaults].model` from `.blog-os.toml`, then the built-in
+        /// default.
+        #[arg(long)]
+        model: Option<String>,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -193,9 +196,11 @@ pub enum Command {
         /// LinkedIn rules don't apply.
         #[arg(long)]
         prompt: Option<String>,
-        /// OpenRouter model identifier.
-        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
-        model: String,
+        /// OpenRouter model identifier. When omitted, falls back to
+        /// `[defaults].model` from `.blog-os.toml`, then the built-in
+        /// default.
+        #[arg(long)]
+        model: Option<String>,
         /// Skip the post-write `jj` commit + push for this invocation.
         #[arg(long)]
         no_sync: bool,
@@ -370,9 +375,17 @@ pub enum AiAction {
     Ping {
         /// Prompt text to send to the model.
         prompt: String,
-        /// OpenRouter model identifier.
-        #[arg(long, default_value = openrouter::DEFAULT_MODEL)]
-        model: String,
+        /// Workdir whose `[defaults].model` is consulted when `--model`
+        /// is omitted. Defaults to the current working directory; a
+        /// missing or unreadable `.blog-os.toml` is fine — `ping` then
+        /// falls back to the built-in default.
+        #[arg(long, value_name = "PATH")]
+        workdir: Option<PathBuf>,
+        /// OpenRouter model identifier. When omitted, falls back to
+        /// `[defaults].model` from `.blog-os.toml`, then the built-in
+        /// default.
+        #[arg(long)]
+        model: Option<String>,
     },
 }
 
@@ -584,7 +597,11 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
             commands::update::run(jj, workdir_or_pwd(workdir)?, no_sync)
         }
         Command::Ai { action } => match action {
-            AiAction::Ping { prompt, model } => commands::ai::ping(prompt, model),
+            AiAction::Ping {
+                prompt,
+                workdir,
+                model,
+            } => commands::ai::ping(prompt, model, workdir_or_pwd(workdir)?),
         },
         Command::Draft {
             slug,
@@ -957,6 +974,16 @@ mod tests {
                 "ai",
                 "ping",
                 "hello",
+                "--model",
+                "openai/gpt-4o-mini",
+            ],
+            vec![
+                "blogctl",
+                "ai",
+                "ping",
+                "hello",
+                "--workdir",
+                "/tmp/wd",
                 "--model",
                 "openai/gpt-4o-mini",
             ],
