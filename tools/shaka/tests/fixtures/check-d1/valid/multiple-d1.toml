@@ -1,0 +1,13 @@
+name = "buzzingo"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-05-14"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "buzzingo"
+database_id = "a1b2c3d4-1234-5678-9abc-def012345678"
+
+[[d1_databases]]
+binding = "ANALYTICS"
+database_name = "buzzingo-analytics"
+database_id = "ffffffff-0000-1111-2222-333344445555"

@@ -1,0 +1,8 @@
+name = "buzzingo"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-05-14"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "buzzingo"
+database_id = "REPLACE_WITH_D1_ID"

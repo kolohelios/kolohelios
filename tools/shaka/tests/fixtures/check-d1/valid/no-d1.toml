@@ -1,0 +1,6 @@
+name = "portfolio"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-05-14"
+
+[assets]
+directory = "./dist"
