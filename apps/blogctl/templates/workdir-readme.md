@@ -24,8 +24,10 @@ split:
 - **`post`** — short-form feed content. The default for `blogctl new`.
 - **`article`** — long-form with its own permanent URL.
 
-Kind drives prompt selection, exit-criteria thresholds, and optional
-per-stage model overrides. Both kinds traverse the same stage pipeline.
+Kind gates exit-criteria thresholds today (evaluated at `blogctl
+promote` time). Once the run-stage pipeline lands (#233), kind will also
+drive prompt selection and optional per-stage model overrides. Both
+kinds traverse the same stage pipeline.
 
 ```sh
 blogctl new "Title" --workdir .                  # kind: post
@@ -47,8 +49,9 @@ blogctl new "Title" --workdir .                   # theme: standard (default)
 blogctl new "Title" --workdir . --theme parable   # theme: parable
 ```
 
-Theme drives prompt selection at `blogctl run-stage` time (model and
-exit criteria stay theme-agnostic for now).
+Theme will drive prompt selection once the `blogctl run-stage` pipeline
+lands (#233); model and exit criteria stay theme-agnostic. No shipped
+command selects prompts by theme yet.
 
 ## Layout
 
@@ -62,12 +65,13 @@ exit criteria stay theme-agnostic for now).
   abandoned/
   .blog-os.toml
   README.md
-  <prompt files>          # e.g. ideation-post-standard.md
+  <prompt files>          # planned (#233): e.g. ideation-post-standard.md
 ```
 
-Prompt files live at the workdir root next to `.blog-os.toml`. They are
-loaded by the OpenRouter integration; naming follows the pattern
-`<stage>-<kind>-<theme>.md`.
+Prompt files live at the workdir root next to `.blog-os.toml`. The
+file-based prompt pipeline that loads them (naming pattern
+`<stage>-<kind>-<theme>.md`) is planned (#233); no shipped command reads
+these files yet.
 
 ## Version control
 
