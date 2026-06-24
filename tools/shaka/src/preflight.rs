@@ -171,6 +171,18 @@ const CHECKS: &[Check] = &[
         run: shaka_deploy_generate_wrangler_check,
     },
     Check {
+        // A project's `deploy.d1` binding requires a real `database_id`
+        // pasted into its `wrangler.toml`; a placeholder passes the
+        // dry-run verify but breaks the post-merge deploy. Triggers on the
+        // checker, any project.cue (which may add a d1 binding), or any
+        // wrangler.toml (which carries the id). No-ops in a repo with no
+        // d1 bindings.
+        name: "shaka deploy check-d1",
+        paths: &["tools/shaka/**", "*/*/project.cue", "*/*/wrangler.toml"],
+        required_paths: &[],
+        run: shaka_deploy_check_d1,
+    },
+    Check {
         // Drift between a project's `cue/` source and its committed
         // `terraform/module.tf`. Triggers on changes to the generator,
         // the schema, any project's CUE source, or any project's
@@ -648,6 +660,10 @@ fn shaka_deploy_generate_tf_check() -> CheckResult {
 
 fn shaka_deploy_generate_wrangler_check() -> CheckResult {
     spawn_self(&["deploy", "generate-wrangler", "--check"])
+}
+
+fn shaka_deploy_check_d1() -> CheckResult {
+    spawn_self(&["deploy", "check-d1"])
 }
 
 fn shaka_terraform_check() -> CheckResult {

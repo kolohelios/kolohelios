@@ -13,6 +13,7 @@
 //! - `sweep-previews` reaps orphaned per-PR preview Workers (see
 //!   `sweep_previews.rs`).
 
+pub mod check_d1;
 pub mod generate_tf;
 pub mod generate_wrangler;
 pub mod sweep_previews;
@@ -51,6 +52,11 @@ pub enum DeployCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Fail if any project that declares a `deploy.d1` binding has a
+    /// placeholder `database_id` in its `wrangler.toml`. A placeholder
+    /// passes the PR-time `wrangler deploy --dry-run` but breaks the real
+    /// post-merge deploy, so this gates it at preflight (#964).
+    CheckD1,
 }
 
 pub fn run(cmd: DeployCommand) {
@@ -58,5 +64,6 @@ pub fn run(cmd: DeployCommand) {
         DeployCommand::GenerateTf { check } => generate_tf::run(check),
         DeployCommand::GenerateWrangler { check } => generate_wrangler::run(check),
         DeployCommand::SweepPreviews { dry_run } => sweep_previews::run(dry_run),
+        DeployCommand::CheckD1 => check_d1::run(),
     }
 }
