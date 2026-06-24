@@ -10,6 +10,7 @@ package labels
 		{name: "claude", color:       "d4c5f9", description: "claude-code config, hooks, settings", scope: true},
 		{name: "infra/devbox", color: "0052cc", description: "Devbox / dev-environment infrastructure", scope: true},
 		{name: "infra/home", color:   "006b75", description: "Home-manager / personal workstation infrastructure", scope: true},
+		{name: "infra/cloudflare-deploy", color: "f38020", description: "Cloudflare deploy attachments / account-scoped resources (Terraform)", scope: true},
 		{name: "meta", color:         "ededed", description: "Cross-cutting repo / monorepo policy issues", scope: true},
 		{name: "nix", color:          "5277c3", description: "Nix flakes, kolohelios-nix shared lib", scope: true},
 		{name: "pollen-alert", color: "0e8a16", description: "Pollen alert worker", scope: true},
