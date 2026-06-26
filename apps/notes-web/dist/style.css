@@ -145,7 +145,10 @@ main {
 
 #editor {
   flex: 1;
-  width: 100%;
+  /* Without min-width:0 a flex item won't shrink below its content's
+     intrinsic width — the textarea's default column width — so on a narrow
+     viewport it would overflow and push the editor out of view. */
+  min-width: 0;
   resize: none;
   border: 0;
   padding: var(--pad);
@@ -156,4 +159,21 @@ main {
 
 #editor:focus {
   outline: none;
+}
+
+/* Narrow / mobile: the fixed-width sidebar would swallow the whole screen,
+   leaving no room for the editor. Stack instead — a short scrollable note
+   list on top, the editor filling the rest below. */
+@media (max-width: 700px) {
+  main {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: auto;
+    flex-shrink: 1;
+    max-height: 13rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--muted);
+  }
 }
