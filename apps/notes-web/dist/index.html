@@ -29,6 +29,14 @@
       <span id="account" class="account" hidden></span>
     </header>
     <main>
+      <nav id="sidebar" class="sidebar" aria-label="vault">
+        <div class="sidebar-head">
+          <span>vault</span>
+          <button id="new-note" type="button" title="New note">+</button>
+        </div>
+        <!-- Filled from GET /vault: a tree of the committed notes. -->
+        <div id="vault-tree" class="vault-tree">loading…</div>
+      </nav>
       <textarea
         id="editor"
         spellcheck="true"
@@ -52,7 +60,10 @@
       // separate Worker; its host is injected at deploy as
       // `window.NOTES_BACKEND`, defaulting to this origin for local dev.
       const backend = window.NOTES_BACKEND || location.host;
-      const wsUrl = `${wsProto}://${backend}/note/${encodeURIComponent(noteId)}/ws`;
+      // The id is a `/`-separated path; the server rejects a percent-encoded
+      // slash (`%2F`), so encode each segment but keep the separators raw.
+      const wsPath = noteId.split("/").map(encodeURIComponent).join("/");
+      const wsUrl = `${wsProto}://${backend}/note/${wsPath}/ws`;
 
       // Sign in: hand off to the backend's ATProto OAuth login. It
       // resolves the handle, runs the flow, mints the session cookie, and
@@ -102,6 +113,101 @@
         }
       }
       refreshAuth();
+
+      // A note path is `/`-separated unreserved segments — the same shape
+      // the backend validates, checked here for instant feedback.
+      function validNotePath(p) {
+        return (
+          p.length > 0 &&
+          p
+            .split("/")
+            .every(
+              (s) => /^[A-Za-z0-9._-]+$/.test(s) && s !== "." && s !== "..",
+            )
+        );
+      }
+
+      // Build a nested tree from the flat, sorted note paths so the sidebar
+      // can render folders and notes.
+      function buildTree(paths) {
+        const root = { children: {} };
+        for (const p of paths) {
+          const parts = p.split("/");
+          let node = root;
+          parts.forEach((part, i) => {
+            node.children[part] ??= { children: {} };
+            node = node.children[part];
+            if (i === parts.length - 1) node.note = p;
+          });
+        }
+        return root;
+      }
+
+      function renderNode(node, container) {
+        const ul = document.createElement("ul");
+        for (const name of Object.keys(node.children).sort()) {
+          const child = node.children[name];
+          const li = document.createElement("li");
+          if (child.note !== undefined) {
+            const a = document.createElement("a");
+            a.href = "?note=" + encodeURIComponent(child.note);
+            a.textContent = name;
+            if (child.note === noteId) a.className = "active";
+            li.appendChild(a);
+          } else {
+            const span = document.createElement("span");
+            span.className = "folder";
+            span.textContent = name + "/";
+            li.appendChild(span);
+          }
+          if (Object.keys(child.children).length) renderNode(child, li);
+          ul.appendChild(li);
+        }
+        container.appendChild(ul);
+      }
+
+      // Load the vault listing and render the sidebar tree. The endpoint is
+      // owner-gated, so an unauthenticated visitor sees a prompt to sign in.
+      async function loadVault() {
+        const tree = document.getElementById("vault-tree");
+        let notes;
+        try {
+          const res = await fetch(`https://${backend}/vault`, {
+            credentials: "include",
+          });
+          if (res.status === 401) {
+            tree.textContent = "sign in to see your vault";
+            return;
+          }
+          if (!res.ok) {
+            tree.textContent = "vault unavailable";
+            return;
+          }
+          ({ notes } = await res.json());
+        } catch (e) {
+          tree.textContent = "vault unavailable";
+          return;
+        }
+        tree.replaceChildren();
+        if (!notes.length) {
+          tree.textContent = "no notes yet";
+          return;
+        }
+        renderNode(buildTree(notes), tree);
+      }
+      loadVault();
+
+      // New note: navigate to the empty note. It commits to git (and thus
+      // joins the vault listing) on its first edit.
+      document.getElementById("new-note").addEventListener("click", () => {
+        const path = (prompt("New note path (e.g. projects/idea)") || "").trim();
+        if (!path) return;
+        if (!validNotePath(path)) {
+          alert("Use letters, digits, . _ - and / between segments.");
+          return;
+        }
+        location.search = "?note=" + encodeURIComponent(path);
+      });
 
       const status = document.getElementById("status");
       try {
