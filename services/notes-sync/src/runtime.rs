@@ -24,11 +24,15 @@ use crate::route::parse_ws_note_id;
 use crate::state::{is_stale, next_alarm};
 
 /// Commit the note this long after the last edit — coalesces a burst of
-/// keystrokes into a single git commit once the typing settles.
-const COMMIT_DEBOUNCE: Duration = Duration::from_secs(5);
+/// keystrokes into a single git commit once the typing settles. Durability
+/// lives in DO storage (an edit is persisted before its `Ack`), so git is
+/// only backup/history/embedding-source; the cadence is sized for a legible
+/// history, not for minimizing data loss.
+const COMMIT_DEBOUNCE: Duration = Duration::from_secs(60);
 /// Commit at least this often under continuous editing, so a never-idle
-/// session still backs up.
-const COMMIT_BACKSTOP: Duration = Duration::from_secs(60);
+/// session still backs up. Bounds how far GitHub trails the DO; not a
+/// durability bound (DO storage already holds every accepted edit).
+const COMMIT_BACKSTOP: Duration = Duration::from_secs(300);
 /// After a failed commit, retry no sooner than this.
 const COMMIT_RETRY_BACKOFF: Duration = Duration::from_secs(30);
 /// Optimistic stale-ref retries within a single commit attempt.

@@ -15,6 +15,7 @@ package labels
 		{name: "nix", color:          "5277c3", description: "Nix flakes, kolohelios-nix shared lib", scope: true},
 		{name: "pollen-alert", color: "0e8a16", description: "Pollen alert worker", scope: true},
 		{name: "portfolio", color:    "1d76db", description: "Personal portfolio site at kolohelios.com", scope: true},
+		{name: "services/notes-sync", color: "1abc9c", description: "Git-backed live-synced note service (Durable Object)", scope: true},
 		{name: "shaka", color:        "5319e7", description: "shaka CLI / repo tooling", scope: true},
 		{name: "todoist", color:      "e60023", description: "Todoist CLI tool", scope: true},
 
