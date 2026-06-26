@@ -153,7 +153,20 @@
             a.href = "?note=" + encodeURIComponent(child.note);
             a.textContent = name;
             if (child.note === noteId) a.className = "active";
-            li.appendChild(a);
+            const del = document.createElement("button");
+            del.type = "button";
+            del.className = "note-del";
+            del.title = "Delete note";
+            del.textContent = "×";
+            del.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              deleteNote(child.note);
+            });
+            const row = document.createElement("div");
+            row.className = "note-row";
+            row.append(a, del);
+            li.appendChild(row);
           } else {
             const span = document.createElement("span");
             span.className = "folder";
@@ -196,6 +209,31 @@
         renderNode(buildTree(notes), tree);
       }
       loadVault();
+
+      // Delete a note: confirm, ask the backend to purge it (storage + git
+      // file), then refresh. If we just deleted the note we're viewing, fall
+      // back to the default note.
+      async function deleteNote(note) {
+        if (!confirm(`Delete "${note}"? This removes it from git.`)) return;
+        try {
+          const res = await fetch(
+            `https://${backend}/delete?note=${encodeURIComponent(note)}`,
+            { method: "POST", credentials: "include" },
+          );
+          if (!res.ok) {
+            alert("Delete failed.");
+            return;
+          }
+        } catch (e) {
+          alert("Delete failed.");
+          return;
+        }
+        if (note === noteId) {
+          location.search = "?note=scratch";
+        } else {
+          loadVault();
+        }
+      }
 
       // New note: navigate to the empty note. It commits to git (and thus
       // joins the vault listing) on its first edit.
