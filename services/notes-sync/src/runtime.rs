@@ -60,6 +60,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/oauth/login" => return crate::oauth::handle_login(req, env).await,
         "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
         "/me" => return handle_me(&req, &env),
+        "/vault" => return handle_vault(&req, &env).await,
         _ => {}
     }
 
@@ -118,22 +119,55 @@ fn handle_me(req: &Request, env: &Env) -> Result<Response> {
         now,
     );
 
-    let allow_origin = env
-        .var("OAUTH_APP_URL")
-        .map(|v| v.to_string())
-        .unwrap_or_default();
-    let headers = Headers::new();
-    // A specific origin (not `*`) is required for credentialed CORS.
-    headers.set("Access-Control-Allow-Origin", &allow_origin)?;
-    headers.set("Access-Control-Allow-Credentials", "true")?;
-    headers.set("Vary", "Origin")?;
-    headers.set("Content-Type", "application/json")?;
+    let headers = shell_cors_headers(env)?;
     let (status, body) = match did {
         Some(did) => (200, serde_json::json!({ "did": did }).to_string()),
         None => (401, "{}".to_owned()),
     };
     Ok(ResponseBuilder::new()
         .with_status(status)
+        .with_headers(headers)
+        .fixed(body.into_bytes()))
+}
+
+/// JSON-response headers for the shell's credentialed cross-origin fetches
+/// (`/me`, `/vault`). A specific origin (`OAUTH_APP_URL`, not `*`) is
+/// required when `Access-Control-Allow-Credentials` is set.
+fn shell_cors_headers(env: &Env) -> Result<Headers> {
+    let allow_origin = env
+        .var("OAUTH_APP_URL")
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    let headers = Headers::new();
+    headers.set("Access-Control-Allow-Origin", &allow_origin)?;
+    headers.set("Access-Control-Allow-Credentials", "true")?;
+    headers.set("Vary", "Origin")?;
+    headers.set("Content-Type", "application/json")?;
+    Ok(headers)
+}
+
+/// `GET /vault` — the sidebar's note listing. Returns
+/// `{"notes": ["projects/foo", "scratch", …]}` for the owner's session,
+/// else `401`. The index is a git-tree walk of `notes/`, so a note that's
+/// been edited but not yet committed (within the lazy debounce/backstop
+/// window) won't appear until its first commit lands.
+async fn handle_vault(req: &Request, env: &Env) -> Result<Response> {
+    if !session_authorized(req, env) {
+        return Response::error("unauthorized", 401);
+    }
+    let owner = env.var("GITHUB_OWNER")?.to_string();
+    let repo = env.var("GITHUB_REPO")?.to_string();
+    let branch = env.var("GITHUB_BRANCH")?.to_string();
+    let token = env.secret("GITHUB_TOKEN")?.to_string();
+    let notes = WorkerGitHubClient::new(token)
+        .list_note_paths(&owner, &repo, &branch)
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    let headers = shell_cors_headers(env)?;
+    let body = serde_json::json!({ "notes": notes }).to_string();
+    Ok(ResponseBuilder::new()
+        .with_status(200)
         .with_headers(headers)
         .fixed(body.into_bytes()))
 }
