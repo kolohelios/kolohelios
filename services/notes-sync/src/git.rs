@@ -322,6 +322,37 @@ mod worker_client {
                 ))),
             }
         }
+
+        /// Remove `target.path` from git. A note that was never committed
+        /// has no file — that's a no-op success, so a delete is idempotent.
+        pub async fn delete_note_file(
+            &self,
+            target: &GitTarget,
+            message: &str,
+        ) -> Result<(), CommitError> {
+            // The contents API needs the current blob sha to delete it.
+            let Some(sha) = self.current_sha(target).await? else {
+                return Ok(());
+            };
+            let body = serde_json::json!({
+                "message": message,
+                "sha": sha,
+                "branch": target.branch,
+            });
+            let mut init = RequestInit::new();
+            init.with_method(Method::Delete)
+                .with_headers(self.headers()?)
+                .with_body(Some(body.to_string().into()));
+            let req = Request::new_with_init(&Self::contents_url(target), &init)
+                .map_err(|e| CommitError::Transport(e.to_string()))?;
+            let mut resp = self.send(req).await?;
+            match resp.status_code() {
+                200 => Ok(()),
+                other => Err(CommitError::Transport(format!(
+                    "DELETE contents returned {other}"
+                ))),
+            }
+        }
     }
 
     impl GitHubClient for WorkerGitHubClient {

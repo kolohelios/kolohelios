@@ -15,10 +15,15 @@
 /// Returns `None` for any other shape or a segment that fails those rules.
 pub fn parse_ws_note_id(path: &str) -> Option<&str> {
     let id = path.strip_prefix("/note/")?.strip_suffix("/ws")?;
-    if id.is_empty() || !id.split('/').all(is_safe_segment) {
-        return None;
-    }
-    Some(id)
+    is_valid_note_id(id).then_some(id)
+}
+
+/// Whether `id` is a valid note path: non-empty, and every `/`-separated
+/// segment is safe as a path component (see `is_safe_segment`). The same
+/// rule gates the websocket route and the mutation endpoints, so a note id
+/// that reaches a Durable Object or a git path is always trusted.
+pub fn is_valid_note_id(id: &str) -> bool {
+    !id.is_empty() && id.split('/').all(is_safe_segment)
 }
 
 /// A single path segment is safe when it is non-empty, isn't a `.`/`..`
@@ -89,5 +94,17 @@ mod tests {
         assert_eq!(parse_ws_note_id("/note/foo bar/ws"), None);
         assert_eq!(parse_ws_note_id("/note/foo:bar/ws"), None);
         assert_eq!(parse_ws_note_id("/note/foo%2Fbar/ws"), None);
+    }
+
+    #[test]
+    fn is_valid_note_id_accepts_safe_paths_and_rejects_the_rest() {
+        assert!(is_valid_note_id("scratch"));
+        assert!(is_valid_note_id("projects/foo/idea"));
+        assert!(!is_valid_note_id(""));
+        assert!(!is_valid_note_id("/leading"));
+        assert!(!is_valid_note_id("trailing/"));
+        assert!(!is_valid_note_id("a//b"));
+        assert!(!is_valid_note_id("../escape"));
+        assert!(!is_valid_note_id("has space"));
     }
 }

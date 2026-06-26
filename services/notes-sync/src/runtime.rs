@@ -14,14 +14,20 @@ use serde::{Deserialize, Serialize};
 // bare name (see the workers-rs `counter.rs` example).
 use worker::{
     console_log, durable_object, event, wasm_bindgen, Context, Date, DurableObject, Env, Error,
-    Headers, Request, Response, ResponseBuilder, Result, State, WebSocket,
+    Headers, Method, Request, RequestInit, Response, ResponseBuilder, Result, State, WebSocket,
     WebSocketIncomingMessage, WebSocketPair,
 };
 
 use crate::auth::{authorize_owner, authorized_did};
 use crate::git::{commit_with_retry, CommitError, GitTarget, WorkerGitHubClient};
-use crate::route::parse_ws_note_id;
+use crate::route::{is_valid_note_id, parse_ws_note_id};
 use crate::state::{is_stale, next_alarm};
+
+/// Internal DO control path: the top-level `/delete` handler forwards a
+/// `POST` here to the note's Durable Object so it purges its own storage
+/// and backing git file. Never routed from the public surface — only the
+/// orchestrator reaches it, with the note id in `X-Note-Id`.
+const PURGE_PATH: &str = "/__purge";
 
 /// Commit the note this long after the last edit — coalesces a burst of
 /// keystrokes into a single git commit once the typing settles. Durability
@@ -61,6 +67,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
         "/me" => return handle_me(&req, &env),
         "/vault" => return handle_vault(&req, &env).await,
+        "/delete" => return handle_delete(&req, &env).await,
         _ => {}
     }
 
@@ -172,6 +179,47 @@ async fn handle_vault(req: &Request, env: &Env) -> Result<Response> {
         .fixed(body.into_bytes()))
 }
 
+/// `POST /delete?note=<id>` — delete a note for the owner's session.
+/// Forwards to the note's Durable Object, which purges its own storage and
+/// removes the backing git file (idempotent: deleting an uncommitted or
+/// already-gone note still succeeds). Returns `{"ok": true}`.
+async fn handle_delete(req: &Request, env: &Env) -> Result<Response> {
+    if !session_authorized(req, env) {
+        return Response::error("unauthorized", 401);
+    }
+    let note = req
+        .url()?
+        .query_pairs()
+        .find(|(k, _)| k == "note")
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_default();
+    if !is_valid_note_id(&note) {
+        return Response::error("invalid note id", 400);
+    }
+
+    // Hand off to the note's DO. The id rides a header so it needs no path
+    // encoding, and the DO uses it to resolve the git path it owns.
+    let headers = Headers::new();
+    headers.set("X-Note-Id", &note)?;
+    let mut init = RequestInit::new();
+    init.with_method(Method::Post).with_headers(headers);
+    let ctrl = Request::new_with_init(&format!("https://do{PURGE_PATH}"), &init)?;
+    let stub = env
+        .durable_object("NOTE")?
+        .id_from_name(&note)?
+        .get_stub()?;
+    let resp = stub.fetch_with_request(ctrl).await?;
+    if resp.status_code() != 200 {
+        return Response::error("delete failed", 502);
+    }
+
+    let headers = shell_cors_headers(env)?;
+    Ok(ResponseBuilder::new()
+        .with_status(200)
+        .with_headers(headers)
+        .fixed(b"{\"ok\":true}".to_vec()))
+}
+
 /// Per-connection state persisted across hibernation via the socket
 /// attachment. On wake the Durable Object is rebuilt from a lean
 /// constructor, so anything connection-scoped (here, the note id) has to
@@ -273,12 +321,35 @@ impl NoteDurableObject {
             .get("note_id")
             .await?
             .unwrap_or_default();
+        self.git_target_for(&note_id)
+    }
+
+    /// Resolve the GitHub target for an explicit (already-validated) note
+    /// id. The env config is shared across notes; only the path differs.
+    fn git_target_for(&self, note_id: &str) -> Result<GitTarget> {
         Ok(GitTarget {
             owner: self.env.var("GITHUB_OWNER")?.to_string(),
             repo: self.env.var("GITHUB_REPO")?.to_string(),
             branch: self.env.var("GITHUB_BRANCH")?.to_string(),
             path: format!("notes/{note_id}.md"),
         })
+    }
+
+    /// Delete this note: remove its backing git file, then wipe all durable
+    /// storage so a future open of the same id starts empty. Git is dropped
+    /// first — if that fails we return the error without touching storage,
+    /// keeping the DO and git consistent for a retry. Idempotent: an
+    /// uncommitted note has no file, and clearing clear storage is a no-op.
+    async fn purge(&self, note_id: &str) -> Result<Response> {
+        let target = self.git_target_for(note_id)?;
+        let token = self.env.secret("GITHUB_TOKEN")?.to_string();
+        WorkerGitHubClient::new(token)
+            .delete_note_file(&target, &format!("note: delete {}", target.path))
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        self.state.storage().delete_all().await?;
+        let _ = self.state.storage().delete_alarm().await;
+        Response::ok("purged")
     }
 
     /// Commit the current body to git with optimistic stale-ref retry.
@@ -317,6 +388,14 @@ impl DurableObject for NoteDurableObject {
     }
 
     async fn fetch(&self, req: Request) -> Result<Response> {
+        // Internal control op: the `/delete` orchestrator forwards a purge
+        // here with the note id in `X-Note-Id`. Handled before the websocket
+        // path so it never tries to upgrade.
+        if req.path() == PURGE_PATH {
+            let note_id = req.headers().get("X-Note-Id")?.unwrap_or_default();
+            return self.purge(&note_id).await;
+        }
+
         let note_id = parse_ws_note_id(&req.path())
             .map(str::to_owned)
             .unwrap_or_default();
