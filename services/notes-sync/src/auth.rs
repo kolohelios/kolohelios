@@ -152,30 +152,43 @@ pub fn cookie_value<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
         .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
 }
 
-/// Authorize a note-socket upgrade for the single owner. Returns true only
-/// when the `Cookie:` header carries a `session` cookie that verifies
+/// The owner DID a request is authorized as, or `None`. Returns `Some`
+/// only when the `Cookie:` header carries a `session` cookie that verifies
 /// against `secret` *and* whose DID equals `owner_did`.
 ///
 /// Fails **closed**: a missing secret, missing/blank owner config, an
 /// absent/malformed/expired/tampered cookie, or a DID that isn't the
-/// owner's all deny. This is the single authorization gate for the app —
-/// authn-only OAuth proves *an* identity; this proves it's *yours*.
+/// owner's all yield `None`. This is the single authorization decision for
+/// the app — authn-only OAuth proves *an* identity; this proves it's
+/// *yours*. The socket gate ([`authorize_owner`]) is the boolean view; the
+/// `/me` endpoint uses the DID itself.
+pub fn authorized_did(
+    cookie_header: Option<&str>,
+    secret: Option<&[u8]>,
+    owner_did: Option<&str>,
+    now_unix: i64,
+) -> Option<String> {
+    let (Some(header), Some(secret), Some(owner)) = (cookie_header, secret, owner_did) else {
+        return None;
+    };
+    let owner = owner.trim();
+    if owner.is_empty() {
+        return None;
+    }
+    cookie_value(header, "session")
+        .and_then(|c| verify_session(c, secret, now_unix).ok())
+        .filter(|did| did == owner)
+}
+
+/// Boolean view of [`authorized_did`]: whether the request is the owner's
+/// authenticated session. The note-socket upgrade gate.
 pub fn authorize_owner(
     cookie_header: Option<&str>,
     secret: Option<&[u8]>,
     owner_did: Option<&str>,
     now_unix: i64,
 ) -> bool {
-    let (Some(header), Some(secret), Some(owner)) = (cookie_header, secret, owner_did) else {
-        return false;
-    };
-    let owner = owner.trim();
-    if owner.is_empty() {
-        return false;
-    }
-    cookie_value(header, "session")
-        .and_then(|c| verify_session(c, secret, now_unix).ok())
-        .is_some_and(|did| did == owner)
+    authorized_did(cookie_header, secret, owner_did, now_unix).is_some()
 }
 
 #[cfg(test)]
@@ -314,6 +327,24 @@ mod tests {
         // Bluesky account must not be authorized.
         let h = header_for("did:plc:someone-else", 1_000);
         assert!(!authorize_owner(Some(&h), Some(SECRET), Some(OWNER), 500));
+    }
+
+    #[test]
+    fn authorized_did_returns_the_owner_did_or_none() {
+        let owner = header_for(OWNER, 1_000);
+        assert_eq!(
+            authorized_did(Some(&owner), Some(SECRET), Some(OWNER), 500),
+            Some(OWNER.to_owned())
+        );
+        // A valid non-owner cookie yields None (the gate is owner-only).
+        let other = header_for("did:plc:someone-else", 1_000);
+        assert_eq!(
+            authorized_did(Some(&other), Some(SECRET), Some(OWNER), 500),
+            None
+        );
+        // Fails closed on missing config, exactly like the bool wrapper.
+        assert_eq!(authorized_did(Some(&owner), None, Some(OWNER), 500), None);
+        assert_eq!(authorized_did(Some(&owner), Some(SECRET), None, 500), None);
     }
 
     #[test]
