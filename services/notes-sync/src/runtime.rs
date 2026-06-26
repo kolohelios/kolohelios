@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 // bare name (see the workers-rs `counter.rs` example).
 use worker::{
     console_log, durable_object, event, wasm_bindgen, Context, Date, DurableObject, Env, Error,
-    Request, Response, ResponseBuilder, Result, State, WebSocket, WebSocketIncomingMessage,
-    WebSocketPair,
+    Headers, Request, Response, ResponseBuilder, Result, State, WebSocket,
+    WebSocketIncomingMessage, WebSocketPair,
 };
 
-use crate::auth::authorize_owner;
+use crate::auth::{authorize_owner, authorized_did};
 use crate::git::{commit_with_retry, CommitError, GitTarget, WorkerGitHubClient};
 use crate::route::parse_ws_note_id;
 use crate::state::{is_stale, next_alarm};
@@ -55,6 +55,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
         "/oauth/login" => return crate::oauth::handle_login(req, env).await,
         "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
+        "/me" => return handle_me(&req, &env),
         _ => {}
     }
 
@@ -93,6 +94,44 @@ fn session_authorized(req: &Request, env: &Env) -> bool {
         owner.as_deref(),
         now,
     )
+}
+
+/// `GET /me` — the shell's auth probe. Returns `{"did": …}` with `200`
+/// when the request carries the owner's session cookie, else `401`. The
+/// session cookie is `HttpOnly`, so the front end can't read it directly;
+/// this lets it learn whether it's signed in (and as whom) without
+/// exposing the cookie. CORS allows the same-site cross-origin
+/// credentialed fetch from the shell origin (`OAUTH_APP_URL`).
+fn handle_me(req: &Request, env: &Env) -> Result<Response> {
+    let secret = env.secret("SESSION_SECRET").ok().map(|s| s.to_string());
+    let owner = env.var("OWNER_DID").ok().map(|v| v.to_string());
+    let header = req.headers().get("Cookie").ok().flatten();
+    let now = Date::now().as_millis() as i64 / 1000;
+    let did = authorized_did(
+        header.as_deref(),
+        secret.as_deref().map(str::as_bytes),
+        owner.as_deref(),
+        now,
+    );
+
+    let allow_origin = env
+        .var("OAUTH_APP_URL")
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    let headers = Headers::new();
+    // A specific origin (not `*`) is required for credentialed CORS.
+    headers.set("Access-Control-Allow-Origin", &allow_origin)?;
+    headers.set("Access-Control-Allow-Credentials", "true")?;
+    headers.set("Vary", "Origin")?;
+    headers.set("Content-Type", "application/json")?;
+    let (status, body) = match did {
+        Some(did) => (200, serde_json::json!({ "did": did }).to_string()),
+        None => (401, "{}".to_owned()),
+    };
+    Ok(ResponseBuilder::new()
+        .with_status(status)
+        .with_headers(headers)
+        .fixed(body.into_bytes()))
 }
 
 /// Per-connection state persisted across hibernation via the socket
