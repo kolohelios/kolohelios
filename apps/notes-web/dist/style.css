@@ -64,6 +64,13 @@ body {
   cursor: pointer;
 }
 
+/* Shown in place of the login form once `/me` confirms a session. */
+.account {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 main {
   flex: 1;
   display: flex;

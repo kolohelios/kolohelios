@@ -25,6 +25,8 @@
         />
         <button type="submit">sign in</button>
       </form>
+      <!-- Shown instead of the login form once `/me` confirms a session. -->
+      <span id="account" class="account" hidden></span>
     </header>
     <main>
       <textarea
@@ -62,6 +64,44 @@
           location.href = `https://${backend}/oauth/login?handle=${encodeURIComponent(handle)}`;
         }
       });
+
+      // Auth probe: the session cookie is HttpOnly, so the shell can't read
+      // it. Ask the backend `/me` (which can) whether we're signed in, and
+      // as whom, then show a signed-in badge instead of the login form.
+      async function refreshAuth() {
+        const login = document.getElementById("login");
+        const account = document.getElementById("account");
+        let did;
+        try {
+          const res = await fetch(`https://${backend}/me`, {
+            credentials: "include",
+          });
+          if (res.ok) ({ did } = await res.json());
+        } catch (e) {
+          return; // network error — leave the login form as-is
+        }
+        if (!did) {
+          login.hidden = false;
+          account.hidden = true;
+          return;
+        }
+        login.hidden = true;
+        account.hidden = false;
+        account.textContent = "signed in";
+        // Best-effort: resolve the DID to a handle for a friendlier label.
+        try {
+          const doc = await fetch(`https://plc.directory/${did}`).then((r) =>
+            r.json(),
+          );
+          const aka = (doc.alsoKnownAs || []).find((a) =>
+            a.startsWith("at://"),
+          );
+          if (aka) account.textContent = `signed in as @${aka.slice(5)}`;
+        } catch (e) {
+          /* keep the plain "signed in" label */
+        }
+      }
+      refreshAuth();
 
       const status = document.getElementById("status");
       try {
