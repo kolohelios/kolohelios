@@ -95,6 +95,31 @@ pub async fn commit_with_retry<C: GitHubClient>(
     Err(CommitError::RetriesExhausted)
 }
 
+/// Parse a GitHub git-tree listing (the `git/trees/<ref>?recursive=1`
+/// response) into the vault's note ids: every blob under `notes/` whose
+/// name ends in `.md`, with the `notes/` prefix and `.md` suffix removed,
+/// sorted for a stable listing. Directories, non-markdown files, and
+/// anything outside `notes/` are ignored. This is the pure half of the
+/// vault index — the wasm client just fetches the tree and hands it here.
+pub fn note_paths_from_tree(tree_json: &str) -> Result<Vec<String>, CommitError> {
+    let v: serde_json::Value =
+        serde_json::from_str(tree_json).map_err(|e| CommitError::Transport(e.to_string()))?;
+    let entries = v
+        .get("tree")
+        .and_then(|t| t.as_array())
+        .ok_or_else(|| CommitError::Transport("tree listing missing `tree` array".into()))?;
+    let mut ids: Vec<String> = entries
+        .iter()
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("blob"))
+        .filter_map(|e| e.get("path").and_then(|p| p.as_str()))
+        .filter_map(|path| path.strip_prefix("notes/")?.strip_suffix(".md"))
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect();
+    ids.sort();
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +208,36 @@ mod tests {
         // max_retries=3 → 4 attempts (the initial try plus 3 retries).
         assert_eq!(c.puts.get(), 4);
     }
+
+    #[test]
+    fn note_paths_extracts_markdown_blobs_under_notes() {
+        // A recursive tree mixes nested blobs, directory entries, files
+        // outside `notes/`, and non-markdown files — only `notes/*.md`
+        // blobs are notes, prefix/suffix stripped, and the result sorted.
+        let json = r#"{"tree":[
+            {"path":"notes/scratch.md","type":"blob"},
+            {"path":"notes/projects","type":"tree"},
+            {"path":"notes/projects/foo.md","type":"blob"},
+            {"path":"notes/diagram.png","type":"blob"},
+            {"path":"README.md","type":"blob"}
+        ],"truncated":false}"#;
+        assert_eq!(
+            note_paths_from_tree(json).unwrap(),
+            vec!["projects/foo".to_string(), "scratch".to_string()]
+        );
+    }
+
+    #[test]
+    fn note_paths_is_empty_for_a_vault_with_no_notes() {
+        let json = r#"{"tree":[{"path":"README.md","type":"blob"}],"truncated":false}"#;
+        assert!(note_paths_from_tree(json).unwrap().is_empty());
+    }
+
+    #[test]
+    fn note_paths_errors_on_a_malformed_listing() {
+        assert!(note_paths_from_tree("not json").is_err());
+        assert!(note_paths_from_tree("{}").is_err());
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -233,6 +288,39 @@ mod worker_client {
                 .send()
                 .await
                 .map_err(|e| CommitError::Transport(e.to_string()))
+        }
+
+        /// List the vault's note ids by walking the repo's git tree under
+        /// `notes/` (recursive trees API). Returns an empty list when the
+        /// branch has no commits yet (a fresh repo) or holds no notes.
+        pub async fn list_note_paths(
+            &self,
+            owner: &str,
+            repo: &str,
+            branch: &str,
+        ) -> Result<Vec<String>, CommitError> {
+            let url = format!(
+                "https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+            );
+            let mut init = RequestInit::new();
+            init.with_method(Method::Get).with_headers(self.headers()?);
+            let req = Request::new_with_init(&url, &init)
+                .map_err(|e| CommitError::Transport(e.to_string()))?;
+            let mut resp = self.send(req).await?;
+            match resp.status_code() {
+                200 => {
+                    let body = resp
+                        .text()
+                        .await
+                        .map_err(|e| CommitError::Transport(e.to_string()))?;
+                    super::note_paths_from_tree(&body)
+                }
+                // No commits on the branch yet (empty repo) — an empty vault.
+                404 | 409 => Ok(Vec::new()),
+                other => Err(CommitError::Transport(format!(
+                    "GET trees returned {other}"
+                ))),
+            }
         }
     }
 
