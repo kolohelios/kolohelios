@@ -37,6 +37,81 @@ fn is_safe_segment(segment: &str) -> bool {
         .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
+/// Why a rename request can't proceed. Returned by [`plan_rename`] so the
+/// wasm handler can map each case to an HTTP status without re-deriving the
+/// rules.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RenameError {
+    /// Either the source or destination id is not a valid note path.
+    InvalidId,
+    /// Source and destination are the same note — nothing to move.
+    SameId,
+    /// No committed note exists at the source path. `/rename` is the trust
+    /// boundary (the front end only offers rename on listed notes, but a
+    /// raw request need not), and a rename of a missing source would
+    /// otherwise create a spurious empty note at the destination.
+    SourceMissing,
+}
+
+/// How a rename of `old` to `new` should be carried out, decided from the
+/// committed vault listing. Returned by [`plan_rename`].
+#[derive(Debug, PartialEq, Eq)]
+pub enum RenamePlan {
+    /// Source present, destination free — a normal create-before-delete
+    /// move.
+    Fresh,
+    /// Source present *and* a file already sits at the destination. A prior
+    /// attempt created the destination but failed before removing the
+    /// source (the orchestration is not atomic), so the caller re-drives
+    /// the remaining steps idempotently — but only after confirming the
+    /// destination body is the one being carried; a destination holding a
+    /// *different* body is a genuine collision the caller rejects as a
+    /// conflict.
+    Resume,
+}
+
+/// Plan a `rename`/move of `old` to `new` against the current vault. Both
+/// ids must be valid note paths (the same rule the websocket route and
+/// `/delete` enforce), the move must actually change the path, and the
+/// source must exist. `existing` is the committed vault listing (see
+/// `list_note_paths`).
+///
+/// A destination that already exists is *not* a hard error: combined with a
+/// still-present source it signals a half-finished earlier attempt that the
+/// caller can resume (see [`RenamePlan::Resume`]). The caller disambiguates
+/// a true collision from a resumable in-progress rename by comparing the
+/// destination's committed body against the body being carried.
+pub fn plan_rename(old: &str, new: &str, existing: &[String]) -> Result<RenamePlan, RenameError> {
+    if !is_valid_note_id(old) || !is_valid_note_id(new) {
+        return Err(RenameError::InvalidId);
+    }
+    if old == new {
+        return Err(RenameError::SameId);
+    }
+    if !existing.iter().any(|n| n == old) {
+        return Err(RenameError::SourceMissing);
+    }
+    if existing.iter().any(|n| n == new) {
+        return Ok(RenamePlan::Resume);
+    }
+    Ok(RenamePlan::Fresh)
+}
+
+/// Pick the body to carry in a rename. The source Durable Object's
+/// materialized text is authoritative when present, but a cold or
+/// never-opened DO returns an empty body even though git holds the
+/// committed note (the DO does not hydrate from git on open). Falling back
+/// to the committed git blob keeps the move from carrying `""` and erasing
+/// the source when the body is dropped — turning a transient display gap
+/// into permanent data loss.
+pub fn choose_rename_body(do_text: &str, git_text: Option<&str>) -> String {
+    if do_text.is_empty() {
+        git_text.unwrap_or_default().to_owned()
+    } else {
+        do_text.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +181,80 @@ mod tests {
         assert!(!is_valid_note_id("a//b"));
         assert!(!is_valid_note_id("../escape"));
         assert!(!is_valid_note_id("has space"));
+    }
+
+    #[test]
+    fn plan_rename_accepts_a_move_to_a_free_path() {
+        let existing = vec!["scratch".to_string(), "projects/foo".to_string()];
+        assert_eq!(
+            plan_rename("scratch", "projects/bar", &existing),
+            Ok(RenamePlan::Fresh)
+        );
+    }
+
+    #[test]
+    fn plan_rename_rejects_an_invalid_id_on_either_side() {
+        let existing = vec!["ok".to_string()];
+        assert_eq!(
+            plan_rename("../escape", "ok2", &existing),
+            Err(RenameError::InvalidId)
+        );
+        assert_eq!(
+            plan_rename("ok", "has space", &existing),
+            Err(RenameError::InvalidId)
+        );
+        assert_eq!(
+            plan_rename("", "ok2", &existing),
+            Err(RenameError::InvalidId)
+        );
+    }
+
+    #[test]
+    fn plan_rename_rejects_a_no_op_move() {
+        let existing = vec!["scratch".to_string()];
+        assert_eq!(
+            plan_rename("scratch", "scratch", &existing),
+            Err(RenameError::SameId)
+        );
+    }
+
+    #[test]
+    fn plan_rename_rejects_a_missing_source() {
+        // A valid-id rename of a note that isn't in the vault must not
+        // silently create an empty note at the destination.
+        let existing = vec!["scratch".to_string()];
+        assert_eq!(
+            plan_rename("ghost", "projects/bar", &existing),
+            Err(RenameError::SourceMissing)
+        );
+    }
+
+    #[test]
+    fn plan_rename_resumes_when_both_paths_are_present() {
+        // Source still present *and* destination already committed → a prior
+        // attempt got past the create but not the source delete. The caller
+        // resumes (and disambiguates a true collision by body).
+        let existing = vec!["scratch".to_string(), "projects/foo".to_string()];
+        assert_eq!(
+            plan_rename("scratch", "projects/foo", &existing),
+            Ok(RenamePlan::Resume)
+        );
+    }
+
+    #[test]
+    fn choose_rename_body_prefers_a_non_empty_do_body() {
+        assert_eq!(choose_rename_body("live", Some("stale git")), "live");
+        assert_eq!(choose_rename_body("live", None), "live");
+    }
+
+    #[test]
+    fn choose_rename_body_falls_back_to_git_for_a_cold_do() {
+        // A cold/never-opened DO exports "" though git holds the note —
+        // carry the committed blob rather than erasing it on the move.
+        assert_eq!(
+            choose_rename_body("", Some("committed body")),
+            "committed body"
+        );
+        assert_eq!(choose_rename_body("", None), "");
     }
 }
