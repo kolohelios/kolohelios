@@ -16,7 +16,11 @@ its own storage on a short cadence and commits to a GitHub repo lazily.
   This is the fast-durable tier; the fast cadence never touches git.
 - **Cold (Git/GitHub).** Current note state plus full history. Commits are
   lazy (a long alarm and on last-socket-disconnect), single-file, with an
-  optimistic retry on a stale ref.
+  optimistic retry on a stale ref. Git is also the **vault listing**:
+  `GET /vault` learns which notes exist by walking the tree.
+
+Why *both* tiers exist (and the freshness gap the split creates) is
+written up in [`docs/storage-tiers.md`](docs/storage-tiers.md).
 
 ## Wire protocol
 
@@ -54,10 +58,11 @@ Phased build tracked in issue #757.
   reconstructs without loss.
 - **Phase 3 — git cold tier (this).** Edits keep persisting to DO storage
   synchronously; the body is committed to GitHub lazily — a `debounce`
-  (commit a few seconds after the last edit, coalescing a burst) and a
-  `backstop` (commit at least once a minute under continuous editing)
-  multiplexed onto the DO's single alarm, plus a commit when the last
-  socket disconnects. Each commit is a single-file write to the contents
+  (commit shortly after the last edit, coalescing a burst) and a
+  `backstop` (commit at least once per backstop interval under continuous
+  editing) multiplexed onto the DO's single alarm, plus a commit when the
+  last socket disconnects. The exact intervals are the `COMMIT_DEBOUNCE` /
+  `COMMIT_BACKSTOP` constants in `src/runtime.rs`. Each commit is a single-file write to the contents
   API with an optimistic retry when the ref moves; a `BackedUp` is then
   broadcast to connected editors. The repo/branch live in `wrangler.toml`;
   the commit token is a `wrangler secret` (`GITHUB_TOKEN`).
