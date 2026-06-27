@@ -295,7 +295,7 @@ fn preflight_job() -> InlineJob {
                 env: BTreeMap::new(),
             }),
             Step::Action(ActionStep {
-                uses: "actions/cache@v5".to_string(),
+                uses: "actions/cache@v6".to_string(),
                 id: None,
                 name: None,
                 if_: None,
