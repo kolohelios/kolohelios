@@ -11,10 +11,23 @@ version      = "0.1.0"
 # Durable Object and the WASM editor. Pure-rust, builds natively and on
 # wasm32-unknown-unknown.
 serde = { version = "1", features = ["derive"] }
+# Front-matter is a YAML block at the head of the note body. The same
+# crate the rest of the repo uses (blogctl); pure-rust on wasm32.
+serde_yaml_ng = "0.10"
+# Canonical content hash over the normalized body — sha256, pure-rust so
+# it folds into the wasm32 build the editor and Worker share.
+sha2 = "0.10"
+# Typed front-matter parse errors, the repo error standard.
+snafu = "0.9"
 
 [dev-dependencies]
 # Round-trip tests assert the wire JSON shape both sides agree on.
 serde_json = "1"
+# The front-matter conformance test re-serializes parsed `FrontMatter`
+# back to YAML to `cue vet` it against the schema.
+serde_yaml_ng = "0.10"
+# Front-matter fixtures are written to a temp file to shell to `cue vet`.
+tempfile = "3"
 
 [lints.clippy]
 mod_module_files = "deny"

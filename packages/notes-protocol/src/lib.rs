@@ -14,6 +14,13 @@
 //! Messages are tagged enums (`{"type":"open",…}`); a [`Delta`] is the
 //! seam where a CRDT update type could slot in later without disturbing
 //! the surrounding protocol.
+//!
+//! The [`frontmatter`] module carries the human-authored note metadata
+//! (title, tags, aliases) that rides inside the opaque body, plus the
+//! canonical [`frontmatter::content_hash`] every derived artifact is keyed
+//! by.
+
+pub mod frontmatter;
 
 use serde::{Deserialize, Serialize};
 
