@@ -273,13 +273,22 @@
           );
           if (!res.ok) {
             if (editingThis) editor.readOnly = false;
-            alert(
-              res.status === 409
-                ? "A note already exists at that path."
-                : res.status === 404
-                  ? "That note no longer exists."
-                  : "Rename failed.",
-            );
+            let msg;
+            if (res.status === 409) {
+              // Two distinct 409s: a path collision, vs. the note being open
+              // in another tab (refused so an in-flight edit can't be lost).
+              // The server's message disambiguates; surface it for the latter
+              // so the user knows to close the other tab and retry.
+              const body = (await res.text()).trim();
+              msg = /open in another tab/i.test(body)
+                ? body
+                : "A note already exists at that path.";
+            } else if (res.status === 404) {
+              msg = "That note no longer exists.";
+            } else {
+              msg = "Rename failed.";
+            }
+            alert(msg);
             return;
           }
         } catch (e) {
