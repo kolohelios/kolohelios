@@ -1,0 +1,23 @@
+compatibility_date = "2026-05-14"
+main               = "build/worker/shim.mjs"
+name               = "scoretracker"
+
+# Hand-authored (not generated): this Worker has a Durable Object and a
+# migration, neither of which `shaka`'s `#Wrangler` schema models — same
+# arrangement as `services/notes-sync`. `worker-build` produces
+# `build/worker/shim.mjs` + the wasm module upstream of `wrangler deploy`
+# (in CI via a dedicated step in `cf-deploy.yml`, locally the same command
+# in the devshell), so there is no `[build]` block. See #403/#423 for why
+# the build is pulled out of the wrangler subprocess.
+
+# One Durable Object per game instance, keyed by `idFromName("<type>:<id>")`.
+# It is the single writer and source of truth for that game's state, so
+# multiple devices at the table stay strongly consistent.
+[durable_objects]
+bindings = [{ name = "GAME", class_name = "GameState" }]
+
+# Classic key-value DO storage (the whole game is one small JSON blob — no
+# SQLite needed). Migrations are append-only by tag.
+[[migrations]]
+new_classes = ["GameState"]
+tag         = "v1"

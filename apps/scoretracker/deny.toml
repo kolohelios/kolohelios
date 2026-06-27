@@ -1,0 +1,24 @@
+[advisories]
+unmaintained = "all"
+version      = 2
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+]
+private = { ignore = true }
+version = 2
+
+[bans]
+multiple-versions = "warn"
+wildcards         = "deny"
+
+[sources]
+allow-registry   = ["https://github.com/rust-lang/crates.io-index"]
+unknown-git      = "deny"
+unknown-registry = "deny"
