@@ -5,6 +5,8 @@ package labels
 		// Scope labels — every open issue must carry at least one,
 		// per `shaka issue audit`.
 		{name: "aof", color:          "d93f0b", description: "Personal-OS / areas tree tooling", scope: true},
+		{name: "apps/notes-editor", color: "16a085", description: "Browser-WASM notes editor (textarea + socket client)", scope: true},
+		{name: "apps/notes-web", color: "27ae60", description: "Notes app front-end shell (static assets worker)", scope: true},
 		{name: "blogctl", color:      "1f77b4", description: "blogctl CLI / blog post workflow tooling", scope: true},
 		{name: "ci", color:           "fbca04", description: "CI pipeline / GitHub Actions / preflight gates", scope: true},
 		{name: "claude", color:       "d4c5f9", description: "claude-code config, hooks, settings", scope: true},
@@ -13,6 +15,7 @@ package labels
 		{name: "infra/cloudflare-deploy", color: "f38020", description: "Cloudflare deploy attachments / account-scoped resources (Terraform)", scope: true},
 		{name: "meta", color:         "ededed", description: "Cross-cutting repo / monorepo policy issues", scope: true},
 		{name: "nix", color:          "5277c3", description: "Nix flakes, kolohelios-nix shared lib", scope: true},
+		{name: "packages/notes-protocol", color: "8e44ad", description: "Shared serde wire types for the notes app", scope: true},
 		{name: "pollen-alert", color: "0e8a16", description: "Pollen alert worker", scope: true},
 		{name: "portfolio", color:    "1d76db", description: "Personal portfolio site at kolohelios.com", scope: true},
 		{name: "services/notes-sync", color: "1abc9c", description: "Git-backed live-synced note service (Durable Object)", scope: true},
@@ -22,6 +25,7 @@ package labels
 		// Type / housekeeping / category labels — not scope labels.
 		{name: "bug", color:              "d73a4a", description: "Something isn't working", scope: false},
 		{name: "dependencies", color:     "0366d6", description: "Pull requests that update a dependency file", scope: false},
+		{name: "do-not-rebase", color: "fbca04", description: "Auto-rebase bot: skip this PR", scope: false},
 		{name: "documentation", color:    "0075ca", description: "Improvements or additions to documentation", scope: false},
 		{name: "duplicate", color:        "cfd3d7", description: "This issue or pull request already exists", scope: false},
 		{name: "enhancement", color:      "a2eeef", description: "New feature or request", scope: false},
