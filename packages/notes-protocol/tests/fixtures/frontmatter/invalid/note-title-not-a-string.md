@@ -1,0 +1,5 @@
+---
+title:
+  nested: object
+---
+body
