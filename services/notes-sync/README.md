@@ -22,6 +22,11 @@ its own storage on a short cadence and commits to a GitHub repo lazily.
 Why *both* tiers exist (and the freshness gap the split creates) is
 written up in [`docs/storage-tiers.md`](docs/storage-tiers.md).
 
+The AI-native vault built on top of these tiers — one source of truth
+(the note body), with title/tags/links/embeddings/graph all *derived* and
+content-hash-keyed so drift is detectable and self-healing — is specified
+in [`docs/vault-architecture.md`](docs/vault-architecture.md) (epic #989).
+
 ## Wire protocol
 
 Types live in the shared `packages/notes-protocol` crate (phase 2) so the
