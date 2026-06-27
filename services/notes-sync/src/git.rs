@@ -68,6 +68,10 @@ pub trait GitHubClient {
         base_sha: Option<&str>,
         message: &str,
     ) -> Result<PutOutcome, CommitError>;
+
+    /// Remove `target.path` from git. A path with no committed file is a
+    /// no-op success, so a delete is idempotent.
+    async fn delete_file(&self, target: &GitTarget, message: &str) -> Result<(), CommitError>;
 }
 
 /// Commit `text` to `target`, re-reading the sha and retrying when the ref
@@ -93,6 +97,40 @@ pub async fn commit_with_retry<C: GitHubClient>(
         }
     }
     Err(CommitError::RetriesExhausted)
+}
+
+/// Move a note's backing file from `old` to `new`, carrying `content`.
+/// **Create-before-delete**: the destination file is committed first (so the
+/// body is durable at the new path before anything is removed), and only
+/// then is the source file dropped. A partial failure never *loses* data,
+/// but it is not automatically clean to retry:
+///
+/// - If the **create** fails, nothing changed — the source still holds the
+///   body and a retry is safe.
+/// - If the create succeeds but the **delete** (or any later orchestration
+///   step) fails, the *destination* now lingers alongside the source. A
+///   naive retry would be rejected as a destination collision; the caller
+///   must instead resume the move idempotently (see [`crate::route::plan_rename`]
+///   and [`crate::route::RenamePlan::Resume`]). Re-running this helper as
+///   part of that resume is safe: the create re-PUTs the same body and the
+///   delete then removes the source.
+///
+/// Returns the new file's commit sha. The caller is responsible for refusing
+/// an overwrite of a *different* note already at the destination; this helper
+/// carries `content` to `new` unconditionally.
+pub async fn move_note_file<C: GitHubClient>(
+    client: &C,
+    old: &GitTarget,
+    new: &GitTarget,
+    content: &str,
+    max_retries: u32,
+) -> Result<String, CommitError> {
+    let create_msg = format!("note: rename {} -> {}", old.path, new.path);
+    let sha = commit_with_retry(client, new, content, &create_msg, max_retries).await?;
+    // Destination is durable; now drop the source.
+    let delete_msg = format!("note: rename remove {}", old.path);
+    client.delete_file(old, &delete_msg).await?;
+    Ok(sha)
 }
 
 /// Parse a GitHub git-tree listing (the `git/trees/<ref>?recursive=1`
@@ -164,6 +202,67 @@ mod tests {
                 Ok(PutOutcome::Committed("new-commit-sha".into()))
             }
         }
+
+        async fn delete_file(
+            &self,
+            _target: &GitTarget,
+            _message: &str,
+        ) -> Result<(), CommitError> {
+            Ok(())
+        }
+    }
+
+    /// Fake that records every operation in order so a test can assert the
+    /// create-before-delete sequence and the path/content a move writes.
+    struct RecordingClient {
+        events: std::cell::RefCell<Vec<String>>,
+    }
+
+    impl RecordingClient {
+        fn new() -> Self {
+            Self {
+                events: std::cell::RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl GitHubClient for RecordingClient {
+        async fn current_sha(&self, target: &GitTarget) -> Result<Option<String>, CommitError> {
+            self.events
+                .borrow_mut()
+                .push(format!("read:{}", target.path));
+            // Destination is free (a fresh create); the move helper assumes so.
+            Ok(None)
+        }
+
+        async fn put_file(
+            &self,
+            target: &GitTarget,
+            content: &str,
+            _base_sha: Option<&str>,
+            _message: &str,
+        ) -> Result<PutOutcome, CommitError> {
+            self.events
+                .borrow_mut()
+                .push(format!("put:{}={}", target.path, content));
+            Ok(PutOutcome::Committed("dest-sha".into()))
+        }
+
+        async fn delete_file(&self, target: &GitTarget, _message: &str) -> Result<(), CommitError> {
+            self.events
+                .borrow_mut()
+                .push(format!("delete:{}", target.path));
+            Ok(())
+        }
+    }
+
+    fn note_target(path: &str) -> GitTarget {
+        GitTarget {
+            owner: "kolohelios".into(),
+            repo: "notes".into(),
+            branch: "main".into(),
+            path: path.into(),
+        }
     }
 
     fn target() -> GitTarget {
@@ -207,6 +306,113 @@ mod tests {
         assert_eq!(err, CommitError::RetriesExhausted);
         // max_retries=3 → 4 attempts (the initial try plus 3 retries).
         assert_eq!(c.puts.get(), 4);
+    }
+
+    #[tokio::test]
+    async fn move_creates_destination_before_deleting_source() {
+        let c = RecordingClient::new();
+        let sha = move_note_file(
+            &c,
+            &note_target("notes/old.md"),
+            &note_target("notes/projects/new.md"),
+            "hello body",
+            3,
+        )
+        .await
+        .unwrap();
+        assert_eq!(sha, "dest-sha");
+
+        let events = c.events.borrow();
+        // The destination is written (with the carried content) and only then
+        // is the source removed — create-before-delete, so no body is ever
+        // left unreferenced.
+        assert_eq!(
+            *events,
+            vec![
+                "read:notes/projects/new.md".to_string(),
+                "put:notes/projects/new.md=hello body".to_string(),
+                "delete:notes/old.md".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn move_propagates_a_destination_write_failure_without_deleting() {
+        // A client whose create fails must never reach the delete — the source
+        // file has to survive so the body isn't lost.
+        struct FailingPut;
+        impl GitHubClient for FailingPut {
+            async fn current_sha(&self, _t: &GitTarget) -> Result<Option<String>, CommitError> {
+                Ok(None)
+            }
+            async fn put_file(
+                &self,
+                _t: &GitTarget,
+                _c: &str,
+                _b: Option<&str>,
+                _m: &str,
+            ) -> Result<PutOutcome, CommitError> {
+                Err(CommitError::Transport("boom".into()))
+            }
+            async fn delete_file(&self, _t: &GitTarget, _m: &str) -> Result<(), CommitError> {
+                panic!("delete must not run when the destination write failed");
+            }
+        }
+        let err = move_note_file(
+            &FailingPut,
+            &note_target("notes/old.md"),
+            &note_target("notes/new.md"),
+            "body",
+            3,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, CommitError::Transport("boom".into()));
+    }
+
+    #[tokio::test]
+    async fn move_propagates_a_delete_failure_after_the_create_landed() {
+        // The data-safety contract: when the destination create succeeds but
+        // the source delete fails, the error propagates *and* the create has
+        // already happened — the body is durable at the new path before the
+        // failure, so the caller can resume rather than lose data.
+        struct CreatesThenFailsDelete {
+            created: Cell<bool>,
+        }
+        impl GitHubClient for CreatesThenFailsDelete {
+            async fn current_sha(&self, _t: &GitTarget) -> Result<Option<String>, CommitError> {
+                Ok(None)
+            }
+            async fn put_file(
+                &self,
+                _t: &GitTarget,
+                _c: &str,
+                _b: Option<&str>,
+                _m: &str,
+            ) -> Result<PutOutcome, CommitError> {
+                self.created.set(true);
+                Ok(PutOutcome::Committed("dest-sha".into()))
+            }
+            async fn delete_file(&self, _t: &GitTarget, _m: &str) -> Result<(), CommitError> {
+                Err(CommitError::Transport("delete boom".into()))
+            }
+        }
+        let client = CreatesThenFailsDelete {
+            created: Cell::new(false),
+        };
+        let err = move_note_file(
+            &client,
+            &note_target("notes/old.md"),
+            &note_target("notes/new.md"),
+            "body",
+            3,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, CommitError::Transport("delete boom".into()));
+        // Destination-durable-before-error: the create ran before the delete
+        // failed, so the body is safe at the new path for a resume.
+        assert!(client.created.get());
     }
 
     #[test]
@@ -323,35 +529,64 @@ mod worker_client {
             }
         }
 
+        /// Read the decoded UTF-8 body committed at `target.path`, or `None`
+        /// if no file exists there. The rename orchestrator uses this to
+        /// recover the source body when the source Durable Object is cold
+        /// (its in-memory text is empty though git holds the note) and to
+        /// read the destination body when resuming a half-finished move.
+        /// Carrying `""` from a cold DO would erase the note on the move, so
+        /// this git fallback is what keeps a transient display gap from
+        /// becoming permanent data loss.
+        pub async fn get_file_content(
+            &self,
+            target: &GitTarget,
+        ) -> Result<Option<String>, CommitError> {
+            let url = format!("{}?ref={}", Self::contents_url(target), target.branch);
+            let mut init = RequestInit::new();
+            init.with_method(Method::Get).with_headers(self.headers()?);
+            let req = Request::new_with_init(&url, &init)
+                .map_err(|e| CommitError::Transport(e.to_string()))?;
+            let mut resp = self.send(req).await?;
+            match resp.status_code() {
+                200 => {
+                    let body = resp
+                        .text()
+                        .await
+                        .map_err(|e| CommitError::Transport(e.to_string()))?;
+                    let v: serde_json::Value = serde_json::from_str(&body)
+                        .map_err(|e| CommitError::Transport(e.to_string()))?;
+                    // GitHub returns base64 with embedded newlines; the
+                    // STANDARD engine rejects whitespace, so strip it first.
+                    let encoded: String = v
+                        .get("content")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .collect();
+                    let bytes = base64::engine::general_purpose::STANDARD
+                        .decode(encoded.as_bytes())
+                        .map_err(|e| CommitError::Transport(e.to_string()))?;
+                    let text = String::from_utf8(bytes)
+                        .map_err(|e| CommitError::Transport(e.to_string()))?;
+                    Ok(Some(text))
+                }
+                404 => Ok(None),
+                other => Err(CommitError::Transport(format!(
+                    "GET contents returned {other}"
+                ))),
+            }
+        }
+
         /// Remove `target.path` from git. A note that was never committed
         /// has no file — that's a no-op success, so a delete is idempotent.
+        /// Thin alias over the [`GitHubClient::delete_file`] trait method so
+        /// existing callers (the `/delete` purge) read naturally.
         pub async fn delete_note_file(
             &self,
             target: &GitTarget,
             message: &str,
         ) -> Result<(), CommitError> {
-            // The contents API needs the current blob sha to delete it.
-            let Some(sha) = self.current_sha(target).await? else {
-                return Ok(());
-            };
-            let body = serde_json::json!({
-                "message": message,
-                "sha": sha,
-                "branch": target.branch,
-            });
-            let mut init = RequestInit::new();
-            init.with_method(Method::Delete)
-                .with_headers(self.headers()?)
-                .with_body(Some(body.to_string().into()));
-            let req = Request::new_with_init(&Self::contents_url(target), &init)
-                .map_err(|e| CommitError::Transport(e.to_string()))?;
-            let mut resp = self.send(req).await?;
-            match resp.status_code() {
-                200 => Ok(()),
-                other => Err(CommitError::Transport(format!(
-                    "DELETE contents returned {other}"
-                ))),
-            }
+            self.delete_file(target, message).await
         }
     }
 
@@ -426,6 +661,31 @@ mod worker_client {
                 409 => Ok(PutOutcome::StaleRef),
                 other => Err(CommitError::Transport(format!(
                     "PUT contents returned {other}"
+                ))),
+            }
+        }
+
+        async fn delete_file(&self, target: &GitTarget, message: &str) -> Result<(), CommitError> {
+            // The contents API needs the current blob sha to delete it.
+            let Some(sha) = self.current_sha(target).await? else {
+                return Ok(());
+            };
+            let body = serde_json::json!({
+                "message": message,
+                "sha": sha,
+                "branch": target.branch,
+            });
+            let mut init = RequestInit::new();
+            init.with_method(Method::Delete)
+                .with_headers(self.headers()?)
+                .with_body(Some(body.to_string().into()));
+            let req = Request::new_with_init(&Self::contents_url(target), &init)
+                .map_err(|e| CommitError::Transport(e.to_string()))?;
+            let resp = self.send(req).await?;
+            match resp.status_code() {
+                200 => Ok(()),
+                other => Err(CommitError::Transport(format!(
+                    "DELETE contents returned {other}"
                 ))),
             }
         }

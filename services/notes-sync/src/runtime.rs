@@ -19,8 +19,10 @@ use worker::{
 };
 
 use crate::auth::{authorize_owner, authorized_did};
-use crate::git::{commit_with_retry, CommitError, GitTarget, WorkerGitHubClient};
-use crate::route::{is_valid_note_id, parse_ws_note_id};
+use crate::git::{commit_with_retry, move_note_file, CommitError, GitTarget, WorkerGitHubClient};
+use crate::route::{
+    choose_rename_body, is_valid_note_id, parse_ws_note_id, plan_rename, RenameError, RenamePlan,
+};
 use crate::state::{is_stale, next_alarm};
 
 /// Internal DO control path: the top-level `/delete` handler forwards a
@@ -28,6 +30,19 @@ use crate::state::{is_stale, next_alarm};
 /// and backing git file. Never routed from the public surface — only the
 /// orchestrator reaches it, with the note id in `X-Note-Id`.
 const PURGE_PATH: &str = "/__purge";
+
+/// Internal DO control path: the `/rename` orchestrator forwards a `POST`
+/// here to the *source* note's Durable Object to read its materialized body
+/// (returned as `{"seq":…,"text":…}`) before the move. Read-only — it never
+/// mutates the source, so a later failure leaves the source recoverable.
+const EXPORT_PATH: &str = "/__export";
+
+/// Internal DO control path: the `/rename` orchestrator forwards a `POST`
+/// here to the *destination* note's Durable Object with the migrated body in
+/// the request JSON (`{"text":…}`) and the new id in `X-Note-Id`, so opening
+/// `?note=<new>` shows the content. The DO does not hydrate from git on open,
+/// so a fresh id is an empty object until it is seeded here.
+const SEED_PATH: &str = "/__seed";
 
 /// Commit the note this long after the last edit — coalesces a burst of
 /// keystrokes into a single git commit once the typing settles. Durability
@@ -68,6 +83,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/me" => return handle_me(&req, &env),
         "/vault" => return handle_vault(&req, &env).await,
         "/delete" => return handle_delete(&req, &env).await,
+        "/rename" => return handle_rename(&req, &env).await,
         _ => {}
     }
 
@@ -197,19 +213,7 @@ async fn handle_delete(req: &Request, env: &Env) -> Result<Response> {
         return Response::error("invalid note id", 400);
     }
 
-    // Hand off to the note's DO. The id rides a header so it needs no path
-    // encoding, and the DO uses it to resolve the git path it owns.
-    let headers = Headers::new();
-    headers.set("X-Note-Id", &note)?;
-    let mut init = RequestInit::new();
-    init.with_method(Method::Post).with_headers(headers);
-    let ctrl = Request::new_with_init(&format!("https://do{PURGE_PATH}"), &init)?;
-    let stub = env
-        .durable_object("NOTE")?
-        .id_from_name(&note)?
-        .get_stub()?;
-    let resp = stub.fetch_with_request(ctrl).await?;
-    if resp.status_code() != 200 {
+    if purge_note(env, &note).await.is_err() {
         return Response::error("delete failed", 502);
     }
 
@@ -218,6 +222,237 @@ async fn handle_delete(req: &Request, env: &Env) -> Result<Response> {
         .with_status(200)
         .with_headers(headers)
         .fixed(b"{\"ok\":true}".to_vec()))
+}
+
+/// How many times to re-attempt an idempotent Durable Object control op
+/// (seed/purge) before giving up. These run *after* the git move has already
+/// made the destination durable, so a transient failure here must not be
+/// allowed to leave the old path resurrectable or the new path blank.
+const CONTROL_OP_RETRIES: u32 = 3;
+
+/// `POST /rename?note=<old>&to=<new>` — move a note to a new path for the
+/// owner's session. The orchestration is ordered for data safety:
+///
+/// 1. Read the source body. The source DO's materialized text is preferred,
+///    but a cold DO (never opened since eviction/migration) reports `""`
+///    though git holds the note, so the committed git blob is the fallback —
+///    carrying `""` would erase the source on the move.
+/// 2. Refuse to clobber a live destination: a note typed into but not yet
+///    committed to git is invisible to the committed-listing guard, so probe
+///    the destination DO and reject (409) if it holds uncommitted content.
+/// 3. Git move: create the destination with the body, then drop the source
+///    (create-before-delete, so the body is durable at the new path first).
+/// 4. Seed the destination DO so opening `?note=<new>` shows the body
+///    (the DO does not hydrate from git on open), retried since the git move
+///    has already committed.
+/// 5. Clear the source DO so the old path can't be resurrected from a stale
+///    reopen, also retried.
+///
+/// A destination that already exists in git is not a hard error when the
+/// source is still present: it signals a half-finished earlier attempt
+/// (the create landed but a later step failed), which is *resumed*
+/// idempotently rather than wedged behind a 409 — provided the destination
+/// holds the body being carried (a different body there is a genuine
+/// collision). Returns `{"ok": true}`.
+async fn handle_rename(req: &Request, env: &Env) -> Result<Response> {
+    if !session_authorized(req, env) {
+        return Response::error("unauthorized", 401);
+    }
+    let url = req.url()?;
+    let param = |key: &str| {
+        url.query_pairs()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.into_owned())
+            .unwrap_or_default()
+    };
+    let old = param("note");
+    let new = param("to");
+
+    // The plan is decided against the committed vault listing; the same
+    // client then performs the git move.
+    let owner = env.var("GITHUB_OWNER")?.to_string();
+    let repo = env.var("GITHUB_REPO")?.to_string();
+    let branch = env.var("GITHUB_BRANCH")?.to_string();
+    let token = env.secret("GITHUB_TOKEN")?.to_string();
+    let client = WorkerGitHubClient::new(token);
+    let existing = client
+        .list_note_paths(&owner, &repo, &branch)
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    let plan = match plan_rename(&old, &new, &existing) {
+        Ok(plan) => plan,
+        Err(RenameError::InvalidId) => return Response::error("invalid note id", 400),
+        Err(RenameError::SameId) => {
+            return Response::error("source and destination are the same", 400)
+        }
+        Err(RenameError::SourceMissing) => return Response::error("note not found", 404),
+    };
+
+    let old_target = note_git_target(env, &old)?;
+    let new_target = note_git_target(env, &new)?;
+
+    // 1. Choose the body to carry: the source DO's live text when present,
+    //    else the committed git blob (a cold DO reports `""`).
+    let do_text = export_note_text(env, &old).await?;
+    let git_text = client
+        .get_file_content(&old_target)
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+    let text = choose_rename_body(&do_text, git_text.as_deref());
+
+    // 2. Guard the destination against a silent overwrite.
+    match plan {
+        RenamePlan::Fresh => {
+            // The committed-listing guard already proved the destination is
+            // free in git, but a note edited-but-not-yet-committed lives only
+            // in its DO. Refuse rather than let `seed`'s `delete_all` wipe it.
+            if !export_note_text(env, &new).await?.is_empty() {
+                return Response::error("destination already exists", 409);
+            }
+        }
+        RenamePlan::Resume => {
+            // Destination is already committed. It's a resumable in-progress
+            // rename only if it holds the body we're carrying; a different
+            // body there is a real, distinct note — a genuine collision.
+            let dest = client
+                .get_file_content(&new_target)
+                .await
+                .map_err(|e| Error::RustError(e.to_string()))?;
+            if dest.as_deref() != Some(text.as_str()) {
+                return Response::error("destination already exists", 409);
+            }
+        }
+    }
+
+    // 3. Git move: create the destination with the body, then drop the source.
+    //    Idempotent on a resume — the create re-PUTs the same body.
+    move_note_file(&client, &old_target, &new_target, &text, MAX_COMMIT_RETRIES)
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    // 4. Seed the destination DO so opening `?note=<new>` shows the body. The
+    //    git file already exists, so a missed seed would otherwise show blank.
+    if seed_note_with_retry(env, &new, &text).await.is_err() {
+        return Response::error("rename seed failed", 502);
+    }
+
+    // 5. Clear the source DO (its git file is already gone) so a stale reopen
+    //    of the old path cannot resurrect it.
+    if purge_note_with_retry(env, &old).await.is_err() {
+        return Response::error("rename cleanup failed", 502);
+    }
+
+    let headers = shell_cors_headers(env)?;
+    Ok(ResponseBuilder::new()
+        .with_status(200)
+        .with_headers(headers)
+        .fixed(b"{\"ok\":true}".to_vec()))
+}
+
+/// Resolve a note's GitHub target from env config plus its (already
+/// validated) id. The env config is shared across notes; only the path
+/// differs, at `notes/<note_id>.md`.
+fn note_git_target(env: &Env, note_id: &str) -> Result<GitTarget> {
+    Ok(GitTarget {
+        owner: env.var("GITHUB_OWNER")?.to_string(),
+        repo: env.var("GITHUB_REPO")?.to_string(),
+        branch: env.var("GITHUB_BRANCH")?.to_string(),
+        path: format!("notes/{note_id}.md"),
+    })
+}
+
+/// Build a `POST` control request to a note's Durable Object, carrying the
+/// note id in `X-Note-Id` (so it needs no path encoding) and an optional
+/// JSON body.
+fn control_request(path: &str, note_id: &str, body: Option<String>) -> Result<Request> {
+    let headers = Headers::new();
+    headers.set("X-Note-Id", note_id)?;
+    let mut init = RequestInit::new();
+    init.with_method(Method::Post).with_headers(headers);
+    if let Some(body) = body {
+        init.with_body(Some(body.into()));
+    }
+    Request::new_with_init(&format!("https://do{path}"), &init)
+}
+
+/// Forward `ctrl` to the Durable Object for `note_id` and return its
+/// response. The id keys the DO (`idFromName`) and rides the request so the
+/// object can resolve the git path it owns.
+async fn forward_to_note(env: &Env, note_id: &str, ctrl: Request) -> Result<Response> {
+    let stub = env
+        .durable_object("NOTE")?
+        .id_from_name(note_id)?
+        .get_stub()?;
+    stub.fetch_with_request(ctrl).await
+}
+
+/// Read a note's current materialized body from its Durable Object.
+async fn export_note_text(env: &Env, note_id: &str) -> Result<String> {
+    let ctrl = control_request(EXPORT_PATH, note_id, None)?;
+    let mut resp = forward_to_note(env, note_id, ctrl).await?;
+    if resp.status_code() != 200 {
+        return Err(Error::RustError("export failed".into()));
+    }
+    let body = resp.text().await?;
+    let v: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| Error::RustError(e.to_string()))?;
+    Ok(v.get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or_default()
+        .to_owned())
+}
+
+/// Seed a note's Durable Object with `text` so opening it shows the body.
+async fn seed_note(env: &Env, note_id: &str, text: &str) -> Result<()> {
+    let body = serde_json::json!({ "text": text }).to_string();
+    let ctrl = control_request(SEED_PATH, note_id, Some(body))?;
+    let resp = forward_to_note(env, note_id, ctrl).await?;
+    if resp.status_code() != 200 {
+        return Err(Error::RustError("seed failed".into()));
+    }
+    Ok(())
+}
+
+/// Purge a note's Durable Object (its storage and backing git file).
+/// Idempotent: an uncommitted or already-gone note still succeeds.
+async fn purge_note(env: &Env, note_id: &str) -> Result<()> {
+    let ctrl = control_request(PURGE_PATH, note_id, None)?;
+    let resp = forward_to_note(env, note_id, ctrl).await?;
+    if resp.status_code() != 200 {
+        return Err(Error::RustError("purge failed".into()));
+    }
+    Ok(())
+}
+
+/// Seed the destination DO, retrying a transient failure. Both `seed` and
+/// the underlying control op are idempotent, so a retry just re-installs the
+/// same body. Called after the git move has committed, where a permanently
+/// missed seed would leave `?note=<new>` showing blank over real content.
+async fn seed_note_with_retry(env: &Env, note_id: &str, text: &str) -> Result<()> {
+    let mut last = Ok(());
+    for _ in 0..CONTROL_OP_RETRIES {
+        match seed_note(env, note_id, text).await {
+            Ok(()) => return Ok(()),
+            Err(e) => last = Err(e),
+        }
+    }
+    last
+}
+
+/// Purge the source DO, retrying a transient failure. `purge` is idempotent,
+/// so a retry that races a prior partial purge still converges. Called as the
+/// rename's final step, where a permanently missed purge would leave the old
+/// path resurrectable from a stale reopen.
+async fn purge_note_with_retry(env: &Env, note_id: &str) -> Result<()> {
+    let mut last = Ok(());
+    for _ in 0..CONTROL_OP_RETRIES {
+        match purge_note(env, note_id).await {
+            Ok(()) => return Ok(()),
+            Err(e) => last = Err(e),
+        }
+    }
+    last
 }
 
 /// Per-connection state persisted across hibernation via the socket
@@ -327,12 +562,7 @@ impl NoteDurableObject {
     /// Resolve the GitHub target for an explicit (already-validated) note
     /// id. The env config is shared across notes; only the path differs.
     fn git_target_for(&self, note_id: &str) -> Result<GitTarget> {
-        Ok(GitTarget {
-            owner: self.env.var("GITHUB_OWNER")?.to_string(),
-            repo: self.env.var("GITHUB_REPO")?.to_string(),
-            branch: self.env.var("GITHUB_BRANCH")?.to_string(),
-            path: format!("notes/{note_id}.md"),
-        })
+        note_git_target(&self.env, note_id)
     }
 
     /// Delete this note: remove its backing git file, then wipe all durable
@@ -350,6 +580,26 @@ impl NoteDurableObject {
         self.state.storage().delete_all().await?;
         let _ = self.state.storage().delete_alarm().await;
         Response::ok("purged")
+    }
+
+    /// Seed this (destination) Durable Object with a migrated body during a
+    /// rename. The object is reset to a clean single-entry log holding `text`
+    /// as the initial `Whole` delta, so a later eviction replays losslessly,
+    /// and the snapshot is marked already-committed — the rename's git move
+    /// wrote this exact body to the new path, so no redundant commit is due.
+    async fn seed(&self, note_id: &str, text: &str) -> Result<Response> {
+        self.state.storage().delete_all().await?;
+        let _ = self.state.storage().delete_alarm().await;
+        let seq: Seq = 1;
+        let delta = Delta::Whole {
+            text: text.to_owned(),
+        };
+        self.state.storage().put(&log_key(seq), &delta).await?;
+        self.state.storage().put("seq", seq).await?;
+        self.state.storage().put("text", text).await?;
+        self.state.storage().put("committed_seq", seq).await?;
+        self.state.storage().put("note_id", note_id).await?;
+        Response::ok("seeded")
     }
 
     /// Commit the current body to git with optimistic stale-ref retry.
@@ -387,13 +637,34 @@ impl DurableObject for NoteDurableObject {
         Self { state, env }
     }
 
-    async fn fetch(&self, req: Request) -> Result<Response> {
-        // Internal control op: the `/delete` orchestrator forwards a purge
-        // here with the note id in `X-Note-Id`. Handled before the websocket
-        // path so it never tries to upgrade.
+    async fn fetch(&self, mut req: Request) -> Result<Response> {
+        // Internal control ops forwarded by the top-level orchestrators carry
+        // the note id in `X-Note-Id`. Handled before the websocket path so they
+        // never try to upgrade.
         if req.path() == PURGE_PATH {
             let note_id = req.headers().get("X-Note-Id")?.unwrap_or_default();
             return self.purge(&note_id).await;
+        }
+        // Rename, source side: report the current body so the orchestrator can
+        // carry it to the new path. Read-only.
+        if req.path() == EXPORT_PATH {
+            let (seq, text) = self.load_state().await?;
+            let body = serde_json::json!({ "seq": seq, "text": text }).to_string();
+            return Response::ok(body);
+        }
+        // Rename, destination side: install the migrated body so opening the
+        // new id shows it. The body rides the request JSON.
+        if req.path() == SEED_PATH {
+            let note_id = req.headers().get("X-Note-Id")?.unwrap_or_default();
+            let body = req.text().await?;
+            let v: serde_json::Value =
+                serde_json::from_str(&body).map_err(|e| Error::RustError(e.to_string()))?;
+            let text = v
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_owned();
+            return self.seed(&note_id, &text).await;
         }
 
         let note_id = parse_ws_note_id(&req.path())
