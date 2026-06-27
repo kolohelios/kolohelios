@@ -10,7 +10,29 @@
 //! its `base_seq`, so it can never be self-stale, so the server never
 //! answers with a `Sync` that would overwrite what the user is typing.
 
-use notes_protocol::{ClientMsg, Delta, Seq, ServerMsg};
+use notes_protocol::{frontmatter, ClientMsg, Delta, Seq, ServerMsg};
+
+/// The note id (the `/`-separated path) carried in a `…/note/<id>/ws`
+/// WebSocket URL, used as the editor's title fallback. Returns `None` if
+/// the URL isn't that shape. Note ids are restricted to unreserved
+/// characters per segment, so the percent-encoded path in the URL equals
+/// the human-readable id.
+pub fn note_id_from_ws_url(ws_url: &str) -> Option<String> {
+    let after = ws_url.split_once("/note/")?.1;
+    let path = after.strip_suffix("/ws")?;
+    (!path.is_empty()).then(|| path.to_owned())
+}
+
+/// The display title for a note: its front-matter title when present and
+/// non-blank, otherwise `fallback` (the note id). Malformed front-matter
+/// falls back too — the surface should never go titleless on a parse slip.
+pub fn display_title(body: &str, fallback: &str) -> String {
+    frontmatter::parse(body)
+        .ok()
+        .and_then(|(fm, _body)| fm.title)
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_owned())
+}
 
 /// The editor's view of the document.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -239,5 +261,49 @@ mod tests {
             }),
             (Effect::BackedUp(Some("abc123".into())), None)
         );
+    }
+
+    #[test]
+    fn note_id_is_extracted_from_the_ws_url() {
+        assert_eq!(
+            note_id_from_ws_url("wss://notes.example.com/note/projects/idea/ws"),
+            Some("projects/idea".to_owned())
+        );
+        assert_eq!(
+            note_id_from_ws_url("ws://localhost:8787/note/scratch/ws"),
+            Some("scratch".to_owned())
+        );
+    }
+
+    #[test]
+    fn note_id_is_none_for_a_non_note_url() {
+        assert_eq!(note_id_from_ws_url("wss://example.com/me"), None);
+        assert_eq!(note_id_from_ws_url("wss://example.com/note//ws"), None);
+    }
+
+    #[test]
+    fn display_title_prefers_the_frontmatter_title() {
+        let body = "---\ntitle: My Real Title\n---\nbody\n";
+        assert_eq!(display_title(body, "projects/idea"), "My Real Title");
+    }
+
+    #[test]
+    fn display_title_falls_back_to_the_id_without_frontmatter() {
+        assert_eq!(
+            display_title("just a body\n", "projects/idea"),
+            "projects/idea"
+        );
+    }
+
+    #[test]
+    fn display_title_falls_back_when_the_title_is_blank() {
+        let body = "---\ntitle: \"   \"\n---\nbody\n";
+        assert_eq!(display_title(body, "scratch"), "scratch");
+    }
+
+    #[test]
+    fn display_title_falls_back_on_malformed_frontmatter() {
+        let body = "---\ntags: [unterminated\n---\nbody\n";
+        assert_eq!(display_title(body, "scratch"), "scratch");
     }
 }

@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlTextAreaElement, MessageEvent, WebSocket};
 
-use crate::client::{ClientState, Effect};
+use crate::client::{self, ClientState, Effect};
 
 /// Browser entrypoint. `ws_url` is the full `wss://…/note/<id>/ws`
 /// endpoint; the session cookie rides the upgrade automatically (the
@@ -27,6 +27,12 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
         .get_element_by_id("editor")
         .ok_or("no #editor element")?
         .dyn_into::<HtmlTextAreaElement>()?;
+
+    // Title fallback when a note carries no front-matter title: the note
+    // id parsed out of the `…/note/<id>/ws` URL (what the shell shows
+    // today). The visible title is upgraded to the front-matter title once
+    // a `Sync` carrying a body lands.
+    let note_id = client::note_id_from_ws_url(ws_url).unwrap_or_default();
 
     let state = Rc::new(RefCell::new(ClientState::default()));
     let ws = WebSocket::new(ws_url)?;
@@ -51,6 +57,8 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
         let textarea_c = textarea.clone();
         let state_c = state.clone();
         let ws_c = ws.clone();
+        let document_c = document.clone();
+        let note_id_c = note_id.clone();
         let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
             let Some(frame) = e.data().as_string() else {
                 return;
@@ -61,6 +69,9 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
             let (effect, follow_up) = state_c.borrow_mut().apply(msg);
             if let Effect::Replace(body) = effect {
                 textarea_c.set_value(&body);
+                // Surface the front-matter title (or the note id) on the
+                // chrome instead of the raw id the shell shows initially.
+                set_title(&document_c, &client::display_title(&body, &note_id_c));
             }
             if let Some(msg) = follow_up {
                 let _ = send(&ws_c, &msg);
@@ -114,4 +125,14 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
 fn send(ws: &WebSocket, msg: &ClientMsg) -> Result<(), JsValue> {
     let frame = serde_json::to_string(msg).map_err(|e| JsValue::from_str(&e.to_string()))?;
     ws.send_with_str(&frame)
+}
+
+/// Reflect `title` onto both the document `<title>` and the `#status`
+/// chrome element. Missing `#status` is a no-op — the title is best-effort
+/// presentation, never load-bearing.
+fn set_title(document: &web_sys::Document, title: &str) {
+    document.set_title(title);
+    if let Some(status) = document.get_element_by_id("status") {
+        status.set_text_content(Some(title));
+    }
 }
