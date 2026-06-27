@@ -144,7 +144,7 @@ main {
   background: light-dark(#ececec, #242424);
 }
 
-.note-del {
+.note-act {
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -155,11 +155,11 @@ main {
   visibility: hidden;
 }
 
-.note-row:hover .note-del {
+.note-row:hover .note-act {
   visibility: visible;
 }
 
-.note-del:hover {
+.note-act:hover {
   color: var(--fg);
 }
 

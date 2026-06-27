@@ -153,9 +153,19 @@
             a.href = "?note=" + encodeURIComponent(child.note);
             a.textContent = name;
             if (child.note === noteId) a.className = "active";
+            const ren = document.createElement("button");
+            ren.type = "button";
+            ren.className = "note-act";
+            ren.title = "Rename or move note";
+            ren.textContent = "✎";
+            ren.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              renameNote(child.note);
+            });
             const del = document.createElement("button");
             del.type = "button";
-            del.className = "note-del";
+            del.className = "note-act";
             del.title = "Delete note";
             del.textContent = "×";
             del.addEventListener("click", (e) => {
@@ -165,7 +175,7 @@
             });
             const row = document.createElement("div");
             row.className = "note-row";
-            row.append(a, del);
+            row.append(a, ren, del);
             li.appendChild(row);
           } else {
             const span = document.createElement("span");
@@ -230,6 +240,55 @@
         }
         if (note === noteId) {
           location.search = "?note=scratch";
+        } else {
+          loadVault();
+        }
+      }
+
+      // Rename/move a note: prompt for a new path, validate it, ask the
+      // backend to move the git file and migrate the Durable Object, then
+      // follow the note to its new path (or just refresh the listing).
+      async function renameNote(note) {
+        const to = (
+          prompt(`Rename "${note}" to (new path):`, note) || ""
+        ).trim();
+        if (!to || to === note) return;
+        if (!validNotePath(to)) {
+          alert("Use letters, digits, . _ - and / between segments.");
+          return;
+        }
+        // If we're renaming the note we're currently editing, freeze the
+        // surface before the move. The server reads the source note's body
+        // and then clears its Durable Object; a keystroke landing in that
+        // window would be committed to the old path and then erased. Making
+        // the textarea read-only stops new edits from being sent; on success
+        // we navigate (a full reload), which tears down the live socket.
+        const editor = document.getElementById("editor");
+        const editingThis = note === noteId;
+        if (editingThis) editor.readOnly = true;
+        try {
+          const res = await fetch(
+            `https://${backend}/rename?note=${encodeURIComponent(note)}&to=${encodeURIComponent(to)}`,
+            { method: "POST", credentials: "include" },
+          );
+          if (!res.ok) {
+            if (editingThis) editor.readOnly = false;
+            alert(
+              res.status === 409
+                ? "A note already exists at that path."
+                : res.status === 404
+                  ? "That note no longer exists."
+                  : "Rename failed.",
+            );
+            return;
+          }
+        } catch (e) {
+          if (editingThis) editor.readOnly = false;
+          alert("Rename failed.");
+          return;
+        }
+        if (editingThis) {
+          location.search = "?note=" + encodeURIComponent(to);
         } else {
           loadVault();
         }
