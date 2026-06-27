@@ -18,6 +18,7 @@ package labels
 		{name: "packages/notes-protocol", color: "8e44ad", description: "Shared serde wire types for the notes app", scope: true},
 		{name: "pollen-alert", color: "0e8a16", description: "Pollen alert worker", scope: true},
 		{name: "portfolio", color:    "1d76db", description: "Personal portfolio site at kolohelios.com", scope: true},
+		{name: "scoretracker", color: "c5def5", description: "Card-game score tracker worker at scoretracker.kolohelios.com", scope: true},
 		{name: "services/notes-sync", color: "1abc9c", description: "Git-backed live-synced note service (Durable Object)", scope: true},
 		{name: "shaka", color:        "5319e7", description: "shaka CLI / repo tooling", scope: true},
 		{name: "todoist", color:      "e60023", description: "Todoist CLI tool", scope: true},

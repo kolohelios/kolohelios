@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>score tracker</title>
+    <style>
+      :root {
+        --bg: #fbf7f0;
+        --card: #fffdfa;
+        --ink: #3a342c;
+        --muted: #8a8073;
+        --line: #ece3d6;
+        --accent: #c87f4a;
+        --accent-soft: #f6e7d8;
+        --good: #5d8a66;
+        --radius: 16px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1f1c18;
+          --card: #2a2622;
+          --ink: #ece5da;
+          --muted: #a89c8b;
+          --line: #3a342d;
+          --accent: #e0a06a;
+          --accent-soft: #3a2f24;
+          --good: #8fc098;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        padding: env(safe-area-inset-top) 0 2.5rem;
+      }
+      .wrap { max-width: 30rem; margin: 0 auto; padding: 1rem; }
+      h1 { font-size: 1.35rem; margin: 0.4rem 0 0.1rem; }
+      .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      }
+      label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+      .games { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+      .chip {
+        border: 1px solid var(--line); background: var(--card); color: var(--ink);
+        border-radius: 999px; padding: 0.5rem 0.95rem; font-size: 0.95rem; cursor: pointer;
+      }
+      .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+      input[type="text"] {
+        width: 100%; padding: 0.7rem 0.8rem; font-size: 1rem;
+        border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink);
+      }
+      .row { display: flex; align-items: center; gap: 0.6rem; }
+      .row + .row { margin-top: 0.7rem; }
+      .row .name { width: 5.5rem; flex: none; font-weight: 600; }
+      .totals { width: 100%; border-collapse: collapse; }
+      .totals td { padding: 0.55rem 0.3rem; border-bottom: 1px solid var(--line); font-size: 1.05rem; }
+      .totals tr:last-child td { border-bottom: none; }
+      .totals .pts { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+      .lead td { color: var(--good); }
+      .lead .name::after { content: " 👑"; }
+      .leadbar {
+        background: var(--accent-soft); color: var(--ink);
+        border-radius: 12px; padding: 0.6rem 0.8rem; font-size: 0.95rem; margin-bottom: 0.9rem;
+      }
+      button.go {
+        width: 100%; padding: 0.85rem; font-size: 1.05rem; font-weight: 700;
+        background: var(--accent); color: #fff; border: none; border-radius: 12px; cursor: pointer;
+      }
+      .btns { display: flex; gap: 0.6rem; margin-top: 0.75rem; }
+      .btns button {
+        flex: 1; padding: 0.65rem; font-size: 0.9rem; background: var(--card);
+        color: var(--ink); border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
+      }
+      .award { margin-top: 0.8rem; }
+      .award .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+      .hist { font-size: 0.9rem; }
+      .hist .h { display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px dashed var(--line); }
+      .hist .h:last-child { border-bottom: none; }
+      .hist .who { color: var(--muted); }
+      .err { color: #b4493a; font-size: 0.85rem; margin-top: 0.6rem; min-height: 1.1rem; }
+      .winner-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .idrow { display: flex; gap: 0.5rem; align-items: flex-end; }
+      .idrow .grow { flex: 1; }
+      .muted-link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 0.85rem; padding: 0; }
+      h2 { font-size: 0.95rem; color: var(--muted); margin: 0 0 0.6rem; text-transform: lowercase; letter-spacing: 0.02em; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>score tracker</h1>
+      <div class="sub" id="sub">lower score wins</div>
+
+      <div class="games card" id="games"></div>
+
+      <div class="card">
+        <div class="idrow">
+          <div class="grow">
+            <label for="gameid">game</label>
+            <input type="text" id="gameid" autocapitalize="off" autocomplete="off" />
+          </div>
+          <button class="muted-link" id="newgame" title="start a fresh game">new game</button>
+        </div>
+      </div>
+
+      <div class="leadbar" id="leadbar" hidden></div>
+
+      <div class="card">
+        <h2>totals</h2>
+        <table class="totals"><tbody id="totals"></tbody></table>
+      </div>
+
+      <div class="card" id="entry"></div>
+
+      <div class="card">
+        <h2>history</h2>
+        <div class="hist" id="hist"></div>
+        <div class="btns">
+          <button id="undo">undo last</button>
+          <button id="reset">reset</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const qs = new URLSearchParams(location.search);
+      let registry = {};
+      let gameType = qs.get("game") || "phase10";
+      let gameId = qs.get("id") || "home";
+      let data = null;
+
+      const $ = (id) => document.getElementById(id);
+      const api = (path) => `/api/game/${encodeURIComponent(gameType)}/${encodeURIComponent(gameId)}${path}`;
+
+      function syncUrl() {
+        const u = new URL(location);
+        u.searchParams.set("game", gameType);
+        u.searchParams.set("id", gameId);
+        history.replaceState(null, "", u);
+      }
+
+      async function boot() {
+        registry = await (await fetch("/api/games")).json();
+        if (!registry[gameType]) gameType = Object.keys(registry)[0];
+        $("gameid").value = gameId;
+        renderGameChips();
+        await load();
+      }
+
+      function renderGameChips() {
+        const el = $("games");
+        el.innerHTML = "";
+        for (const [id, g] of Object.entries(registry)) {
+          const b = document.createElement("button");
+          b.className = "chip";
+          b.textContent = g.name;
+          b.setAttribute("aria-pressed", id === gameType);
+          b.onclick = () => { gameType = id; syncUrl(); renderGameChips(); load(); };
+          el.appendChild(b);
+        }
+      }
+
+      async function load() {
+        const def = registry[gameType];
+        const isRound = def.model.kind === "roundPoints";
+        $("sub").textContent = isRound
+          ? (def.model.winner === "lowest" ? "lower score wins" : "higher score wins")
+          : "most wins takes it";
+        try {
+          data = await (await fetch(api(""))).json();
+        } catch (e) {
+          data = null;
+        }
+        render();
+      }
+
+      function render() {
+        if (!data) return;
+        const def = registry[gameType];
+        renderLeader(def);
+        renderTotals(def);
+        renderEntry(def);
+        renderHistory(def);
+      }
+
+      function renderLeader(def) {
+        const bar = $("leadbar");
+        const ls = data.leaders || [];
+        if (!ls.length) { bar.hidden = true; return; }
+        bar.hidden = false;
+        bar.textContent = ls.length === 1 ? `${ls[0]} is ahead` : `tie: ${ls.join(", ")}`;
+      }
+
+      function renderTotals(def) {
+        const tb = $("totals");
+        tb.innerHTML = "";
+        const ls = new Set(data.leaders || []);
+        for (const p of data.players) {
+          const tr = document.createElement("tr");
+          if (ls.has(p)) tr.className = "lead";
+          tr.innerHTML = `<td class="name">${esc(p)}</td><td class="pts">${data.totals[p] ?? 0}</td>`;
+          tb.appendChild(tr);
+        }
+      }
+
+      function renderEntry(def) {
+        const el = $("entry");
+        el.innerHTML = "";
+        if (def.model.kind === "roundPoints") {
+          el.appendChild(roundForm(def));
+        } else {
+          el.appendChild(matchForm(def));
+        }
+      }
+
+      function roundForm(def) {
+        const frag = document.createElement("div");
+        const h = document.createElement("h2");
+        h.textContent = "add round";
+        frag.appendChild(h);
+
+        const inputs = {};
+        for (const p of data.players) {
+          const row = document.createElement("div");
+          row.className = "row";
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = p;
+          const inp = document.createElement("input");
+          inp.type = "text";
+          inp.placeholder = "cards, e.g. 5, wild";
+          inp.autocapitalize = "off";
+          inputs[p] = inp;
+          row.append(name, inp);
+          frag.appendChild(row);
+        }
+
+        let award = null;
+        const ra = def.model.roundAward;
+        if (ra) {
+          const wrap = document.createElement("div");
+          wrap.className = "award";
+          wrap.innerHTML = `<label>who ${esc(ra.label)}'d? (went out first)</label>`;
+          const chips = document.createElement("div");
+          chips.className = "chips";
+          const opts = ["—", ...data.players];
+          const chipEls = {};
+          for (const o of opts) {
+            const c = document.createElement("button");
+            c.className = "chip";
+            c.textContent = o;
+            c.setAttribute("aria-pressed", o === "—");
+            c.onclick = () => {
+              award = o === "—" ? null : o;
+              for (const k in chipEls) chipEls[k].setAttribute("aria-pressed", chipEls[k] === c);
+            };
+            chipEls[o] = c;
+            chips.appendChild(c);
+          }
+          award = null;
+          wrap.appendChild(chips);
+          frag.appendChild(wrap);
+        }
+
+        const btn = document.createElement("button");
+        btn.className = "go";
+        btn.textContent = "add round";
+        btn.style.marginTop = "0.9rem";
+        btn.onclick = () => {
+          const entries = {};
+          for (const p of data.players) entries[p] = inputs[p].value;
+          post("/round", { entries, award });
+        };
+        frag.appendChild(btn);
+
+        const err = document.createElement("div");
+        err.className = "err";
+        err.id = "err";
+        frag.appendChild(err);
+        return frag;
+      }
+
+      function matchForm(def) {
+        const frag = document.createElement("div");
+        const h = document.createElement("h2");
+        h.textContent = "record a game";
+        frag.appendChild(h);
+        const label = document.createElement("label");
+        label.textContent = "who won?";
+        frag.appendChild(label);
+        const chips = document.createElement("div");
+        chips.className = "winner-chips";
+        for (const p of data.players) {
+          const c = document.createElement("button");
+          c.className = "chip";
+          c.textContent = p;
+          c.onclick = () => post("/round", { winner: p });
+          chips.appendChild(c);
+        }
+        frag.appendChild(chips);
+        const err = document.createElement("div");
+        err.className = "err";
+        err.id = "err";
+        frag.appendChild(err);
+        return frag;
+      }
+
+      function renderHistory(def) {
+        const el = $("hist");
+        el.innerHTML = "";
+        if (def.model.kind === "roundPoints") {
+          if (!data.rounds.length) { el.innerHTML = `<div class="who">no rounds yet</div>`; return; }
+          for (const r of [...data.rounds].reverse()) {
+            const parts = data.players.map((p) => {
+              const e = r.entries[p];
+              const tic = r.award === p ? " ·" + def.model.roundAward.label : "";
+              return `${esc(p)} ${e ? e.points : 0}${tic}`;
+            });
+            const div = document.createElement("div");
+            div.className = "h";
+            div.innerHTML = `<span>round ${r.n}</span><span class="who">${esc(parts.join("  ·  "))}</span>`;
+            el.appendChild(div);
+          }
+        } else {
+          if (!data.matches.length) { el.innerHTML = `<div class="who">no games yet</div>`; return; }
+          for (const m of [...data.matches].reverse()) {
+            const div = document.createElement("div");
+            div.className = "h";
+            div.innerHTML = `<span>game ${m.n}</span><span class="who">${esc(m.winner)} won</span>`;
+            el.appendChild(div);
+          }
+        }
+      }
+
+      async function post(path, body) {
+        const err = $("err");
+        if (err) err.textContent = "";
+        try {
+          const res = await fetch(api(path), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body || {}),
+          });
+          const json = await res.json();
+          if (!res.ok) { if (err) err.textContent = json.detail || json.error || "something went wrong"; return; }
+          data = json;
+          render();
+        } catch (e) {
+          if (err) err.textContent = "network error";
+        }
+      }
+
+      $("gameid").addEventListener("change", (e) => {
+        gameId = e.target.value.trim() || "home";
+        e.target.value = gameId;
+        syncUrl();
+        load();
+      });
+      $("undo").onclick = () => post("/undo", {});
+      $("reset").onclick = () => { if (confirm("Reset this game?")) post("/reset", {}); };
+      $("newgame").onclick = () => {
+        const id = prompt("New game name (shared link id):", gameId);
+        if (id && id.trim()) { gameId = id.trim(); $("gameid").value = gameId; syncUrl(); post("/reset", {}); }
+      };
+
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" }[c]));
+      }
+
+      boot();
+    </script>
+  </body>
+</html>
