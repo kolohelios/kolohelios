@@ -21,7 +21,8 @@ use worker::{
 use crate::auth::{authorize_owner, authorized_did};
 use crate::git::{commit_with_retry, move_note_file, CommitError, GitTarget, WorkerGitHubClient};
 use crate::route::{
-    choose_rename_body, is_valid_note_id, parse_ws_note_id, plan_rename, RenameError, RenamePlan,
+    choose_rename_body, is_valid_note_id, parse_ws_note_id, plan_rename,
+    rename_blocked_by_live_socket, RenameError, RenamePlan,
 };
 use crate::state::{is_stale, next_alarm};
 
@@ -43,6 +44,14 @@ const EXPORT_PATH: &str = "/__export";
 /// `?note=<new>` shows the content. The DO does not hydrate from git on open,
 /// so a fresh id is an empty object until it is seeded here.
 const SEED_PATH: &str = "/__seed";
+
+/// Internal DO control path: the `/rename` orchestrator forwards a `POST`
+/// here to a note's Durable Object to read how many live editor websockets
+/// it currently holds (returned as `{"count":N}`). Read-only — it lets the
+/// orchestrator refuse a rename whose source or destination is open in
+/// another tab, where an in-flight edit would otherwise be lost or the
+/// purged source resurrected from a stale socket.
+const SOCKETS_PATH: &str = "/__sockets";
 
 /// Commit the note this long after the last edit — coalesces a burst of
 /// keystrokes into a single git commit once the typing settles. Durability
@@ -231,8 +240,14 @@ async fn handle_delete(req: &Request, env: &Env) -> Result<Response> {
 const CONTROL_OP_RETRIES: u32 = 3;
 
 /// `POST /rename?note=<old>&to=<new>` — move a note to a new path for the
-/// owner's session. The orchestration is ordered for data safety:
+/// owner's session. Requires the note not be open elsewhere: if a live
+/// editor socket is connected to the source (or destination) the move is
+/// refused (409), since an in-flight edit would otherwise be committed to
+/// the old path and erased, and the purged source could be resurrected from
+/// its stale socket. The orchestration is ordered for data safety:
 ///
+/// 0. Refuse a source or destination that is open in another tab (live
+///    websocket), before any mutation, so a refusal leaves both untouched.
 /// 1. Read the source body. The source DO's materialized text is preferred,
 ///    but a cold DO (never opened since eviction/migration) reports `""`
 ///    though git holds the note, so the committed git blob is the fallback —
@@ -289,6 +304,24 @@ async fn handle_rename(req: &Request, env: &Env) -> Result<Response> {
         Err(RenameError::SourceMissing) => return Response::error("note not found", 404),
     };
 
+    // 0. Refuse a note that's open in another tab. The move reads the source
+    //    body, rewrites git, then purges the source DO; a live editor socket
+    //    would have its in-flight edits committed to the old path and then
+    //    erased, and could resurrect the purged note from its stale
+    //    connection. The destination is probed too: `seed` does a
+    //    `delete_all`, so a live editor there would lose its state. Both
+    //    checks run before any mutation, so a refusal leaves everything
+    //    untouched.
+    if rename_blocked_by_live_socket(live_socket_count(env, &old).await?) {
+        return Response::error("note is open in another tab; close it and retry", 409);
+    }
+    if rename_blocked_by_live_socket(live_socket_count(env, &new).await?) {
+        return Response::error(
+            "destination note is open in another tab; close it and retry",
+            409,
+        );
+    }
+
     let old_target = note_git_target(env, &old)?;
     let new_target = note_git_target(env, &new)?;
 
@@ -315,6 +348,11 @@ async fn handle_rename(req: &Request, env: &Env) -> Result<Response> {
             // Destination is already committed. It's a resumable in-progress
             // rename only if it holds the body we're carrying; a different
             // body there is a real, distinct note — a genuine collision.
+            // A git-body comparison suffices to detect divergent destination
+            // content because the websocket-close flush (see `websocket_close`)
+            // commits any uncommitted destination edits to git on the last
+            // socket leaving — so anything not yet in git still has a live
+            // socket, which step 0's destination probe already rejected.
             let dest = client
                 .get_file_content(&new_target)
                 .await
@@ -401,6 +439,21 @@ async fn export_note_text(env: &Env, note_id: &str) -> Result<String> {
         .and_then(|t| t.as_str())
         .unwrap_or_default()
         .to_owned())
+}
+
+/// Count a note's live editor websockets via its Durable Object. Read-only:
+/// it only reports `get_websockets().len()`, never mutating the object, so a
+/// rename refused on its result leaves the note exactly as it was.
+async fn live_socket_count(env: &Env, note_id: &str) -> Result<usize> {
+    let ctrl = control_request(SOCKETS_PATH, note_id, None)?;
+    let mut resp = forward_to_note(env, note_id, ctrl).await?;
+    if resp.status_code() != 200 {
+        return Err(Error::RustError("socket probe failed".into()));
+    }
+    let body = resp.text().await?;
+    let v: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| Error::RustError(e.to_string()))?;
+    Ok(v.get("count").and_then(|c| c.as_u64()).unwrap_or_default() as usize)
 }
 
 /// Seed a note's Durable Object with `text` so opening it shows the body.
@@ -650,6 +703,14 @@ impl DurableObject for NoteDurableObject {
         if req.path() == EXPORT_PATH {
             let (seq, text) = self.load_state().await?;
             let body = serde_json::json!({ "seq": seq, "text": text }).to_string();
+            return Response::ok(body);
+        }
+        // Rename guard: report how many live editor sockets this object holds
+        // so the orchestrator can refuse a rename of a note open in another
+        // tab. Read-only.
+        if req.path() == SOCKETS_PATH {
+            let count = self.state.get_websockets().len();
+            let body = serde_json::json!({ "count": count }).to_string();
             return Response::ok(body);
         }
         // Rename, destination side: install the migrated body so opening the

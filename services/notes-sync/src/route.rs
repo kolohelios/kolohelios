@@ -112,6 +112,19 @@ pub fn choose_rename_body(do_text: &str, git_text: Option<&str>) -> String {
     }
 }
 
+/// Decide whether a rename must be refused because the note is open
+/// elsewhere. A rename reads the source body, rewrites the git file, then
+/// purges the source Durable Object; an editor still connected through that
+/// window would have its in-flight edits committed to the old path and then
+/// erased, and could resurrect the purged note from its stale socket. The
+/// same `delete_all` in `seed` would wipe a live destination. Any live
+/// socket (`count > 0`) blocks the move so the user closes the open tab and
+/// retries. Pure so the decision is host-testable; the wasm socket probe
+/// that supplies `count` is not.
+pub fn rename_blocked_by_live_socket(count: usize) -> bool {
+    count > 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,5 +269,18 @@ mod tests {
             "committed body"
         );
         assert_eq!(choose_rename_body("", None), "");
+    }
+
+    #[test]
+    fn rename_is_blocked_while_an_editor_socket_is_live() {
+        // A live socket on either side means an open editor — an in-flight
+        // edit could be lost or the purged source resurrected, so refuse.
+        assert!(rename_blocked_by_live_socket(1));
+        assert!(rename_blocked_by_live_socket(5));
+    }
+
+    #[test]
+    fn rename_is_allowed_when_no_socket_is_live() {
+        assert!(!rename_blocked_by_live_socket(0));
     }
 }
