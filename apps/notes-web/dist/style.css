@@ -191,6 +191,52 @@ main {
   outline: none;
 }
 
+/* Reading view: the rendered Markdown body. Shares the editor's column so
+   toggling swaps content in place. Prose-width, comfortable line height. */
+.reader {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--pad);
+  font: 15px/1.6 system-ui, sans-serif;
+}
+
+.reader :first-child {
+  margin-top: 0;
+}
+
+.reader pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.reader code {
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+
+.reader table {
+  border-collapse: collapse;
+}
+
+.reader th,
+.reader td {
+  border: 1px solid var(--muted);
+  padding: 0.3rem 0.5rem;
+}
+
+/* Reading-view toggle button in the chrome. */
+.view-toggle {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 /* Narrow / mobile: the fixed-width sidebar would swallow the whole screen,
    leaving no room for the editor. Stack instead — a short scrollable note
    list on top, the editor filling the rest below. */

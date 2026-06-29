@@ -15,6 +15,16 @@
     <header class="chrome">
       <h1>notes</h1>
       <span id="status" class="status">connecting…</span>
+      <!-- Flips the live surface between the edit textarea and the rendered
+           reading view; wired by the WASM editor (apps/notes-editor). -->
+      <button
+        id="view-toggle"
+        type="button"
+        class="view-toggle"
+        title="Toggle reading view"
+      >
+        read
+      </button>
       <form id="login" class="login">
         <input
           id="handle"
@@ -43,6 +53,10 @@
         autofocus
         placeholder="Start typing — every keystroke streams to the server and backs up to git."
       ></textarea>
+      <!-- Reading view: the rendered Markdown body. Hidden until the
+           view-toggle flips to reading; the WASM editor fills it via
+           render_to_html and keeps it live as Syncs land. -->
+      <article id="reader" class="reader" hidden></article>
     </main>
 
     <!--
