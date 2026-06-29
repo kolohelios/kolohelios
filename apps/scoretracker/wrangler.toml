@@ -16,8 +16,11 @@ name               = "scoretracker"
 [durable_objects]
 bindings = [{ name = "GAME", class_name = "GameState" }]
 
-# Classic key-value DO storage (the whole game is one small JSON blob — no
-# SQLite needed). Migrations are append-only by tag.
+# SQLite-backed DO storage. The whole game is one small JSON blob accessed
+# via the key-value `storage()` API, but the class must be registered with
+# `new_sqlite_classes` (not `new_classes`): Cloudflare requires SQLite-backed
+# Durable Objects on the free plan (API error 10097). Same as notes-sync.
+# Migrations are append-only by tag.
 [[migrations]]
-new_classes = ["GameState"]
-tag         = "v1"
+new_sqlite_classes = ["GameState"]
+tag                = "v1"
