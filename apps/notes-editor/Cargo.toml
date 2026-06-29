@@ -13,6 +13,13 @@ crate-type = ["cdylib", "rlib"]
 # Shared wire-protocol types — the same serde structs the Durable Object
 # speaks, so the editor and server can't drift.
 notes-protocol = { path = "../../packages/notes-protocol" }
+# Markdown → HTML for the reading view. Pure Rust (compiles to wasm32),
+# MIT-licensed. `default-features = false` drops the `getopts`-backed CLI
+# example; we only need the `html` renderer and the event stream we rewrite
+# for wikilinks and raw-HTML neutralization.
+pulldown-cmark = { version = "0.12", default-features = false, features = [
+  "html",
+] }
 # Wire frames are JSON-encoded ClientMsg / ServerMsg over the WebSocket.
 serde_json = "1"
 # Browser bindings (cfg-gated to wasm32 in `dom`): WebSocket + the
