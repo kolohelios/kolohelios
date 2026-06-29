@@ -38,13 +38,25 @@ serde_json = "1"
 serde_urlencoded = "0.7"
 # SHA-256 for the PKCE S256 challenge and the session-cookie HMAC.
 sha2 = "0.10"
+# Typed per-module error enums for the LLM client — the repo error
+# standard, same as notes-protocol. Pure-rust, folds into the wasm build.
+snafu = "0.9"
 # workers-rs runtime: Durable Objects + the WebSocket Hibernation API.
 worker = "0.8"
 
 [dev-dependencies]
-# Drives the async `commit_with_retry` tests on the host. The Worker
-# runtime has its own executor; this is native-test-only.
+# Mock the OpenRouter chat-completions endpoint over a real socket so the
+# request/response wire shapes are exercised natively (the wasm
+# `worker::Fetch` path can't be unit-tested off-target). Plain HTTP, so no
+# TLS dependency is pulled. Native-test-only.
+mockito = "1"
+# Drives the async `commit_with_retry` and `derive_title` tests on the
+# host. The Worker runtime has its own executor; this is native-test-only.
 tokio = { version = "1", features = ["macros", "rt"] }
+# Native HTTP client used only by the `mockito` round-trip test. Plain
+# HTTP (`default-features = false` drops the TLS/`webpki-roots` tree); the
+# production transport is the wasm `worker::Fetch` client, not this.
+ureq = { version = "2", default-features = false, features = ["json"] }
 
 [profile.release]
 codegen-units = 1

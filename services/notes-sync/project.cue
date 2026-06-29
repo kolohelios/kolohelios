@@ -26,7 +26,10 @@ package project
 			// callback mints; GITHUB_TOKEN authenticates the cold-tier git
 			// commit (the DO PUTs each note to notes-store via the Contents
 			// API). Without either, the corresponding path throws.
-			secrets: ["SESSION_SECRET", "GITHUB_TOKEN"]
+			// OPENROUTER_API_KEY authenticates note autonaming; unlike the
+			// others it degrades gracefully (logs + skips) when unset, so
+			// the worker can deploy before it's provisioned.
+			secrets: ["SESSION_SECRET", "GITHUB_TOKEN", "OPENROUTER_API_KEY"]
 		}
 	}
 }
