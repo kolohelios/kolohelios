@@ -536,6 +536,14 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// rust toolchain, wasm-bindgen-cli, binaryen, and
 		// `workflowPackages`.
 		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
+
+		// External consumers (no kolohelios checkout) need a real `shaka`
+		// on PATH ahead of the `workflowPackages` shim, which can't
+		// resolve `tools/shaka/bin/shaka` outside the monorepo. When true,
+		// `generate-flakes` adds the `shaka` FlakeHub input and a
+		// PATH-prepend in the devShell `shellHook`. Mirrors
+		// `worker.consumesShaka`.
+		consumesShaka: *false | bool
 	}
 } | {
 	kind: "infra"

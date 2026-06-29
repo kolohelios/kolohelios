@@ -135,6 +135,14 @@ struct WasmAppMeta {
     description: Option<String>,
     #[serde(default)]
     extra_dev_shell_packages: Vec<String>,
+    /// External consumers (no kolohelios checkout) need a real `shaka` on
+    /// PATH ahead of the `workflowPackages` shim, which can't resolve
+    /// `tools/shaka/bin/shaka` outside the monorepo. When set, the flake
+    /// gains the `shaka` FlakeHub input and a PATH-prepend in the
+    /// `shellHook`. Default-false: in-repo apps let the shim find the
+    /// monorepo binary. Mirrors `WorkerMeta::consumes_shaka`.
+    #[serde(default)]
+    consumes_shaka: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -405,15 +413,29 @@ fn render_wasm_app_flake(name: &str, wa: &WasmAppMeta) -> String {
     let mut out = String::with_capacity(2048);
     out.push_str(HEADER);
     out.push_str(&format!("{{\n  description = \"{description}\";\n\n"));
-    out.push_str(INPUTS);
+    out.push_str(&render_rust_inputs(wa.consumes_shaka));
     out.push_str("\n  outputs =\n");
-    // Reuses the rust-lib header: wasm32-targeted toolchain, no rustPlatform.
-    out.push_str(RUST_LIB_OUTPUT_HEADER);
+    out.push_str(&render_wasm_app_output_header(wa.consumes_shaka));
     out.push_str("    in\n    {\n");
     out.push_str(&render_wasm_app_devshell(wa));
     out.push_str("\n      formatter = kolohelios-nix.formatter;\n    };\n");
     out.push_str("}\n");
     out
+}
+
+/// `outputs` header for a wasm-app flake: the rust-lib header (wasm32
+/// toolchain, no `rustPlatform`). With `consumes_shaka`, add `shaka` to
+/// the destructured inputs so the devShell `shellHook` can reference
+/// `shaka.packages.${system}.default` — mirrors
+/// `render_worker_output_header`.
+fn render_wasm_app_output_header(consumes_shaka: bool) -> String {
+    if !consumes_shaka {
+        return RUST_LIB_OUTPUT_HEADER.to_string();
+    }
+    RUST_LIB_OUTPUT_HEADER.replace(
+        "      rust-overlay,\n",
+        "      rust-overlay,\n      shaka,\n",
+    )
 }
 
 /// devShell for a wasm-app flake: the wasm-targeted toolchain plus the
@@ -423,7 +445,11 @@ fn render_wasm_app_flake(name: &str, wa: &WasmAppMeta) -> String {
 fn render_wasm_app_devshell(wa: &WasmAppMeta) -> String {
     let mut out = String::new();
     out.push_str("      devShells = forEachSupportedSystem (\n");
-    out.push_str("        { pkgs, ... }:\n");
+    if wa.consumes_shaka {
+        out.push_str("        { pkgs, system, ... }:\n");
+    } else {
+        out.push_str("        { pkgs, ... }:\n");
+    }
     out.push_str("        {\n");
     out.push_str("          default = pkgs.mkShell {\n");
     out.push_str("            packages = [\n");
@@ -438,6 +464,17 @@ fn render_wasm_app_devshell(wa: &WasmAppMeta) -> String {
     out.push_str(
         "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
     );
+    // With `consumes_shaka`, PATH-prepend the FlakeHub `shaka` ahead of the
+    // `workflowPackages` shim, which can't resolve a `shaka` outside the
+    // monorepo. (No `~/.cargo/bin` append — the wasm-app toolchain is fully
+    // nixpkgs-provided, unlike the worker's `cargo install worker-build`.)
+    if wa.consumes_shaka {
+        out.push_str("\n            shellHook = ''\n");
+        out.push_str(
+            "              export PATH=\"${shaka.packages.${system}.default}/bin:$PATH\"\n",
+        );
+        out.push_str("            '';\n");
+    }
     out.push_str("          };\n        }\n      );\n");
     out
 }
@@ -653,7 +690,7 @@ fn render_worker_flake(name: &str, worker: &WorkerMeta) -> String {
     let mut out = String::with_capacity(2048);
     out.push_str(HEADER);
     out.push_str(&format!("{{\n  description = \"{description}\";\n\n"));
-    out.push_str(&render_worker_inputs(worker.consumes_shaka));
+    out.push_str(&render_rust_inputs(worker.consumes_shaka));
     out.push_str("\n  outputs =\n");
     out.push_str(&render_worker_output_header(
         worker.consumes_shaka,
@@ -669,12 +706,12 @@ fn render_worker_flake(name: &str, worker: &WorkerMeta) -> String {
     out
 }
 
-/// Inputs for a worker flake. Default is the shared rust `INPUTS`
-/// (kolohelios-nix + nixpkgs + rust-overlay). With `consumes_shaka`,
-/// splice a `shaka` FlakeHub input in before the closing brace, pinned
-/// to follow this flake's `kolohelios-nix` so its nixpkgs/rust-overlay
-/// closure dedups against ours in `flake.lock`.
-fn render_worker_inputs(consumes_shaka: bool) -> String {
+/// Inputs for a worker or wasm-app flake. Default is the shared rust
+/// `INPUTS` (kolohelios-nix + nixpkgs + rust-overlay). With
+/// `consumes_shaka`, splice a `shaka` FlakeHub input in before the
+/// closing brace, pinned to follow this flake's `kolohelios-nix` so its
+/// nixpkgs/rust-overlay closure dedups against ours in `flake.lock`.
+fn render_rust_inputs(consumes_shaka: bool) -> String {
     if !consumes_shaka {
         return INPUTS.to_string();
     }
@@ -1400,6 +1437,35 @@ mod tests {
         let cargo_pos = cargo_path.expect("cargo bin PATH append present");
         // The real shaka must win over the shim, so it lands first.
         assert!(shaka_pos < cargo_pos);
+    }
+
+    #[test]
+    fn wasm_app_without_consumes_shaka_omits_shaka_input_and_path() {
+        // Default-false: in-repo apps (notes-editor) rely on the
+        // workflowPackages shim to resolve the monorepo binary, so nothing
+        // shaka-specific is emitted.
+        let out = render_wasm_app_flake("notes-editor", &WasmAppMeta::default());
+        assert!(!out.contains("flakehub.com/f/kolohelios/shaka"));
+        assert!(!out.contains("shaka.packages"));
+        assert!(!out.contains("system, ... }:"));
+    }
+
+    #[test]
+    fn wasm_app_consumes_shaka_adds_flakehub_input_and_path() {
+        let wa = WasmAppMeta {
+            consumes_shaka: true,
+            ..WasmAppMeta::default()
+        };
+        let out = render_wasm_app_flake("silicon-trail-ui", &wa);
+        // FlakeHub shaka input, following our kolohelios-nix so the closure
+        // dedups in flake.lock.
+        assert!(out.contains(r#"url = "https://flakehub.com/f/kolohelios/shaka/*.tar.gz";"#));
+        assert!(out.contains(r#"inputs.kolohelios-nix.follows = "kolohelios-nix";"#));
+        // Destructured for the shellHook + per-system package index.
+        assert!(out.contains("      shaka,\n"));
+        assert!(out.contains("{ pkgs, system, ... }:"));
+        // The real shaka is PATH-prepended ahead of the workflowPackages shim.
+        assert!(out.contains(r#"export PATH="${shaka.packages.${system}.default}/bin:$PATH""#));
     }
 
     #[test]
