@@ -3,15 +3,16 @@
 //! depends on `web-sys` browser types; the pure `client` logic is
 //! native-tested without any of this.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use notes_protocol::{ClientMsg, ServerMsg};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlTextAreaElement, MessageEvent, WebSocket};
+use web_sys::{Element, HtmlTextAreaElement, MessageEvent, WebSocket};
 
 use crate::client::{self, ClientState, Effect};
+use crate::render;
 
 /// Browser entrypoint. `ws_url` is the full `wss://…/note/<id>/ws`
 /// endpoint; the session cookie rides the upgrade automatically (the
@@ -37,6 +38,15 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
     let state = Rc::new(RefCell::new(ClientState::default()));
     let ws = WebSocket::new(ws_url)?;
 
+    // Whether the reading (rendered-HTML) view is showing. Shared so a
+    // `Sync` that replaces the body while reading can refresh the rendered
+    // pane, and so the toggle can flip it. `false` is the edit view.
+    let reading = Rc::new(Cell::new(false));
+    // The reading pane and the toggle button are optional shell chrome: when
+    // present, `start` wires the toggle; when absent (a minimal host page),
+    // the editor still works as a plain textarea.
+    let reader = document.get_element_by_id("reader");
+
     // onopen → resync from the last sequence we have (0 on a fresh state,
     // which still gets a full Sync back).
     {
@@ -59,6 +69,8 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
         let ws_c = ws.clone();
         let document_c = document.clone();
         let note_id_c = note_id.clone();
+        let reading_c = reading.clone();
+        let reader_c = reader.clone();
         let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
             let Some(frame) = e.data().as_string() else {
                 return;
@@ -72,6 +84,13 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
                 // Surface the front-matter title (or the note id) on the
                 // chrome instead of the raw id the shell shows initially.
                 set_title(&document_c, &client::display_title(&body, &note_id_c));
+                // Keep the reading pane live: if a Sync lands while reading,
+                // re-render so the rendered view tracks the adopted body.
+                if reading_c.get() {
+                    if let Some(reader) = &reader_c {
+                        reader.set_inner_html(&render::render_to_html(&body));
+                    }
+                }
             }
             if let Some(msg) = follow_up {
                 let _ = send(&ws_c, &msg);
@@ -96,6 +115,37 @@ pub fn start(ws_url: &str) -> Result<(), JsValue> {
         });
         textarea.add_event_listener_with_callback("input", oninput.as_ref().unchecked_ref())?;
         oninput.forget();
+    }
+
+    // View toggle → flip between the edit textarea and the rendered reading
+    // pane. Both the `#view-toggle` button and the `#reader` container are
+    // optional chrome: a host page that ships neither keeps a plain,
+    // always-editing textarea. Switching into reading renders the current
+    // body (front-matter stripped) into `#reader` and hides the textarea;
+    // switching back hides `#reader` and reveals the textarea. The edit path
+    // is untouched — toggling never sends a frame.
+    if let (Some(toggle), Some(reader)) =
+        (document.get_element_by_id("view-toggle"), reader.clone())
+    {
+        let textarea_c = textarea.clone();
+        let reading_c = reading.clone();
+        let toggle_c = toggle.clone();
+        let onclick = Closure::<dyn FnMut()>::new(move || {
+            let now_reading = !reading_c.get();
+            reading_c.set(now_reading);
+            if now_reading {
+                reader.set_inner_html(&render::render_to_html(&textarea_c.value()));
+                let _ = textarea_c.set_attribute("hidden", "");
+                let _ = reader.remove_attribute("hidden");
+                toggle_c.set_text_content(Some("edit"));
+            } else {
+                let _ = reader.set_attribute("hidden", "");
+                let _ = textarea_c.remove_attribute("hidden");
+                toggle_c.set_text_content(Some("read"));
+            }
+        });
+        toggle.add_event_listener_with_callback("click", onclick.as_ref().unchecked_ref())?;
+        onclick.forget();
     }
 
     // onclose → reconnect after a short delay. A fresh `start` resyncs
