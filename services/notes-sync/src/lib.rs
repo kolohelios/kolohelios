@@ -36,6 +36,7 @@
 pub mod auth;
 pub mod dpop;
 pub mod git;
+pub mod llm;
 pub mod oauth;
 pub mod route;
 pub mod state;

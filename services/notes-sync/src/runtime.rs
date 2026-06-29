@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use notes_protocol::{ClientMsg, Delta, Seq, ServerMsg};
+use notes_protocol::{frontmatter, ClientMsg, Delta, Seq, ServerMsg};
 use serde::{Deserialize, Serialize};
 // `wasm_bindgen` is re-exported from `worker` and must be in scope: the
 // `#[durable_object]` macro expands to JS-glue code that references it by
@@ -20,6 +20,9 @@ use worker::{
 
 use crate::auth::{authorize_owner, authorized_did};
 use crate::git::{commit_with_retry, move_note_file, CommitError, GitTarget, WorkerGitHubClient};
+use crate::llm::{
+    autoname_enabled, derive_title, should_autoname, WorkerOpenRouterClient, DEFAULT_MODEL,
+};
 use crate::route::{
     choose_rename_body, is_valid_note_id, parse_ws_note_id, plan_rename,
     rename_blocked_by_live_socket, rename_lease_active, RenameError, RenamePlan,
@@ -75,6 +78,13 @@ const RENAME_LEASE_KEY: &str = "rename_lease_until";
 /// this bound only bites on a crash.
 const RENAME_LEASE_TTL: Duration = Duration::from_secs(30);
 
+/// Internal DO control path: the top-level `/retitle` handler forwards a
+/// `POST` here so the note's Durable Object regenerates its title from the
+/// body via the LLM (forced — even an already-titled note) through the
+/// single-writer delta path, then commits. Carries the note id in
+/// `X-Note-Id`.
+const RETITLE_PATH: &str = "/__retitle";
+
 /// Commit the note this long after the last edit — coalesces a burst of
 /// keystrokes into a single git commit once the typing settles. Durability
 /// lives in DO storage (an edit is persisted before its `Ack`), so git is
@@ -115,6 +125,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/vault" => return handle_vault(&req, &env).await,
         "/delete" => return handle_delete(&req, &env).await,
         "/rename" => return handle_rename(&req, &env).await,
+        "/retitle" => return handle_retitle(&req, &env).await,
         _ => {}
     }
 
@@ -253,6 +264,40 @@ async fn handle_delete(req: &Request, env: &Env) -> Result<Response> {
         .with_status(200)
         .with_headers(headers)
         .fixed(b"{\"ok\":true}".to_vec()))
+}
+
+/// `POST /retitle?note=<id>` — regenerate a note's title from its body via
+/// the LLM for the owner's session, on demand. Forwards to the note's
+/// Durable Object, which derives a title (forced — even an already-titled
+/// note is renamed), writes it through the single-writer delta path, and
+/// commits so the new title reaches git immediately. A clean no-op when the
+/// note has no body or `OPENROUTER_API_KEY` is unset. Returns
+/// `{"ok":true,"title":<title|null>}` (a `null` title means nothing was
+/// written).
+async fn handle_retitle(req: &Request, env: &Env) -> Result<Response> {
+    if !session_authorized(req, env) {
+        return Response::error("unauthorized", 401);
+    }
+    let note = req
+        .url()?
+        .query_pairs()
+        .find(|(k, _)| k == "note")
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_default();
+    if !is_valid_note_id(&note) {
+        return Response::error("invalid note id", 400);
+    }
+
+    let ctrl = control_request(RETITLE_PATH, &note, None)?;
+    let mut resp = forward_to_note(env, &note, ctrl).await?;
+    let status = resp.status_code();
+    let body = resp.text().await?;
+
+    let headers = shell_cors_headers(env)?;
+    Ok(ResponseBuilder::new()
+        .with_status(status)
+        .with_headers(headers)
+        .fixed(body.into_bytes()))
 }
 
 /// How many times to re-attempt an idempotent Durable Object control op
@@ -752,6 +797,117 @@ impl NoteDurableObject {
             let _ = send(&ws, msg);
         }
     }
+
+    /// Build the OpenRouter client from the worker secret + model var, or
+    /// `None` when autonaming is disabled. A `None` is the graceful path:
+    /// the key isn't provisioned yet, so callers skip titling and the git
+    /// commit still proceeds — the worker ships before the key lands in
+    /// 1Password.
+    fn openrouter_client(&self) -> Option<WorkerOpenRouterClient> {
+        let key = self
+            .env
+            .secret("OPENROUTER_API_KEY")
+            .ok()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        if !autoname_enabled(Some(&key)) {
+            console_log!("autoname: OPENROUTER_API_KEY unset/empty; skipping");
+            return None;
+        }
+        let model = self
+            .env
+            .var("OPENROUTER_MODEL")
+            .map(|v| v.to_string())
+            .unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        Some(WorkerOpenRouterClient::new(key, model))
+    }
+
+    /// Best-effort autoname: if the current body warrants a title (see
+    /// [`should_autoname`]), ask the model and write the title through the
+    /// single-writer delta path. Returns the applied title, or `None` when
+    /// nothing was written (already titled, blank body, key unset, or a
+    /// model error). **Never panics or propagates an LLM/transport error** —
+    /// the caller's git commit must proceed regardless, so autonaming can
+    /// ship before the key is provisioned.
+    ///
+    /// The model call awaits the network, during which a concurrent editor
+    /// edit could advance the log; the current `(seq, text)` is re-read
+    /// after the call and the title applied to *that* text (body preserved
+    /// verbatim via `set_title`), so a concurrent edit is never clobbered.
+    async fn maybe_autoname(&self, force: bool) -> Option<String> {
+        let (_, text) = self.load_state().await.ok()?;
+        if !should_autoname(&text, force) {
+            return None;
+        }
+        let client = self.openrouter_client()?;
+        let body = frontmatter::body_without_frontmatter(&text).to_owned();
+        let title = match derive_title(&client, &body).await {
+            Ok(Some(t)) => t,
+            Ok(None) => return None,
+            Err(e) => {
+                console_log!("autoname: title derivation failed: {e}; skipping");
+                return None;
+            }
+        };
+
+        // Re-read: the model call awaited, so the snapshot may be stale. Bail
+        // if the current text no longer warrants the title — a concurrent
+        // edit may have emptied the body or (unless forced) added a title.
+        let (cur_seq, cur_text) = self.load_state().await.ok()?;
+        if !should_autoname(&cur_text, force) {
+            return None;
+        }
+        let new_text = match frontmatter::set_title(&cur_text, &title) {
+            Ok(t) => t,
+            Err(e) => {
+                console_log!("autoname: could not write title: {e}; skipping");
+                return None;
+            }
+        };
+        let new_seq = cur_seq + 1;
+        let delta = Delta::Whole {
+            text: new_text.clone(),
+        };
+        if let Err(e) = self.commit_edit(new_seq, &delta, &new_text).await {
+            console_log!("autoname: could not persist title delta: {e}; skipping");
+            return None;
+        }
+        // Surface the new title to any connected editor.
+        self.broadcast(&ServerMsg::Sync {
+            seq: new_seq,
+            text: new_text,
+        });
+        Some(title)
+    }
+
+    /// On-demand retitle: store the note id (so the git path resolves even
+    /// on a cold object), force a title regeneration through the
+    /// single-writer delta path, then commit so the new title reaches git
+    /// immediately rather than waiting for the lazy cadence. Returns
+    /// `{"ok":true,"title":<title|null>}`.
+    async fn retitle(&self, note_id: &str) -> Result<Response> {
+        self.state.storage().put("note_id", note_id).await?;
+        let title = self.maybe_autoname(true).await;
+
+        let (seq, text) = self.load_state().await?;
+        let committed: Seq = self
+            .state
+            .storage()
+            .get("committed_seq")
+            .await?
+            .unwrap_or(0);
+        if seq > committed {
+            if let Ok(commit_sha) = self.commit_now(seq, &text).await {
+                self.state.storage().put("committed_seq", seq).await?;
+                self.broadcast(&ServerMsg::BackedUp {
+                    commit_sha: Some(commit_sha),
+                });
+            }
+        }
+
+        let body = serde_json::json!({ "ok": true, "title": title }).to_string();
+        Response::ok(body)
+    }
 }
 
 impl DurableObject for NoteDurableObject {
@@ -812,6 +968,12 @@ impl DurableObject for NoteDurableObject {
                 .unwrap_or_default()
                 .to_owned();
             return self.seed(&note_id, &text).await;
+        }
+        // On-demand retitle: regenerate the title from the body via the LLM
+        // and commit. Forced, so an already-titled note is renamed too.
+        if req.path() == RETITLE_PATH {
+            let note_id = req.headers().get("X-Note-Id")?.unwrap_or_default();
+            return self.retitle(&note_id).await;
         }
 
         // Refuse a new editor socket while a rename holds a lease on this note:
@@ -918,7 +1080,9 @@ impl DurableObject for NoteDurableObject {
     }
 
     async fn alarm(&self) -> Result<Response> {
-        let (seq, text) = self.load_state().await?;
+        // Only `seq` is needed to decide there's work; the body to commit is
+        // re-read below, after autoname may append a title delta.
+        let (seq, _) = self.load_state().await?;
         let committed: Seq = self
             .state
             .storage()
@@ -931,6 +1095,14 @@ impl DurableObject for NoteDurableObject {
         if seq <= committed {
             return Response::ok("nothing to commit");
         }
+
+        // Autoname on the lazy cadence — best-effort, before the commit, so
+        // an untitled note acquires a title on the same beat it backs up.
+        // Errors are swallowed inside `maybe_autoname`; the commit proceeds
+        // regardless.
+        let _ = self.maybe_autoname(false).await;
+        // Re-read: autoname may have appended a title delta.
+        let (seq, text) = self.load_state().await?;
 
         match self.commit_now(seq, &text).await {
             Ok(commit_sha) => {
@@ -965,7 +1137,9 @@ impl DurableObject for NoteDurableObject {
         // waiting for the alarm. `get_websockets()` still includes the
         // socket being closed, so `<= 1` means "this was the last one".
         if self.state.get_websockets().len() <= 1 {
-            let (seq, text) = self.load_state().await?;
+            // Only `seq` is needed to decide there's work; the body to commit
+            // is re-read below, after autoname may append a title delta.
+            let (seq, _) = self.load_state().await?;
             let committed: Seq = self
                 .state
                 .storage()
@@ -973,6 +1147,11 @@ impl DurableObject for NoteDurableObject {
                 .await?
                 .unwrap_or(0);
             if seq > committed {
+                // Autoname on the last disconnect too — best-effort, before
+                // the flush, so a note typed-and-closed without ever idling
+                // still gets named. Re-read in case a title delta was added.
+                let _ = self.maybe_autoname(false).await;
+                let (seq, text) = self.load_state().await?;
                 match self.commit_now(seq, &text).await {
                     Ok(_) => {
                         self.state.storage().put("committed_seq", seq).await?;
