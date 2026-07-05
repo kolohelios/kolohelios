@@ -6,6 +6,15 @@
     <title>notes</title>
     <link rel="stylesheet" href="/style.css" />
     <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+    <!-- Mermaid renders fenced ```mermaid code blocks in the reading view as
+         SVG diagrams — progressive enhancement over the WASM-rendered HTML,
+         loaded like HTMX above. The UMD build assigns globalThis.mermaid; if
+         it fails to load, the enhancer below no-ops and the raw code block
+         shows. (HTMX ships no SRI hash, so neither does this include.) -->
+    <script
+      src="https://unpkg.com/mermaid@11.16.0/dist/mermaid.min.js"
+      defer
+    ></script>
     <!-- The notes-sync backend hosts the WebSocket and the OAuth flow. -->
     <script>
       window.NOTES_BACKEND = "notes-sync.kolohelios.com";
@@ -89,6 +98,76 @@
           location.href = `https://${backend}/oauth/login?handle=${encodeURIComponent(handle)}`;
         }
       });
+
+      // --- Mermaid diagrams in the reading view --------------------------
+      // The reading pane (#reader) is filled by the WASM editor via innerHTML;
+      // a fenced ```mermaid block arrives as <pre><code class="language-mermaid">
+      // (emitted by apps/notes-editor's render_to_html). We render each to SVG
+      // here — a progressive enhancement layered on in the shell so the WASM
+      // editor stays render-agnostic. Everything degrades to the raw code
+      // block: if Mermaid never loaded, or a diagram is invalid, the original
+      // <pre><code> is left untouched. Only the reading view is enhanced; the
+      // edit textarea keeps showing the raw fenced source.
+      const mermaidReady = (() => {
+        try {
+          if (window.mermaid) {
+            // securityLevel:'strict' sanitizes diagram-authored labels/HTML and
+            // disables click handlers, so a hostile note can't inject script
+            // through a diagram. startOnLoad:false — we drive rendering below.
+            window.mermaid.initialize({
+              startOnLoad: false,
+              securityLevel: "strict",
+            });
+            return true;
+          }
+        } catch (e) {
+          /* fall through — treat Mermaid as unavailable, show raw blocks */
+        }
+        return false;
+      })();
+
+      let mermaidSeq = 0;
+      async function renderMermaid(root) {
+        if (!mermaidReady) return; // load/init failed → leave raw code blocks
+        for (const code of root.querySelectorAll(
+          "pre > code.language-mermaid",
+        )) {
+          const pre = code.parentElement;
+          // Skip already-rendered blocks. The marker is set synchronously
+          // before the first await so the re-entrant observer pass (our own
+          // SVG swap is a mutation) and any concurrent Sync-driven pass can't
+          // double-render the same block.
+          if (!pre || pre.dataset.mermaidDone) continue;
+          pre.dataset.mermaidDone = "1";
+          const source = code.textContent;
+          const id = "mermaid-diagram-" + mermaidSeq++;
+          try {
+            const { svg } = await window.mermaid.render(id, source);
+            const figure = document.createElement("figure");
+            figure.className = "mermaid";
+            figure.innerHTML = svg;
+            pre.replaceWith(figure);
+          } catch (e) {
+            // Invalid diagram: keep the raw <pre><code> (the marker stops a
+            // retry loop) and drop any stray node Mermaid left in the DOM.
+            document.getElementById(id)?.remove();
+            document.getElementById("d" + id)?.remove();
+          }
+        }
+      }
+
+      // Re-render whenever the reading pane's content changes: the WASM editor
+      // swaps #reader's innerHTML on toggle-into-reading and on each Sync that
+      // lands while reading. Our SVG swap is a childList mutation too, but the
+      // dataset marker makes the follow-up pass a no-op, so this can't loop.
+      const readerPane = document.getElementById("reader");
+      if (readerPane && mermaidReady) {
+        new MutationObserver(() => renderMermaid(readerPane)).observe(
+          readerPane,
+          { childList: true, subtree: true },
+        );
+        renderMermaid(readerPane); // handle content that's already present
+      }
 
       // Auth probe: the session cookie is HttpOnly, so the shell can't read
       // it. Ask the backend `/me` (which can) whether we're signed in, and
