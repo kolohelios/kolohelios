@@ -269,6 +269,21 @@ mod tests {
     }
 
     #[test]
+    fn a_mermaid_fence_keeps_the_language_mermaid_class() {
+        // The reading-view shell (apps/notes-web) renders diagrams by
+        // targeting `code.language-mermaid`; keep this class stable so the
+        // Mermaid enhancer can find fenced ```mermaid blocks. The fence body
+        // is left as escaped text — Mermaid reads it back via `textContent`
+        // client-side, so the diagram source itself never becomes markup.
+        let html = render_to_html("```mermaid\ngraph TD; A-->B;\n```\n");
+        assert!(
+            html.contains(r#"<code class="language-mermaid">"#),
+            "got: {html}"
+        );
+        assert!(html.contains("graph TD"), "got: {html}");
+    }
+
+    #[test]
     fn renders_gfm_tables_and_strikethrough() {
         let note = "| a | b |\n| - | - |\n| 1 | 2 |\n\n~~gone~~\n";
         let html = render_to_html(note);
