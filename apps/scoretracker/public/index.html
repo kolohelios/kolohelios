@@ -72,6 +72,12 @@
         background: var(--accent-soft); color: var(--ink);
         border-radius: 12px; padding: 0.6rem 0.8rem; font-size: 0.95rem; margin-bottom: 0.9rem;
       }
+      .roundbar {
+        display: flex; justify-content: center; gap: 0.4rem;
+        background: var(--bg); color: var(--ink); border: 1px solid var(--accent);
+        border-radius: 12px; padding: 0.6rem 0.8rem; margin-bottom: 0.9rem;
+        font-size: 1rem; font-weight: 700; text-align: center;
+      }
       button.go {
         width: 100%; padding: 0.85rem; font-size: 1.05rem; font-weight: 700;
         background: var(--accent); color: #fff; border: none; border-radius: 12px; cursor: pointer;
@@ -215,15 +221,53 @@
       function renderEntry(def) {
         const el = $("entry");
         el.innerHTML = "";
-        if (def.model.kind === "roundPoints") {
-          el.appendChild(roundForm(def));
-        } else {
+        if (def.model.kind !== "roundPoints") {
           el.appendChild(matchForm(def));
+          return;
         }
+        if (data.complete) {
+          el.innerHTML =
+            `<h2>game complete</h2><div class="who">all rounds played — final standings above. undo to reopen the last round, or start a new game.</div>`;
+          return;
+        }
+        el.appendChild(roundForm(def));
       }
 
       function roundForm(def) {
         const frag = document.createElement("div");
+        const hasDealer = !!def.model.dealer;
+        const hasWild = !!def.model.wildProgression;
+
+        // Upcoming-round banner: whose deal and what's wild.
+        if (hasDealer || hasWild) {
+          const bits = [`round ${data.rounds.length + 1}`];
+          if (hasDealer && data.nextDealer) bits.push(`${data.nextDealer} deals`);
+          if (hasWild && data.nextWild) bits.push(`wild: ${prettyRank(data.nextWild)}`);
+          const banner = document.createElement("div");
+          banner.className = "roundbar";
+          banner.textContent = bits.join("  ·  ");
+          frag.appendChild(banner);
+        }
+
+        // Before round 1, let the table pick who deals first.
+        if (hasDealer && data.rounds.length === 0) {
+          const wrap = document.createElement("div");
+          wrap.className = "award";
+          wrap.innerHTML = `<label>who deals first?</label>`;
+          const chips = document.createElement("div");
+          chips.className = "chips";
+          for (const p of data.players) {
+            const c = document.createElement("button");
+            c.className = "chip";
+            c.textContent = p;
+            c.setAttribute("aria-pressed", data.nextDealer === p);
+            c.onclick = () => post("/reset", { firstDealer: p });
+            chips.appendChild(c);
+          }
+          wrap.appendChild(chips);
+          frag.appendChild(wrap);
+        }
+
         const h = document.createElement("h2");
         h.textContent = "add round";
         frag.appendChild(h);
@@ -237,7 +281,7 @@
           name.textContent = p;
           const inp = document.createElement("input");
           inp.type = "text";
-          inp.placeholder = "cards, e.g. 5, wild";
+          inp.placeholder = hasWild ? "cards, e.g. 5, 3, jack" : "cards, e.g. 5, wild";
           inp.autocapitalize = "off";
           inputs[p] = inp;
           row.append(name, inp);
@@ -325,9 +369,13 @@
               const tic = r.award === p ? " ·" + def.model.roundAward.label : "";
               return `${esc(p)} ${e ? e.points : 0}${tic}`;
             });
+            const meta = [];
+            if (r.wild) meta.push(`wild ${prettyRank(r.wild)}`);
+            if (r.dealer) meta.push(`${r.dealer} dealt`);
+            const label = meta.length ? `round ${r.n} · ${meta.join(" · ")}` : `round ${r.n}`;
             const div = document.createElement("div");
             div.className = "h";
-            div.innerHTML = `<span>round ${r.n}</span><span class="who">${esc(parts.join("  ·  "))}</span>`;
+            div.innerHTML = `<span>${esc(label)}</span><span class="who">${esc(parts.join("  ·  "))}</span>`;
             el.appendChild(div);
           }
         } else {
@@ -375,6 +423,9 @@
       function esc(s) {
         return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" }[c]));
       }
+
+      // Display a wild rank: face/number cards read naturally (j → J, 10 → 10).
+      function prettyRank(r) { return String(r).toUpperCase(); }
 
       boot();
     </script>

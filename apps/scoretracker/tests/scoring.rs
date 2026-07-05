@@ -114,6 +114,7 @@ fn reset_clears_and_can_change_roster() {
         &mut d,
         game,
         Some(vec!["Ada".to_owned(), "Bo".to_owned(), "Cy".to_owned()]),
+        None,
     );
     assert_eq!(d.players, vec!["Ada", "Bo", "Cy"]);
     assert!(d.rounds.is_empty());
@@ -165,4 +166,87 @@ fn unknown_player_and_wrong_model_are_rejected() {
         state::apply_match(&mut d2, phase10, "Jon").unwrap_err(),
         EngineError::WrongModel
     );
+}
+
+#[test]
+fn tic_wild_rank_auto_scores_in_a_number_round() {
+    let game = config::game("tic").expect("tic exists");
+    let mut d = GameData::new(game);
+    assert_eq!(d.next_wild.as_deref(), Some("3")); // round 1 wild
+                                                   // Round 1: 3s are wild. Jon holds two 3s (wild, 50 each) + a 7.
+    state::apply_round(
+        &mut d,
+        game,
+        &entries(&[("Jon", "3, 3, 7"), ("Jessica", "no cards")]),
+        None,
+    )
+    .expect("round");
+    assert_eq!(d.totals["Jon"], 107); // 50 + 50 + 7
+    assert_eq!(d.rounds[0].wild.as_deref(), Some("3"));
+    assert_eq!(d.next_wild.as_deref(), Some("4")); // round 2 wild
+}
+
+#[test]
+fn tic_wild_overrides_face_card_in_a_face_round() {
+    let game = config::game("tic").expect("tic exists");
+    let mut d = GameData::new(game);
+    // Advance to round 9 (index 8), where Jacks are wild.
+    for _ in 0..8 {
+        state::apply_round(&mut d, game, &entries(&[]), None).expect("round");
+    }
+    assert_eq!(d.next_wild.as_deref(), Some("j"));
+    // Jack -> 50 (wild), Queen/King -> 10 (face, not wild), Ace -> 20.
+    state::apply_round(
+        &mut d,
+        game,
+        &entries(&[("Jon", "jack, queen, king, ace")]),
+        None,
+    )
+    .expect("round");
+    assert_eq!(d.totals["Jon"], 90); // 50 + 10 + 10 + 20
+}
+
+#[test]
+fn tic_dealer_rotates_from_chosen_first_dealer() {
+    let game = config::game("tic").expect("tic exists");
+    let mut d = GameData::new(game);
+    assert_eq!(d.next_dealer.as_deref(), Some("Jon")); // default: players[0]
+    state::reset(&mut d, game, None, Some("Jessica".to_owned()));
+    assert_eq!(d.next_dealer.as_deref(), Some("Jessica")); // round 1
+    state::apply_round(&mut d, game, &entries(&[]), None).expect("round");
+    assert_eq!(d.rounds[0].dealer.as_deref(), Some("Jessica"));
+    assert_eq!(d.next_dealer.as_deref(), Some("Jon")); // round 2 rotates
+    state::apply_round(&mut d, game, &entries(&[]), None).expect("round");
+    assert_eq!(d.next_dealer.as_deref(), Some("Jessica")); // round 3
+}
+
+#[test]
+fn tic_caps_at_eleven_rounds() {
+    let game = config::game("tic").expect("tic exists");
+    let mut d = GameData::new(game);
+    for _ in 0..11 {
+        state::apply_round(&mut d, game, &entries(&[]), None).expect("round");
+    }
+    assert!(d.complete);
+    assert!(d.next_wild.is_none());
+    assert!(d.next_dealer.is_none());
+    assert_eq!(
+        state::apply_round(&mut d, game, &entries(&[]), None).unwrap_err(),
+        EngineError::GameComplete
+    );
+    // Undo re-opens the final round.
+    state::undo(&mut d, game).expect("undo");
+    assert!(!d.complete);
+    assert_eq!(d.next_wild.as_deref(), Some("k")); // round 11 wild
+}
+
+#[test]
+fn games_without_dealer_or_wild_expose_neither() {
+    for id in ["phase10", "skipbo"] {
+        let game = config::game(id).expect("game exists");
+        let d = GameData::new(game);
+        assert!(d.next_dealer.is_none(), "{id} should have no dealer");
+        assert!(d.next_wild.is_none(), "{id} should have no wild");
+        assert!(!d.complete, "{id} should never be 'complete'");
+    }
 }

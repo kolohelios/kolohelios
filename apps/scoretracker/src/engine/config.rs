@@ -44,6 +44,23 @@ pub struct RoundPoints {
     pub scoring: Scoring,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_award: Option<RoundAward>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dealer: Option<Dealer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wild_progression: Option<WildProgression>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Dealer {
+    pub rotates: bool,
+}
+
+/// Per-round wild rank. `ranks[i]` is the wild for round `i + 1` (canonical
+/// lowercase card tokens); a held card of that rank scores `points`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WildProgression {
+    pub ranks: Vec<String>,
+    pub points: i64,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

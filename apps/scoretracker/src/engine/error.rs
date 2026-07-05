@@ -21,6 +21,9 @@ pub enum EngineError {
     #[snafu(display("nothing to undo"))]
     NothingToUndo,
 
+    #[snafu(display("this game is complete — no more rounds"))]
+    GameComplete,
+
     #[snafu(display("that action doesn't match this game's scoring style"))]
     WrongModel,
 
