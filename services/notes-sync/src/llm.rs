@@ -197,6 +197,120 @@ pub async fn derive_title<C: ChatCompletions>(
     Ok(clean_title(&reply))
 }
 
+/// Cap the number of existing folders listed in the auto-filing prompt so a
+/// large vault doesn't blow the prompt budget. A representative slice of the
+/// folder taxonomy is enough for the model to pick a home.
+const MAX_FILING_FOLDERS: usize = 200;
+
+/// Steers the model to file a note into a vault folder and name it, replying
+/// with only a bare path so [`clean_suggested_path`] has little to strip.
+const FILING_SYSTEM_PROMPT: &str = "You file a note into a personal notes \
+vault. Given the note body and the existing folders, choose the single \
+best-fitting existing folder, or propose one short new folder if none fit. \
+Then append a concise kebab-case slug naming the note. Reply with ONLY the \
+resulting path: folder segments and the slug separated by '/', lowercase, \
+using only letters, digits, hyphens, and slashes. No leading or trailing \
+slash, no quotes, no markdown, no explanation. \
+Example: projects/acme/launch-checklist";
+
+/// Derive the set of existing folders from note ids: every directory prefix
+/// of every path. A top-level note (no slash) contributes no folder. Note ids
+/// are paths like `projects/foo/idea`, whose prefixes are `projects` and
+/// `projects/foo`. Sorted and de-duplicated (via a `BTreeSet`) for a stable,
+/// budget-friendly listing — the folder taxonomy auto-filing chooses from.
+pub fn folders_from_paths(paths: &[String]) -> Vec<String> {
+    let mut folders: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for path in paths {
+        let segments: Vec<&str> = path.split('/').collect();
+        // Every prefix up to (but not including) the leaf is a folder.
+        for i in 1..segments.len() {
+            folders.insert(segments[..i].join("/"));
+        }
+    }
+    folders.into_iter().collect()
+}
+
+/// Build the `user` message for auto-filing: the existing folder taxonomy
+/// (capped at [`MAX_FILING_FOLDERS`]) plus the note body (truncated to
+/// [`MAX_PROMPT_CHARS`]). Pure so the wasm transport and the native tests
+/// build the identical prompt.
+pub(crate) fn build_filing_prompt(folders: &[String], body: &str) -> String {
+    let listed: Vec<&str> = folders
+        .iter()
+        .take(MAX_FILING_FOLDERS)
+        .map(String::as_str)
+        .collect();
+    let folder_block = if listed.is_empty() {
+        "(none yet — the vault is empty)".to_string()
+    } else {
+        listed.join("\n")
+    };
+    let snippet = truncate(body, MAX_PROMPT_CHARS);
+    format!("Existing folders:\n{folder_block}\n\nNote body:\n{snippet}")
+}
+
+/// Reduce one path segment to lowercase unreserved characters: runs of
+/// anything outside `[a-z0-9._-]` collapse to a single hyphen, and leading/
+/// trailing hyphens are trimmed. Keeps a model's spaced-out title
+/// (`My Great Note`) from failing [`crate::route::is_valid_note_id`].
+fn slug_segment(segment: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for ch in segment.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() || matches!(lower, '.' | '_' | '-') {
+            out.push(lower);
+            prev_dash = false;
+        } else if !out.is_empty() && !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// Normalize a raw model reply into a candidate note path, or `None` when
+/// nothing usable remains. Takes the first non-blank line, strips a markdown
+/// heading marker, surrounding quotes/backticks, and stray leading/trailing
+/// slashes, then slugifies each segment to the unreserved path characters the
+/// vault allows. The candidate is *not* fully validated here — the caller runs
+/// it through [`crate::route::is_valid_note_id`] and falls back on garbage
+/// (e.g. a `..` traversal segment slugs through unchanged and is rejected
+/// there).
+pub fn clean_suggested_path(raw: &str) -> Option<String> {
+    let first_line = raw.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let s = first_line.trim_start_matches('#').trim();
+    let s = s.trim_matches(['"', '\'', '`']).trim();
+    let s = s.trim_matches('/');
+    let cleaned: Vec<String> = s
+        .split('/')
+        .map(slug_segment)
+        .filter(|seg| !seg.is_empty())
+        .collect();
+    (!cleaned.is_empty()).then(|| cleaned.join("/"))
+}
+
+/// Auto-file a note `body` into an existing vault folder (or a sensible new
+/// one) and name it, returning a candidate note path — "it goes where it
+/// goes". Returns `Ok(None)` for a blank body (no call made) or when the
+/// cleaned reply is empty. The candidate is *not* validated here — the caller
+/// runs it through [`crate::route::is_valid_note_id`] and falls back when the
+/// model returns garbage. The no-key gate lives at the call site (the client
+/// is only built when [`autoname_enabled`]), so a missing key is a clean
+/// no-op: no client, no call.
+pub async fn suggest_path<C: ChatCompletions>(
+    client: &C,
+    body: &str,
+    folders: &[String],
+) -> Result<Option<String>, LlmError> {
+    if body.trim().is_empty() {
+        return Ok(None);
+    }
+    let user = build_filing_prompt(folders, body);
+    let reply = client.complete(FILING_SYSTEM_PROMPT, &user).await?;
+    Ok(clean_suggested_path(&reply))
+}
+
 /// Whether `note` warrants a (re)title. A blank body is never titled (there
 /// is nothing to name). Otherwise `force` titles regardless of an existing
 /// title (the on-demand retitle), while the lazy cadence only titles a note
@@ -534,6 +648,201 @@ mod tests {
         assert!(!autoname_enabled(None));
         assert!(!autoname_enabled(Some("")));
         assert!(!autoname_enabled(Some("   ")));
+        assert!(autoname_enabled(Some("sk-or-v1-abc123")));
+    }
+
+    #[test]
+    fn folders_from_paths_takes_every_directory_prefix() {
+        // A top-level note contributes no folder; a nested note contributes
+        // each of its ancestor prefixes, de-duplicated and sorted.
+        let paths = vec![
+            "scratch".to_string(),
+            "projects/foo".to_string(),
+            "projects/bar/idea".to_string(),
+            "daily/2026-01-01".to_string(),
+        ];
+        assert_eq!(
+            folders_from_paths(&paths),
+            vec![
+                "daily".to_string(),
+                "projects".to_string(),
+                "projects/bar".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn folders_from_paths_is_empty_for_only_top_level_notes() {
+        let paths = vec!["scratch".to_string(), "inbox".to_string()];
+        assert!(folders_from_paths(&paths).is_empty());
+    }
+
+    #[test]
+    fn folders_from_paths_dedupes_shared_ancestors() {
+        let paths = vec![
+            "projects/foo".to_string(),
+            "projects/bar".to_string(),
+            "projects/baz/deep".to_string(),
+        ];
+        assert_eq!(
+            folders_from_paths(&paths),
+            vec!["projects".to_string(), "projects/baz".to_string()]
+        );
+    }
+
+    #[test]
+    fn filing_prompt_lists_folders_and_carries_the_body() {
+        let folders = vec!["projects".to_string(), "daily".to_string()];
+        let prompt = build_filing_prompt(&folders, "buy milk and eggs");
+        assert!(prompt.contains("projects"));
+        assert!(prompt.contains("daily"));
+        assert!(prompt.contains("buy milk and eggs"));
+    }
+
+    #[test]
+    fn filing_prompt_flags_an_empty_vault() {
+        let prompt = build_filing_prompt(&[], "first note ever");
+        assert!(prompt.contains("vault is empty"));
+        assert!(prompt.contains("first note ever"));
+    }
+
+    #[test]
+    fn filing_prompt_caps_the_folder_list() {
+        // A vault with more folders than the budget lists only the first
+        // MAX_FILING_FOLDERS — the (n+1)-th never appears.
+        let folders: Vec<String> = (0..MAX_FILING_FOLDERS + 5)
+            .map(|i| format!("folder-{i:04}"))
+            .collect();
+        let prompt = build_filing_prompt(&folders, "body");
+        assert!(prompt.contains("folder-0000"));
+        assert!(!prompt.contains(&format!("folder-{:04}", MAX_FILING_FOLDERS)));
+    }
+
+    #[test]
+    fn filing_prompt_truncates_a_giant_body() {
+        let body = "x".repeat(MAX_PROMPT_CHARS + 500);
+        let prompt = build_filing_prompt(&[], &body);
+        // The body slice is capped; the untruncated length never makes it in.
+        assert!(!prompt.contains(&"x".repeat(MAX_PROMPT_CHARS + 1)));
+    }
+
+    #[test]
+    fn clean_suggested_path_passes_through_a_clean_path() {
+        assert_eq!(
+            clean_suggested_path("projects/acme/launch-checklist").as_deref(),
+            Some("projects/acme/launch-checklist")
+        );
+    }
+
+    #[test]
+    fn clean_suggested_path_strips_quotes_slashes_and_heading() {
+        assert_eq!(
+            clean_suggested_path("## \"/projects/foo/idea/\"").as_deref(),
+            Some("projects/foo/idea")
+        );
+    }
+
+    #[test]
+    fn clean_suggested_path_slugifies_spaces_and_case() {
+        // A model that ignores the kebab-case instruction still yields a valid
+        // id: spaces collapse to hyphens and everything lowercases.
+        assert_eq!(
+            clean_suggested_path("Projects/My Great Note").as_deref(),
+            Some("projects/my-great-note")
+        );
+    }
+
+    #[test]
+    fn clean_suggested_path_takes_only_the_first_line() {
+        assert_eq!(
+            clean_suggested_path("\n\nprojects/foo\nsome explanation").as_deref(),
+            Some("projects/foo")
+        );
+    }
+
+    #[test]
+    fn clean_suggested_path_empty_or_junk_is_none() {
+        assert_eq!(clean_suggested_path(""), None);
+        assert_eq!(clean_suggested_path("   \n "), None);
+        // Only separator characters — nothing slugs through.
+        assert_eq!(clean_suggested_path("/// !!! ///"), None);
+    }
+
+    #[tokio::test]
+    async fn suggest_path_round_trips_against_a_mocked_endpoint() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/api/v1/chat/completions")
+            // The request carries the folders and the body in the user turn.
+            .match_body(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::Regex("Existing folders".to_string()),
+                mockito::Matcher::Regex("projects".to_string()),
+                mockito::Matcher::Regex("groceries for the week".to_string()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "choices": [
+                        {"message": {"role": "assistant", "content": "home/grocery-list"}}
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = UreqClient {
+            endpoint: format!("{}/api/v1/chat/completions", server.url()),
+            model: "test/model".to_string(),
+        };
+        let folders = vec!["projects".to_string(), "home".to_string()];
+        let path = suggest_path(&client, "groceries for the week", &folders)
+            .await
+            .unwrap();
+        assert_eq!(path.as_deref(), Some("home/grocery-list"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn suggest_path_cleans_a_noisy_reply() {
+        let client = FakeClient {
+            reply: "  \"/Projects/My Idea/\"  \nblah".to_string(),
+        };
+        let path = suggest_path(&client, "some body", &["projects".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(path.as_deref(), Some("projects/my-idea"));
+    }
+
+    #[tokio::test]
+    async fn suggest_path_blank_body_makes_no_call() {
+        // A blank draft returns None without invoking the client — the same
+        // short-circuit derive_title uses. A client that would panic proves it.
+        struct PanicClient;
+        impl ChatCompletions for PanicClient {
+            async fn complete(&self, _s: &str, _u: &str) -> Result<String, LlmError> {
+                panic!("suggest_path must not call the model for a blank body");
+            }
+            fn model_id(&self) -> &str {
+                "panic"
+            }
+        }
+        assert_eq!(
+            suggest_path(&PanicClient, "   \n\t", &["projects".to_string()])
+                .await
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn suggest_path_no_key_gate_reuses_autoname_enabled() {
+        // Auto-filing shares the autoname no-key gate: an unset/empty key means
+        // the OpenRouter client is never built, so `suggest_path` is never
+        // reached — a clean no-op before the worker's key is provisioned.
+        assert!(!autoname_enabled(None));
+        assert!(!autoname_enabled(Some("")));
         assert!(autoname_enabled(Some("sk-or-v1-abc123")));
     }
 

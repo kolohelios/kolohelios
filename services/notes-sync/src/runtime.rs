@@ -21,7 +21,8 @@ use worker::{
 use crate::auth::{authorize_owner, authorized_did};
 use crate::git::{commit_with_retry, move_note_file, CommitError, GitTarget, WorkerGitHubClient};
 use crate::llm::{
-    autoname_enabled, derive_title, should_autoname, WorkerOpenRouterClient, DEFAULT_MODEL,
+    autoname_enabled, derive_title, folders_from_paths, should_autoname, suggest_path,
+    WorkerOpenRouterClient, DEFAULT_MODEL,
 };
 use crate::route::{
     choose_rename_body, is_valid_note_id, parse_ws_note_id, plan_rename,
@@ -123,6 +124,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
         "/me" => return handle_me(&req, &env),
         "/vault" => return handle_vault(&req, &env).await,
+        "/suggest-path" => return handle_suggest_path(req, &env).await,
         "/delete" => return handle_delete(&req, &env).await,
         "/rename" => return handle_rename(&req, &env).await,
         "/retitle" => return handle_retitle(&req, &env).await,
@@ -235,6 +237,82 @@ async fn handle_vault(req: &Request, env: &Env) -> Result<Response> {
         .with_status(200)
         .with_headers(headers)
         .fixed(body.into_bytes()))
+}
+
+/// Build the OpenRouter client from the worker secret + model var, or `None`
+/// when auto-naming/auto-filing is disabled. A `None` is the graceful path:
+/// the key isn't provisioned yet, so LLM features are a clean no-op and the
+/// worker still ships and deploys before the key lands in 1Password. Shared by
+/// the top-level `/suggest-path` handler and the per-note Durable Object.
+fn openrouter_client_from_env(env: &Env) -> Option<WorkerOpenRouterClient> {
+    let key = env
+        .secret("OPENROUTER_API_KEY")
+        .ok()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    if !autoname_enabled(Some(&key)) {
+        console_log!("openrouter: OPENROUTER_API_KEY unset/empty; skipping");
+        return None;
+    }
+    let model = env
+        .var("OPENROUTER_MODEL")
+        .map(|v| v.to_string())
+        .unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+    Some(WorkerOpenRouterClient::new(key, model))
+}
+
+/// `POST /suggest-path` — LLM auto-filing for a new note. The request body is
+/// the draft note text; the response is `{"path": "<folder>/<slug>"}` naming
+/// where the note should live, or `{"path": null}` when auto-filing is
+/// disabled (`OPENROUTER_API_KEY` unset), the draft is blank, the vault
+/// listing is unavailable, or the model returns something that isn't a valid
+/// note id. "It goes where it goes" — the model picks the best-fitting
+/// existing folder (or a sensible new one) from the vault's folder taxonomy
+/// and names the note. Owner-gated. Never fails the request on an LLM error: a
+/// bad or missing suggestion just yields a null path and the front end falls
+/// back to a manual path prompt.
+async fn handle_suggest_path(mut req: Request, env: &Env) -> Result<Response> {
+    if !session_authorized(&req, env) {
+        return Response::error("unauthorized", 401);
+    }
+    let draft = req.text().await.unwrap_or_default();
+    let path = suggest_note_path(env, &draft).await;
+
+    let headers = shell_cors_headers(env)?;
+    let body = serde_json::json!({ "path": path }).to_string();
+    Ok(ResponseBuilder::new()
+        .with_status(200)
+        .with_headers(headers)
+        .fixed(body.into_bytes()))
+}
+
+/// Auto-file `draft` into the vault, returning the suggested note path or
+/// `None` when auto-filing can't (or shouldn't) run: the key is unset, the
+/// draft is blank, the vault listing is unavailable, the model errors, or the
+/// reply isn't a valid note id. Every failure degrades to `None` so the caller
+/// falls back to a manual path — auto-filing is a convenience, never a gate.
+async fn suggest_note_path(env: &Env, draft: &str) -> Option<String> {
+    let client = openrouter_client_from_env(env)?;
+    let owner = env.var("GITHUB_OWNER").ok()?.to_string();
+    let repo = env.var("GITHUB_REPO").ok()?.to_string();
+    let branch = env.var("GITHUB_BRANCH").ok()?.to_string();
+    let token = env.secret("GITHUB_TOKEN").ok()?.to_string();
+    let existing = WorkerGitHubClient::new(token)
+        .list_note_paths(&owner, &repo, &branch)
+        .await
+        .ok()?;
+    let folders = folders_from_paths(&existing);
+    let suggestion = match suggest_path(&client, draft, &folders).await {
+        Ok(Some(p)) => p,
+        Ok(None) => return None,
+        Err(e) => {
+            console_log!("suggest-path: filing failed: {e}; no suggestion");
+            return None;
+        }
+    };
+    // Trust boundary: the model's reply becomes a note id only if it passes
+    // the same validation the websocket route and mutation endpoints enforce.
+    is_valid_note_id(&suggestion).then_some(suggestion)
 }
 
 /// `POST /delete?note=<id>` — delete a note for the owner's session.
@@ -804,22 +882,7 @@ impl NoteDurableObject {
     /// commit still proceeds — the worker ships before the key lands in
     /// 1Password.
     fn openrouter_client(&self) -> Option<WorkerOpenRouterClient> {
-        let key = self
-            .env
-            .secret("OPENROUTER_API_KEY")
-            .ok()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        if !autoname_enabled(Some(&key)) {
-            console_log!("autoname: OPENROUTER_API_KEY unset/empty; skipping");
-            return None;
-        }
-        let model = self
-            .env
-            .var("OPENROUTER_MODEL")
-            .map(|v| v.to_string())
-            .unwrap_or_else(|_| DEFAULT_MODEL.to_string());
-        Some(WorkerOpenRouterClient::new(key, model))
+        openrouter_client_from_env(&self.env)
     }
 
     /// Best-effort autoname: if the current body warrants a title (see
