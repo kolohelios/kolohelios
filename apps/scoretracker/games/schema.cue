@@ -21,6 +21,23 @@ package games
 	winner:      "lowest" | "highest"
 	scoring:     #Scoring
 	roundAward?: #RoundAward
+	// Optional rotating dealer: the engine tracks whose deal each round is,
+	// starting from a per-game round-1 dealer and rotating through `players`.
+	dealer?: #Dealer
+	// Optional per-round wild rank (e.g. Three Thirteen): round N's wild is
+	// `ranks[N-1]`, a held card of that rank scores `points`, and the game
+	// caps at `len(ranks)` rounds.
+	wildProgression?: #WildProgression
+}
+
+#Dealer: {rotates: bool}
+
+// Wild rank per round. Ranks are canonical/lowercase card tokens
+// (`"2".."10"`, `"j"`, `"q"`, `"k"`, `"a"`); a token matching the round's
+// rank (via its aliases, e.g. `jack`/`j`) scores `points`.
+#WildProgression: {
+	ranks: [string, ...string]
+	points: int
 }
 
 // How a single parsed token becomes points. Lookup order: a `named` token

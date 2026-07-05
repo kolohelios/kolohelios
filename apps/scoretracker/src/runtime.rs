@@ -33,11 +33,14 @@ struct RoundRequest {
     winner: Option<String>,
 }
 
-/// Body for `POST /reset` — an optional new roster.
+/// Body for `POST /reset` — an optional new roster and/or round-1 dealer.
 #[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ResetRequest {
     #[serde(default)]
     players: Option<Vec<String>>,
+    #[serde(default)]
+    first_dealer: Option<String>,
 }
 
 #[event(fetch)]
@@ -147,7 +150,7 @@ impl DurableObject for GameState {
             (Method::Post, "reset") => {
                 mutated = true;
                 let body = req.json::<ResetRequest>().await.unwrap_or_default();
-                state::reset(&mut data, game, body.players);
+                state::reset(&mut data, game, body.players, body.first_dealer);
                 Ok(())
             }
             _ => return json_err(404, "not found", "no such action"),

@@ -19,14 +19,19 @@ pub struct Entry {
     pub points: i64,
 }
 
-/// One `roundPoints` round: an entry per player, plus an optional award
-/// recipient (e.g. who "tic'd" by going out first).
+/// One `roundPoints` round: an entry per player, plus optional per-round
+/// context — the award recipient (who "tic'd"), the wild rank in effect, and
+/// who dealt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Round {
     pub n: u32,
     pub entries: BTreeMap<String, Entry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub award: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wild: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dealer: Option<String>,
 }
 
 /// One finished `matchWins` game.
@@ -51,6 +56,20 @@ pub struct GameData {
     /// more than one entry means a tie.
     #[serde(default)]
     pub leaders: Vec<String>,
+    /// Index into `players` of the round-1 dealer (rotating-dealer games).
+    #[serde(default)]
+    pub dealer_start: usize,
+    /// Who deals the upcoming round (rotating-dealer games, when not
+    /// complete).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_dealer: Option<String>,
+    /// The wild rank for the upcoming round (wild-progression games, when not
+    /// complete).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_wild: Option<String>,
+    /// True once a wild-progression game has played all its rounds.
+    #[serde(default)]
+    pub complete: bool,
 }
 
 impl GameData {
@@ -83,11 +102,23 @@ pub fn apply_round(
         return Err(EngineError::WrongModel);
     };
 
+    // 0-based index of the round being added; its wild rank (if the game has
+    // a progression), which also caps the number of rounds.
+    let idx = data.rounds.len();
+    let wild = match &rp.wild_progression {
+        Some(wp) => match wp.ranks.get(idx) {
+            Some(rank) => Some((rank.clone(), wp.points)),
+            None => return Err(EngineError::GameComplete),
+        },
+        None => None,
+    };
+    let wild_ctx = wild.as_ref().map(|(rank, points)| (rank.as_str(), *points));
+
     let mut entries = BTreeMap::new();
     for player in &data.players {
         let raw = raws.get(player).cloned().unwrap_or_default();
         let tokens = parse::tokenize(&raw, &rp.scoring.empty_aliases);
-        let points = score::entry_points(&tokens, &rp.scoring)?;
+        let points = score::entry_points(&tokens, &rp.scoring, wild_ctx)?;
         entries.insert(
             player.clone(),
             Entry {
@@ -109,8 +140,14 @@ pub fn apply_round(
         }
     }
 
-    let n = data.rounds.len() as u32 + 1;
-    data.rounds.push(Round { n, entries, award });
+    let dealer = dealer_for_round(&data.players, rp, data.dealer_start, idx);
+    data.rounds.push(Round {
+        n: idx as u32 + 1,
+        entries,
+        award,
+        wild: wild.map(|(rank, _)| rank),
+        dealer,
+    });
     recompute(data, game);
     Ok(())
 }
@@ -147,12 +184,23 @@ pub fn undo(data: &mut GameData, game: &Game) -> Result<(), EngineError> {
     Ok(())
 }
 
-/// Start a fresh game, optionally with a new roster. An empty/omitted
-/// roster keeps the current players.
-pub fn reset(data: &mut GameData, game: &Game, players: Option<Vec<String>>) {
+/// Start a fresh game, optionally with a new roster and/or a round-1 dealer.
+/// An empty/omitted roster keeps the current players; a `first_dealer` that
+/// isn't a current player is ignored.
+pub fn reset(
+    data: &mut GameData,
+    game: &Game,
+    players: Option<Vec<String>>,
+    first_dealer: Option<String>,
+) {
     if let Some(roster) = players {
         if !roster.is_empty() {
             data.players = roster;
+        }
+    }
+    if let Some(dealer) = first_dealer {
+        if let Some(i) = data.players.iter().position(|p| *p == dealer) {
+            data.dealer_start = i;
         }
     }
     data.rounds.clear();
@@ -180,6 +228,25 @@ fn recompute(data: &mut GameData, game: &Game) {
             } else {
                 leaders_by(&totals, rp.winner)
             };
+
+            // Upcoming round (0-based index = rounds played so far).
+            let next = data.rounds.len();
+            data.complete = rp
+                .wild_progression
+                .as_ref()
+                .is_some_and(|wp| next >= wp.ranks.len());
+            data.next_wild = if data.complete {
+                None
+            } else {
+                rp.wild_progression
+                    .as_ref()
+                    .and_then(|wp| wp.ranks.get(next).cloned())
+            };
+            data.next_dealer = if data.complete {
+                None
+            } else {
+                dealer_for_round(&data.players, rp, data.dealer_start, next)
+            };
         }
         Model::MatchWins(_) => {
             for m in &data.matches {
@@ -190,10 +257,29 @@ fn recompute(data: &mut GameData, game: &Game) {
             } else {
                 leaders_by(&totals, Winner::Highest)
             };
+            data.complete = false;
+            data.next_wild = None;
+            data.next_dealer = None;
         }
     }
 
     data.totals = totals;
+}
+
+/// Who deals round `round_index` (0-based) for a rotating-dealer game:
+/// `players[(dealer_start + round_index) % n]`. `None` if the game has no
+/// rotating dealer or no players.
+fn dealer_for_round(
+    players: &[String],
+    rp: &RoundPoints,
+    dealer_start: usize,
+    round_index: usize,
+) -> Option<String> {
+    if !rp.dealer.as_ref().is_some_and(|d| d.rotates) || players.is_empty() {
+        return None;
+    }
+    let i = (dealer_start + round_index) % players.len();
+    Some(players[i].clone())
 }
 
 fn apply_award(totals: &mut BTreeMap<String, i64>, recipient: Option<&str>, rp: &RoundPoints) {
