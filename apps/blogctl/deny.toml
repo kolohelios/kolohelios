@@ -1,6 +1,18 @@
 [advisories]
 unmaintained = "all"
 version      = 2
+# Two quick-xml DoS advisories reachable only transitively through
+# `calamine 0.35` (blogctl → calamine → quick-xml 0.39). Both are
+# denial-of-service via malicious XML, and both are fixed in quick-xml
+# >=0.41 — but calamine 0.35 pins `quick-xml ^0.39` (<0.40), so there is no
+# in-place bump (`cargo update -p quick-xml` moves nothing). blogctl only
+# parses trusted local blog spreadsheets, never untrusted/network input, so
+# the DoS doesn't apply. Drop these once calamine ships a release on
+# quick-xml >=0.41.
+ignore = [
+  "RUSTSEC-2026-0194", # quick-xml: quadratic time on duplicate attribute names
+  "RUSTSEC-2026-0195", # quick-xml: unbounded allocation in NsReader
+]
 
 [licenses]
 allow = [
