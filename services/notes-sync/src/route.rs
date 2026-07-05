@@ -125,6 +125,19 @@ pub fn rename_blocked_by_live_socket(count: usize) -> bool {
     count > 0
 }
 
+/// Whether a rename lease is still in force at `now_ms`. A rename takes a
+/// short-lived lease on the source (and destination) Durable Object once it
+/// has probed the socket count as zero; while the lease holds, the DO refuses
+/// a new editor websocket. This closes the TOCTOU window between that probe
+/// and the source purge (`delete_all`), where a freshly attached socket would
+/// otherwise load the about-to-be-erased body, accept edits, and lose them.
+/// The lease carries an expiry so a crashed orchestrator self-heals instead of
+/// wedging the note shut permanently. Pure so the accept-path decision is
+/// host-testable; the wasm storage read that supplies `lease_until` is not.
+pub fn rename_lease_active(lease_until: Option<i64>, now_ms: i64) -> bool {
+    lease_until.is_some_and(|until| now_ms < until)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +295,20 @@ mod tests {
     #[test]
     fn rename_is_allowed_when_no_socket_is_live() {
         assert!(!rename_blocked_by_live_socket(0));
+    }
+
+    #[test]
+    fn rename_lease_blocks_a_socket_until_it_expires() {
+        // Held: now is before the expiry — a new editor socket is refused.
+        assert!(rename_lease_active(Some(1_000), 999));
+        // Expired: at or after the expiry the note reopens, so a crashed
+        // rename self-heals rather than wedging the note permanently.
+        assert!(!rename_lease_active(Some(1_000), 1_000));
+        assert!(!rename_lease_active(Some(1_000), 1_001));
+    }
+
+    #[test]
+    fn no_rename_lease_never_blocks() {
+        assert!(!rename_lease_active(None, 42));
     }
 }

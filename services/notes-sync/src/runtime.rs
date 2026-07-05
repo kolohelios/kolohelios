@@ -22,7 +22,7 @@ use crate::auth::{authorize_owner, authorized_did};
 use crate::git::{commit_with_retry, move_note_file, CommitError, GitTarget, WorkerGitHubClient};
 use crate::route::{
     choose_rename_body, is_valid_note_id, parse_ws_note_id, plan_rename,
-    rename_blocked_by_live_socket, RenameError, RenamePlan,
+    rename_blocked_by_live_socket, rename_lease_active, RenameError, RenamePlan,
 };
 use crate::state::{is_stale, next_alarm};
 
@@ -47,11 +47,33 @@ const SEED_PATH: &str = "/__seed";
 
 /// Internal DO control path: the `/rename` orchestrator forwards a `POST`
 /// here to a note's Durable Object to read how many live editor websockets
-/// it currently holds (returned as `{"count":N}`). Read-only — it lets the
-/// orchestrator refuse a rename whose source or destination is open in
-/// another tab, where an in-flight edit would otherwise be lost or the
-/// purged source resurrected from a stale socket.
-const SOCKETS_PATH: &str = "/__sockets";
+/// it currently holds (returned as `{"count":N}`) *and*, when that count is
+/// zero, take a short-lived rename lease in one atomic handler run. The count
+/// lets the orchestrator refuse a rename whose source or destination is open
+/// in another tab; the lease then blocks a *new* socket from attaching during
+/// the move, closing the TOCTOU window between this probe and the source
+/// purge (see `rename_lease_active`). Leasing only when idle avoids locking
+/// out reopens of a note that already refused the rename.
+const LEASE_PATH: &str = "/__lease";
+
+/// Internal DO control path: the `/rename` orchestrator forwards a `POST`
+/// here to clear a rename lease taken via `LEASE_PATH`. On a completed rename
+/// the source purge and destination seed each `delete_all` the lease away, so
+/// this only matters on a refused or failed move — it frees the note promptly
+/// instead of waiting out the lease TTL.
+const RELEASE_PATH: &str = "/__release";
+
+/// Storage key holding a rename lease's expiry (epoch millis). Present and
+/// unexpired means a rename is mid-flight and new editor sockets are refused;
+/// the expiry lets a crashed orchestrator self-heal.
+const RENAME_LEASE_KEY: &str = "rename_lease_until";
+
+/// How long a rename lease holds before it self-expires. Sized well above the
+/// realistic rename window (~0.5-3s, even with control-op and commit retries)
+/// so the lease never lapses mid-move, while still self-healing quickly if the
+/// orchestrator dies before releasing. The normal path releases explicitly, so
+/// this bound only bites on a crash.
+const RENAME_LEASE_TTL: Duration = Duration::from_secs(30);
 
 /// Commit the note this long after the last edit — coalesces a burst of
 /// keystrokes into a single git commit once the typing settles. Durability
@@ -248,6 +270,10 @@ const CONTROL_OP_RETRIES: u32 = 3;
 ///
 /// 0. Refuse a source or destination that is open in another tab (live
 ///    websocket), before any mutation, so a refusal leaves both untouched.
+///    On an idle note the same step takes a short-lived rename lease so a
+///    *new* tab can't attach mid-move — closing the TOCTOU window between
+///    this probe and step 5's purge. The lease is released (or, on success,
+///    cleared by the purge/seed `delete_all`) once the move settles.
 /// 1. Read the source body. The source DO's materialized text is preferred,
 ///    but a cold DO (never opened since eviction/migration) reports `""`
 ///    though git holds the note, so the committed git blob is the fallback —
@@ -304,30 +330,62 @@ async fn handle_rename(req: &Request, env: &Env) -> Result<Response> {
         Err(RenameError::SourceMissing) => return Response::error("note not found", 404),
     };
 
-    // 0. Refuse a note that's open in another tab. The move reads the source
-    //    body, rewrites git, then purges the source DO; a live editor socket
-    //    would have its in-flight edits committed to the old path and then
-    //    erased, and could resurrect the purged note from its stale
-    //    connection. The destination is probed too: `seed` does a
-    //    `delete_all`, so a live editor there would lose its state. Both
-    //    checks run before any mutation, so a refusal leaves everything
-    //    untouched.
-    if rename_blocked_by_live_socket(live_socket_count(env, &old).await?) {
+    // 0. Refuse a note that's open in another tab, and lease an idle one. The
+    //    move reads the source body, rewrites git, then purges the source DO;
+    //    a live editor socket would have its in-flight edits committed to the
+    //    old path and then erased, and could resurrect the purged note from
+    //    its stale connection. The destination is probed too: `seed` does a
+    //    `delete_all`, so a live editor there would lose its state. A count of
+    //    zero also takes a rename lease, so a tab opening *after* the probe
+    //    can't slip a fresh socket in before the purge/seed. Both checks run
+    //    before any mutation, so a refusal leaves everything untouched.
+    if rename_blocked_by_live_socket(acquire_rename_lease(env, &old).await?) {
         return Response::error("note is open in another tab; close it and retry", 409);
     }
-    if rename_blocked_by_live_socket(live_socket_count(env, &new).await?) {
-        return Response::error(
-            "destination note is open in another tab; close it and retry",
-            409,
-        );
+    match acquire_rename_lease(env, &new).await {
+        Ok(count) if rename_blocked_by_live_socket(count) => {
+            // Source was idle, so it's now leased; free it before bailing so a
+            // busy destination doesn't lock the source shut for the lease TTL.
+            let _ = release_rename_lease(env, &old).await;
+            return Response::error(
+                "destination note is open in another tab; close it and retry",
+                409,
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            let _ = release_rename_lease(env, &old).await;
+            return Err(e);
+        }
     }
 
-    let old_target = note_git_target(env, &old)?;
-    let new_target = note_git_target(env, &new)?;
+    // Both source and destination are now leased. Run the move, then release
+    // both leases regardless of outcome: on success the purge/seed `delete_all`
+    // already cleared them (release is then a no-op); on any refusal or error
+    // this frees them promptly instead of waiting out the TTL.
+    let result = perform_rename(env, &client, &old, &new, plan).await;
+    let _ = release_rename_lease(env, &old).await;
+    let _ = release_rename_lease(env, &new).await;
+    result
+}
+
+/// Steps 1-5 of the rename, run once both notes hold a rename lease (see
+/// `handle_rename`). Split out so `handle_rename` can release the leases on a
+/// single join point covering every exit — the `?` short-circuits, the
+/// `Response::error` refusals, and the success path alike.
+async fn perform_rename(
+    env: &Env,
+    client: &WorkerGitHubClient,
+    old: &str,
+    new: &str,
+    plan: RenamePlan,
+) -> Result<Response> {
+    let old_target = note_git_target(env, old)?;
+    let new_target = note_git_target(env, new)?;
 
     // 1. Choose the body to carry: the source DO's live text when present,
     //    else the committed git blob (a cold DO reports `""`).
-    let do_text = export_note_text(env, &old).await?;
+    let do_text = export_note_text(env, old).await?;
     let git_text = client
         .get_file_content(&old_target)
         .await
@@ -340,7 +398,7 @@ async fn handle_rename(req: &Request, env: &Env) -> Result<Response> {
             // The committed-listing guard already proved the destination is
             // free in git, but a note edited-but-not-yet-committed lives only
             // in its DO. Refuse rather than let `seed`'s `delete_all` wipe it.
-            if !export_note_text(env, &new).await?.is_empty() {
+            if !export_note_text(env, new).await?.is_empty() {
                 return Response::error("destination already exists", 409);
             }
         }
@@ -365,19 +423,19 @@ async fn handle_rename(req: &Request, env: &Env) -> Result<Response> {
 
     // 3. Git move: create the destination with the body, then drop the source.
     //    Idempotent on a resume — the create re-PUTs the same body.
-    move_note_file(&client, &old_target, &new_target, &text, MAX_COMMIT_RETRIES)
+    move_note_file(client, &old_target, &new_target, &text, MAX_COMMIT_RETRIES)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
     // 4. Seed the destination DO so opening `?note=<new>` shows the body. The
     //    git file already exists, so a missed seed would otherwise show blank.
-    if seed_note_with_retry(env, &new, &text).await.is_err() {
+    if seed_note_with_retry(env, new, &text).await.is_err() {
         return Response::error("rename seed failed", 502);
     }
 
     // 5. Clear the source DO (its git file is already gone) so a stale reopen
     //    of the old path cannot resurrect it.
-    if purge_note_with_retry(env, &old).await.is_err() {
+    if purge_note_with_retry(env, old).await.is_err() {
         return Response::error("rename cleanup failed", 502);
     }
 
@@ -441,11 +499,13 @@ async fn export_note_text(env: &Env, note_id: &str) -> Result<String> {
         .to_owned())
 }
 
-/// Count a note's live editor websockets via its Durable Object. Read-only:
-/// it only reports `get_websockets().len()`, never mutating the object, so a
-/// rename refused on its result leaves the note exactly as it was.
-async fn live_socket_count(env: &Env, note_id: &str) -> Result<usize> {
-    let ctrl = control_request(SOCKETS_PATH, note_id, None)?;
+/// Probe a note's live editor websocket count and, when it is zero, take a
+/// rename lease on the Durable Object in the same atomic handler run (see
+/// `LEASE_PATH`). Returns the count: a non-zero result means the note is open
+/// elsewhere and the rename is refused (no lease taken); a zero result means
+/// the note is now leased against a new socket attaching mid-move.
+async fn acquire_rename_lease(env: &Env, note_id: &str) -> Result<usize> {
+    let ctrl = control_request(LEASE_PATH, note_id, None)?;
     let mut resp = forward_to_note(env, note_id, ctrl).await?;
     if resp.status_code() != 200 {
         return Err(Error::RustError("socket probe failed".into()));
@@ -454,6 +514,19 @@ async fn live_socket_count(env: &Env, note_id: &str) -> Result<usize> {
     let v: serde_json::Value =
         serde_json::from_str(&body).map_err(|e| Error::RustError(e.to_string()))?;
     Ok(v.get("count").and_then(|c| c.as_u64()).unwrap_or_default() as usize)
+}
+
+/// Release a rename lease taken by `acquire_rename_lease`. Best-effort: a
+/// completed rename already cleared the lease via the purge/seed `delete_all`,
+/// and an unreleased lease self-expires, so a failure here only delays the
+/// note reopening by the TTL rather than losing correctness.
+async fn release_rename_lease(env: &Env, note_id: &str) -> Result<()> {
+    let ctrl = control_request(RELEASE_PATH, note_id, None)?;
+    let resp = forward_to_note(env, note_id, ctrl).await?;
+    if resp.status_code() != 200 {
+        return Err(Error::RustError("lease release failed".into()));
+    }
+    Ok(())
 }
 
 /// Seed a note's Durable Object with `text` so opening it shows the body.
@@ -707,11 +780,24 @@ impl DurableObject for NoteDurableObject {
         }
         // Rename guard: report how many live editor sockets this object holds
         // so the orchestrator can refuse a rename of a note open in another
-        // tab. Read-only.
-        if req.path() == SOCKETS_PATH {
+        // tab, and — when idle — take a rename lease in the same run so a new
+        // socket can't attach before the move finishes. Reading the count and
+        // writing the lease in one handler is what makes it race-free: the DO
+        // serializes handlers, so no accept slips between the two.
+        if req.path() == LEASE_PATH {
             let count = self.state.get_websockets().len();
+            if count == 0 {
+                let until = Date::now().as_millis() as i64 + RENAME_LEASE_TTL.as_millis() as i64;
+                self.state.storage().put(RENAME_LEASE_KEY, until).await?;
+            }
             let body = serde_json::json!({ "count": count }).to_string();
             return Response::ok(body);
+        }
+        // Rename guard: drop a lease taken via `LEASE_PATH` so a refused or
+        // failed move reopens the note without waiting out the TTL.
+        if req.path() == RELEASE_PATH {
+            self.state.storage().delete(RENAME_LEASE_KEY).await?;
+            return Response::ok("released");
         }
         // Rename, destination side: install the migrated body so opening the
         // new id shows it. The body rides the request JSON.
@@ -726,6 +812,16 @@ impl DurableObject for NoteDurableObject {
                 .unwrap_or_default()
                 .to_owned();
             return self.seed(&note_id, &text).await;
+        }
+
+        // Refuse a new editor socket while a rename holds a lease on this note:
+        // the source is mid-purge (or the destination mid-seed), and a socket
+        // attaching now would load a body about to be `delete_all`'d and lose
+        // any edits typed into that window. The lease self-expires, so a
+        // crashed rename reopens the note rather than wedging it shut.
+        let lease_until: Option<i64> = self.state.storage().get(RENAME_LEASE_KEY).await?;
+        if rename_lease_active(lease_until, Date::now().as_millis() as i64) {
+            return Response::error("note is being renamed; retry shortly", 409);
         }
 
         let note_id = parse_ws_note_id(&req.path())
