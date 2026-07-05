@@ -317,17 +317,51 @@
         }
       }
 
-      // New note: navigate to the empty note. It commits to git (and thus
-      // joins the vault listing) on its first edit.
-      document.getElementById("new-note").addEventListener("click", () => {
-        const path = (prompt("New note path (e.g. projects/idea)") || "").trim();
-        if (!path) return;
-        if (!validNotePath(path)) {
-          alert("Use letters, digits, . _ - and / between segments.");
-          return;
+      // Ask the backend to auto-file a draft into a folder ("it goes where it
+      // goes"). Returns a suggested `folder/slug` path, or "" when auto-filing
+      // is disabled (no LLM key), the draft is blank, or anything fails — the
+      // caller then falls back to a plain manual prompt. Never throws.
+      async function suggestNotePath(draft) {
+        if (!draft) return "";
+        try {
+          const res = await fetch(`https://${backend}/suggest-path`, {
+            method: "POST",
+            credentials: "include",
+            body: draft,
+          });
+          if (!res.ok) return "";
+          const { path } = await res.json();
+          return typeof path === "string" ? path : "";
+        } catch (e) {
+          return "";
         }
-        location.search = "?note=" + encodeURIComponent(path);
-      });
+      }
+
+      // New note: optionally describe it so the LLM can auto-file it into the
+      // right folder, then confirm/edit the path and navigate to the empty
+      // note. It commits to git (and thus joins the vault listing) on its
+      // first edit. Auto-filing is a convenience layered over the manual path
+      // entry: a blank description, a disabled LLM, or any failure degrades to
+      // the plain path prompt.
+      document
+        .getElementById("new-note")
+        .addEventListener("click", async () => {
+          const draft = (
+            prompt(
+              "What's the note about? (used to auto-file it — leave blank to set the path yourself)",
+            ) || ""
+          ).trim();
+          const suggested = await suggestNotePath(draft);
+          const path = (
+            prompt("New note path (e.g. projects/idea)", suggested) || ""
+          ).trim();
+          if (!path) return;
+          if (!validNotePath(path)) {
+            alert("Use letters, digits, . _ - and / between segments.");
+            return;
+          }
+          location.search = "?note=" + encodeURIComponent(path);
+        });
 
       const status = document.getElementById("status");
       try {
