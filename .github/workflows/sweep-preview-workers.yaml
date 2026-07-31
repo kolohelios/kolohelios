@@ -55,7 +55,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
       - name: sweep orphaned preview Workers
         # The CF deploy token + account id are identical across every
         # Worker app's `.env.example`; copy any one to the repo root so

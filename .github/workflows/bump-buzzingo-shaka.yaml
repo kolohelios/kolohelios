@@ -49,7 +49,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
       - name: Configure git identity + buzzingo credential helper
         # `bump-locks --repo` clones buzzingo, commits, force-pushes the bot
         # branch, and opens/updates the PR via `gh`/`git`, which need the App

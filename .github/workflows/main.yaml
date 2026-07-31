@@ -78,7 +78,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - uses: actions/cache@v6
       with:
         key: cargo-${{ runner.os }}-${{ hashFiles('tools/shaka/Cargo.lock') }}
@@ -114,7 +114,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix build ./apps/blogctl
     - uses: DeterminateSystems/flakehub-push@main
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -157,7 +157,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix build ./infra/devbox#linodeImage
     - uses: actions/upload-artifact@v7
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -182,7 +182,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix flake check ./infra/home
     - uses: DeterminateSystems/flakehub-push@main
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -207,7 +207,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix flake check ./nix/kolohelios-nix
     - uses: DeterminateSystems/flakehub-push@main
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -247,7 +247,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix build ./tools/aof
     - uses: DeterminateSystems/flakehub-push@main
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -290,7 +290,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix build ./tools/claude-hooks
     - uses: DeterminateSystems/flakehub-push@main
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -315,7 +315,7 @@ jobs:
       with:
         determinate: true
         flakehub: true
-    - uses: DeterminateSystems/flakehub-cache-action@v3
+    - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
     - run: nix build ./tools/shaka
     - uses: DeterminateSystems/flakehub-push@main
       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

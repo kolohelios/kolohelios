@@ -123,7 +123,7 @@ jobs:
         with:
           determinate: true
           flakehub: true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: DeterminateSystems/flakehub-cache-action@v3.21.8
       - name: cf-deploy shaka
         # Run the deploy-orchestration `shaka ci` steps below with a shaka
         # THIS reusable workflow controls, not the version the consumer
