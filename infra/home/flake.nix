@@ -50,6 +50,13 @@
         }
       );
 
+      # Standalone desktop profile; independent of the host's NixOS release.
+      homeConfigurations.jone = home-manager.lib.homeManagerConfiguration {
+        pkgs = import nixpkgs { system = "x86_64-linux"; };
+        extraSpecialArgs = { inherit claude-hooks shaka; };
+        modules = [ ./modules/desktop.nix ];
+      };
+
       darwinConfigurations.Jons-MacBook-Pro = nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
         specialArgs = { inherit claude-hooks kolohelios-nix shaka; };

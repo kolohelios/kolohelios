@@ -73,17 +73,26 @@ if it exists. `~/.zshrc.local` is hand-maintained, not nix-managed.
 ## Linux desktop: Pi and WezTerm
 
 `modules/common.nix` installs `pi-coding-agent` on both platforms and
-WezTerm on Linux. The pinned nixpkgs currently supplies Pi 0.75.4 and
+WezTerm on Linux. The pinned `nixpkgs` currently supplies Pi 0.75.4 and
 WezTerm `0-unstable-2026-03-31`. The desktop's old system WezTerm
 `20240203` rendered text as blocks; the newer build works with OpenGL.
-The shared Lua config selects OpenGL on Linux and leaves macOS on its
+The shared `wezterm.lua` selects OpenGL on Linux and leaves macOS on its
 default renderer. Copy/paste uses `Ctrl+Shift+C` / `Ctrl+Shift+V`.
 
-The existing Linux output targets the devbox account `jon`, not the
-physical desktop account `jone`. Saving these modules does **not** wire
-Home Manager into the desktop's `/etc/nixos/configuration.nix` or activate
-them there. When wiring that host, apply `modules/common.nix` to `jone`
-with the same flake arguments used by `modules/linux.nix`.
+The NixOS module targets the devbox account `jon`. The standalone
+`homeConfigurations.jone` profile targets the physical desktop and uses
+its own pinned packages, independently of the host's older NixOS release.
+Build and activate it from the repository root:
+
+```sh
+nix build ./infra/home#homeConfigurations.jone.activationPackage
+HOME_MANAGER_BACKUP_EXT=backup ./result/activate
+```
+
+Existing managed files are preserved with a `.backup` suffix. Review
+those backups after activation. Start a new terminal for the managed shell
+configuration. This does not change `/etc/nixos/configuration.nix` or
+install system device permissions.
 
 ## MSI Vector keyboard backlight (opt-in)
 
@@ -91,7 +100,7 @@ The Vector GP66HX 12UGS has a SteelSeries KLC controller (`1038:113a`).
 OpenRGB 0.9 did not detect it. `packages/msi-perkeyrgb.nix` pins the
 upstream tool, fixes Nix library/tool discovery and the feature-report
 `size_t` binding, and supplies a narrowly scoped `uaccess` rule.
-The GS65 keymap and purple `a020f0` were tested on this laptop.
+The GS65 keyboard layout and purple `a020f0` were tested on this laptop.
 
 `common.nix` imports the keyboard module but leaves it disabled. On the
 physical desktop, once Home Manager is wired into NixOS:
@@ -104,7 +113,7 @@ home-manager.users.jone.programs.msi-perkeyrgb.enable = true;
 
 The optional NixOS module grants the active local user access to this
 controller; Home Manager installs the CLI and applies purple at graphical
-login. Macs and cloud devboxes are unaffected. The generated udev rule
+login. Macs and cloud devboxes are unaffected. The generated `udev` rule
 is specific to `1038:113a`; overriding `usbId` requires a matching host
 permission rule too. Rebuild NixOS and reboot to apply device permissions.
 
