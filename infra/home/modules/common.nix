@@ -37,6 +37,8 @@ let
 in
 
 {
+  imports = [ ./msi-keyboard.nix ];
+
   home.stateVersion = "25.05";
 
   # CLI toolchain. Tools managed via `programs.*` (git, jujutsu, helix,
@@ -49,6 +51,7 @@ in
     pkgs.bat
     pkgs.eza
     pkgs.zellij
+    pkgs.pi-coding-agent
     # `claude-code` is intentionally NOT here. `nixpkgs/release-25.11`
     # lags upstream by days to weeks for fast-moving tools like this.
     # On macOS it's declared via nix-darwin's `homebrew.casks` in

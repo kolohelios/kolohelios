@@ -2,6 +2,13 @@ local wezterm = require('wezterm')
 local act = wezterm.action
 local config = wezterm.config_builder()
 
+-- Verified on the Linux desktop with the updated nixpkgs WezTerm.
+-- The old 20240203 build rendered glyphs as blocks, even in software mode.
+-- Keep macOS on its platform default renderer.
+if wezterm.target_triple:find('linux') then
+  config.front_end = 'OpenGL'
+end
+
 -- Send ESC + CR on shift+enter (ported from the ghostty
 -- `keybind = shift+enter=text:\x1b\r`). Lets apps that read shift+enter
 -- as "newline, don't submit" work in the terminal.
