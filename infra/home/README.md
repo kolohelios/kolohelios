@@ -70,6 +70,55 @@ PATH additions that aren't worth nix-managing (for example, `lmstudio`)
 live in `~/.zshrc.local`, which the generated zshrc sources at the end
 if it exists. `~/.zshrc.local` is hand-maintained, not nix-managed.
 
+## Linux desktop: Pi and WezTerm
+
+`modules/common.nix` installs `pi-coding-agent` on both platforms and
+WezTerm on Linux. The pinned nixpkgs currently supplies Pi 0.75.4 and
+WezTerm `0-unstable-2026-03-31`. The desktop's old system WezTerm
+`20240203` rendered text as blocks; the newer build works with OpenGL.
+The shared Lua config selects OpenGL on Linux and leaves macOS on its
+default renderer. Copy/paste uses `Ctrl+Shift+C` / `Ctrl+Shift+V`.
+
+The existing Linux output targets the devbox account `jon`, not the
+physical desktop account `jone`. Saving these modules does **not** wire
+Home Manager into the desktop's `/etc/nixos/configuration.nix` or activate
+them there. When wiring that host, apply `modules/common.nix` to `jone`
+with the same flake arguments used by `modules/linux.nix`.
+
+## MSI Vector keyboard backlight (opt-in)
+
+The Vector GP66HX 12UGS has a SteelSeries KLC controller (`1038:113a`).
+OpenRGB 0.9 did not detect it. `packages/msi-perkeyrgb.nix` pins the
+upstream tool, fixes Nix library/tool discovery and the feature-report
+`size_t` binding, and supplies a narrowly scoped `uaccess` rule.
+The GS65 keymap and purple `a020f0` were tested on this laptop.
+
+`common.nix` imports the keyboard module but leaves it disabled. On the
+physical desktop, once Home Manager is wired into NixOS:
+
+```nix
+# In the desktop's NixOS module (paths relative to this directory):
+imports = [ ./modules/msi-keyboard-udev.nix ];
+home-manager.users.jone.programs.msi-perkeyrgb.enable = true;
+```
+
+The optional NixOS module grants the active local user access to this
+controller; Home Manager installs the CLI and applies purple at graphical
+login. Macs and cloud devboxes are unaffected. The generated udev rule
+is specific to `1038:113a`; overriding `usbId` requires a matching host
+permission rule too. Rebuild NixOS and reboot to apply device permissions.
+
+Manual color changes (may replace the controller's stored lighting):
+
+```sh
+msi-perkeyrgb --id 1038:113a --model GS65 --steady a020f0
+```
+
+Hardware brightness is separate: use the laptop's keyboard-backlight
+brightness keys if the color is too dim. The power-button LED is not
+reliably controlled by this tool. No OpenRGB daemon, root GUI, or extra
+I2C access is needed for this USB controller.
+
 ## Adding a tool
 
 1. If it's a binary, add to `home.packages` in `modules/common.nix`.
