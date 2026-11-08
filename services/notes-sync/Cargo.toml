@@ -13,17 +13,15 @@ crate-type = ["cdylib", "rlib"]
 # Base64-encode the note body for the GitHub contents API (cold-tier
 # commit). Pure-rust, builds on wasm32-unknown-unknown.
 base64 = "0.22"
-# The `js` feature routes wasm32 randomness to workerd's
+# The `wasm_js` feature routes wasm32 randomness to workerd's
 # crypto.getRandomValues, so the DPoP P-256 keygen below works on the
 # Worker target.
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 # HMAC-SHA256 for the signed session cookie.
 hmac = "0.12"
 # ES256 (P-256 ECDSA) for the DPoP proofs — the portable crypto part of
 # the ATProto OAuth flow (RustCrypto, compiles to wasm).
-p256 = { version = "0.13", features = ["ecdsa"] }
-# OS RNG (backed by getrandom above) for the ephemeral DPoP keypair.
-rand_core = { version = "0.6", features = ["getrandom"] }
+p256 = { version = "0.14", features = ["ecdsa"] }
 # Shared wire-protocol types (ClientMsg / ServerMsg / Delta), used by
 # both the Durable Object here and the WASM editor.
 notes-protocol = { path = "../../packages/notes-protocol" }
