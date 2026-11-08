@@ -6,6 +6,7 @@
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+use p256::elliptic_curve::Generate;
 use sha2::{Digest, Sha256};
 
 /// An ephemeral DPoP key. The private key signs proofs; the public JWK
@@ -23,10 +24,10 @@ impl Default for DpopKey {
 
 impl DpopKey {
     /// Generate a fresh P-256 key. The OS RNG is workerd's
-    /// crypto.getRandomValues on wasm (via getrandom's `js` backend).
+    /// crypto.getRandomValues on wasm (via getrandom's `wasm_js` backend).
     pub fn generate() -> Self {
         Self {
-            signing: SigningKey::random(&mut rand_core::OsRng),
+            signing: SigningKey::generate(),
         }
     }
 
@@ -45,7 +46,7 @@ impl DpopKey {
 
     /// The public key as a JWK (`{crv, kty, x, y}`) for the proof header.
     pub fn public_jwk(&self) -> (String, String) {
-        let point = self.signing.verifying_key().to_encoded_point(false);
+        let point = self.signing.verifying_key().to_sec1_point(false);
         let x = URL_SAFE_NO_PAD.encode(point.x().expect("affine x"));
         let y = URL_SAFE_NO_PAD.encode(point.y().expect("affine y"));
         (x, y)

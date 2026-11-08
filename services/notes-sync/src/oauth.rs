@@ -83,7 +83,7 @@ mod flow {
     /// the `state`, and DPoP `jti`s.
     fn random_token() -> String {
         let mut bytes = [0u8; 32];
-        getrandom::getrandom(&mut bytes).expect("rng");
+        getrandom::fill(&mut bytes).expect("rng");
         URL_SAFE_NO_PAD.encode(bytes)
     }
 

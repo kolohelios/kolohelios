@@ -17,7 +17,8 @@ hcl-edit      = "0.9"
 indexmap      = { version = "2", features = ["serde"] }
 serde         = { version = "1", features = ["derive"] }
 serde_json    = "1"
-serde_yaml_ng = "0.10"
+# Maintained YAML fork; retain the import name to avoid unrelated API churn.
+serde_yaml_ng = { package = "yaml_serde", version = "0.10.7" }
 shlex         = "2"
 snafu         = "0.9"
 tempfile      = "3"
