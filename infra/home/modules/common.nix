@@ -6,6 +6,7 @@
   pkgs,
   lib,
   claude-hooks,
+  pi,
   shaka,
   ...
 }:
@@ -51,7 +52,10 @@ in
     pkgs.bat
     pkgs.eza
     pkgs.zellij
-    pkgs.pi-coding-agent
+    # Pi moves faster than its nixpkgs package: use the independent stable
+    # flake pin. Update with `nix flake update pi` in infra/home, then switch
+    # the home/system; `pi update` cannot update this Nix-managed install.
+    pi.packages.${pkgs.stdenv.hostPlatform.system}.default
     # `claude-code` is intentionally NOT here. `nixpkgs/release-25.11`
     # lags upstream by days to weeks for fast-moving tools like this.
     # On macOS it's declared via nix-darwin's `homebrew.casks` in

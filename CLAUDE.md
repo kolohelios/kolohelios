@@ -343,6 +343,31 @@ secret/variable as `auto-rebase-prs.yaml`) so the post-bump push
 re-triggers the normal CI for the PR — pushes via the default
 `GITHUB_TOKEN` do not.
 
+### Pi home lock updates
+
+`infra/home` installs Pi from the independent
+`github:earendil-works/pi/stable` input, not `pkgs.pi-coding-agent`.
+Pi moves faster than the `nixpkgs` package, so keep its pin decoupled
+from `kolohelios-nix`/`nixpkgs`. The shared lock-bump jobs above do not
+update Pi. `shaka repo bump-locks --input pi` already supports refreshing
+this input; no change to those jobs is needed.
+
+For the standalone Linux desktop:
+
+```sh
+cd ~/code/kolohelios/infra/home
+nix flake update pi
+home-manager switch --flake .#jone
+pi --version
+```
+
+Commit the lock change. `pi update` cannot update this Nix-managed
+installation. See [`infra/home/README.md`](infra/home/README.md) for
+macOS activation and troubleshooting. Input declarations belong in
+`infra/home/project.cue` (`infra.extraInputs`); regenerate with
+`shaka project generate-flakes`, never hand-edit `infra/home/flake.nix`.
+Lock-only updates do not require regeneration.
+
 ### Working with `jj`
 
 A few `jj` behaviors trip up agents whose mental model comes from git. Read
