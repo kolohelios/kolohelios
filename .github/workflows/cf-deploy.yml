@@ -98,6 +98,9 @@ jobs:
   deploy:
     name: ${{ inputs.verify_only && 'wrangler deploy (dry-run)' || 'wrangler deploy' }}
     runs-on: ubuntu-latest
+    # Cold Nix/WASM builds need headroom, but a stalled deploy must not
+    # consume the GitHub default six-hour limit (#1114). Applies to all modes.
+    timeout-minutes: 60
     permissions:
       # nix-installer-action mints an OIDC token to authenticate with
       # FlakeHub for the `kolohelios-nix` private input.
@@ -191,6 +194,9 @@ jobs:
         env:
           WORKER_BUILD_DIR: ${{ inputs.worker_build_dir }}
       - name: wrangler deploy${{ inputs.verify_only && ' (dry-run)' || '' }}
+        # Wrangler has already built above. Fail a stuck subprocess rather
+        # than holding the runner until the job limit; root cause in #1115.
+        timeout-minutes: 15
         id: wrangler
         working-directory: ${{ inputs.project_dir }}
         # `.env` is gitignored; copy from the in-repo example so the
@@ -229,6 +235,7 @@ jobs:
           # `tee` masks the inner exit code; restore it explicitly.
           exit "${PIPESTATUS[0]}"
       - name: push Worker runtime secrets
+        timeout-minutes: 15
         working-directory: ${{ inputs.project_dir }}
         # Now that the Worker exists, push every secret declared in the
         # project's `wrangler.secrets` from its `op://` reference. The

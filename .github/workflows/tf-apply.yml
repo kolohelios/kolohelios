@@ -35,6 +35,10 @@ jobs:
   apply:
     name: tofu apply
     runs-on: ubuntu-latest
+    # Leave room for cold builds and the worker-domain retries below, but
+    # bound a stalled provider/credential process (#1114). An interrupted
+    # apply may be partial; inspect state and plan before retrying.
+    timeout-minutes: 90
     permissions:
       # nix-installer-action mints an OIDC token to authenticate with
       # FlakeHub for the `kolohelios-nix` private input.

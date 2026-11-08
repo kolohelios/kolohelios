@@ -40,6 +40,9 @@ concurrency:
 jobs:
   sweep:
     runs-on: ubuntu-latest
+    # Network/credential failures must not monopolize the serialized sweep.
+    # The next push or daily run retries any work left behind (#1114).
+    timeout-minutes: 30
     env:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
