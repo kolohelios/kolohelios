@@ -158,9 +158,9 @@ in
   # merges the two with `.local.json` taking precedence.
   home.file.".claude/settings.json".source = ../dotfiles/claude/settings.json;
 
-  # Cross-project personal directives for Claude Code. Used to be
-  # hand-maintained at `~/.claude/CLAUDE.md`; now version-controlled
-  # so a clean-machine rebuild reproduces the same behavioral rules
-  # (per the "devboxes are ephemeral" tenet).
-  home.file.".claude/CLAUDE.md".source = ../dotfiles/claude/CLAUDE.md;
+  # Shared personal directives: one source for Pi and Claude Code, so a
+  # clean-machine rebuild reproduces the same cross-project rules.
+  # Keep commands, settings, and hooks in their agent-specific locations.
+  home.file.".pi/agent/AGENTS.md".source = ../dotfiles/agents/AGENTS.md;
+  home.file.".claude/CLAUDE.md".source = ../dotfiles/agents/AGENTS.md;
 }

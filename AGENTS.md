@@ -1,0 +1,604 @@
+# kolohelios
+
+Personal monorepo for infrastructure, tooling, and projects. This file is
+project-specific guidance for AI-assisted development. `AGENTS.md` is the
+canonical source; `CLAUDE.md` is a compatibility symlink for Claude Code.
+Personal/global preferences come from
+`infra/home/dotfiles/agents/AGENTS.md`, installed by Home Manager at
+`~/.pi/agent/AGENTS.md` and `~/.claude/CLAUDE.md`.
+
+## Tenets
+
+A few principles shape how work happens in this repo. Reach back to
+them when scoping or sequencing.
+
+- **Solo developer for the foreseeable future.** Keep processes
+  lightweight. Don't suggest contributing guides, multi-developer review
+  workflows, or collaboration tooling. Prefer direct edits over RFCs;
+  prefer issue comments over docs.
+- **Devboxes are ephemeral.** Local devboxes (baremetal mac, cloud VM)
+  are ephemeral workspaces, not durable infrastructure. Durable
+  artifacts are: the code repo, flake caches, deployed services.
+  Configuration changes live in version control. Don't propose stateful
+  devbox patterns; the cost to rebuild a devbox should stay close to
+  zero.
+- **Test the simpler hypothesis before architecting a replacement.**
+  When a task is framed as "replace X to avoid Y," ask first whether X
+  is still load-bearing. Especially true for CI cleanup steps, caching
+  workarounds, retry loops, and other defensively added plumbing. The
+  cheapest experiment is to remove and see, before designing the
+  replacement.
+
+## Layout
+
+Top-level directories are **slots**; each slot contains one directory per
+project. Project-local docs and configuration live alongside the project.
+
+| Slot         | Purpose                                              |
+| ------------ | ---------------------------------------------------- |
+| `apps/`      | End-user applications                                |
+| `packages/`  | Shared libraries                                     |
+| `projects/`  | Standalone projects that don't fit another slot      |
+| `services/`  | Long-running services (for example, `services/notes-sync`) |
+| `tools/`     | Developer tooling (for example, `tools/shaka`)       |
+| `infra/`     | Infrastructure as code (for example, `infra/devbox`) |
+| `nix/`       | Shared nix infrastructure (for example, `nix/kolohelios-nix`) |
+
+Every project has a `project.cue` declaring its `name` and `kind` (validated
+against `tools/shaka/schema/project-schema.cue`). Per-project `justfile`s are
+**generated** by `shaka project generate-justfiles` — never edit them by
+hand. CI fails on drift.
+
+## Build system
+
+- **Nix flakes are per-project.** Each project owns its toolchain via its
+  own `flake.nix`. There is **no root flake**. `direnv` enters the
+  appropriate flake when you `cd` into a project (each has a `.envrc` with
+  `use flake`).
+- **`kolohelios-nix`** (`nix/kolohelios-nix/`) is the shared lib every
+  consumer flake imports via the FlakeHub URL
+  (`https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz`), with
+  `nixpkgs.follows = "kolohelios-nix/nixpkgs"`. It exports
+  `lib.forEachSupportedSystem`, `lib.workflowPackages`, and `formatter` so
+  consumers stay thin. Published to FlakeHub by the `build-nix-lib` CI job.
+  The audit rule `kolohelios-nix-via-flakehub` (in `shaka project audit`)
+  enforces the FlakeHub URL form so no consumer drifts back to a `path:`
+  input.
+- **`just`** as the command runner for **per-project** recipes (`build`,
+  `test`, `fmt-check`, `lint`, `validate`). There is no cross-project root
+  `justfile` — for repo-wide validation, run `shaka preflight` directly.
+- **`shaka`** (Rust command-line tool in `tools/shaka`) is the build/repo Swiss army knife:
+  - `shaka preflight` — runs every CI check locally; CI runs the same command,
+    so local and CI cannot drift. `--since <ref>` scopes checks to changed
+    paths.
+  - `shaka project generate-justfiles` — regenerates root and per-project
+    `justfile`s from each `project.cue`. `--check` fails on drift (used in
+    CI).
+  - `shaka ci generate-workflows` — emits per-project workflow files
+    under `.github/workflows/` from each `project.cue`'s `ci:` block.
+    `--check` fails on drift; companion `shaka ci audit-workflows`
+    asserts every workflow is either generated or in the hand-authored
+    allowlist.
+  - `shaka project schema-check` — validates every `project.cue` against
+    the schema.
+  - `shaka commit lint -r <revset>` — enforces conventional commit format,
+    title length, body wrap, and atomicity (warns on cross-project commits).
+  - `shaka commit suggest` — drafts a conventional-commit message from the
+    paths a diff touches (type/scope heuristics, tied-issue title as
+    fallback). `--json` for assistant use; `--apply` writes it to the
+    empty working-copy description.
+  - `shaka repo sync|send|pr|audit` — `jj`/PR workflow helpers.
+
+The single CI gate is `shaka preflight`. It runs in two phases:
+
+1. **Repo-level checks** (`CHECKS` in `tools/shaka/src/preflight.rs`) — work
+   that spans projects: `shaka project schema-check`, `shaka project
+   generate-justfiles --check`. (No `nix flake check` here — flake checks
+   are per-project, covered below.)
+2. **Per-project checks** — for each project whose files changed
+   (or all, with no `--since`), enters the project's flake (`nix develop
+   . --command`) and runs `just validate`. Per-project quality gates
+   (`fmt`, lint, test, coverage, `nix flake check`, etc.) live in the
+   generated `justfile`'s `validate` recipe.
+
+If you need a new per-project check, extend the appropriate template in
+`tools/shaka/src/project/generate_justfiles.rs` so the generated
+`validate` recipe picks it up. If it spans projects, add it to `CHECKS`.
+Either way, do **not** add a new GitHub Actions job.
+
+The exception is automation that responds to repo events rather than
+gating PRs — for example, `auto-rebase-prs.yaml` rebases open PRs on
+`push: main`. These can't live in `shaka preflight` because they don't gate
+the current change set. Two things to remember when adding one:
+
+- **`permissions: id-token: write`** is required on the job if it
+  runs `nix develop` — `DeterminateSystems/nix-installer-action`
+  mints an OIDC token to authenticate with FlakeHub for private
+  inputs like `kolohelios-nix`, and fails without it.
+- **Force-push or status-write operations need a GitHub App token,
+  not `GITHUB_TOKEN`.** Pushes via `GITHUB_TOKEN` don't re-trigger CI
+  on the destination branch; this is a documented GitHub limitation.
+  See `.github/auto-rebase-app.md` for the `kolohelios-bot` setup
+  pattern (mint via `actions/create-github-app-token@v3`, pass to
+  `actions/checkout` and `GH_TOKEN`).
+
+### Running `shaka`
+
+Inside any project's devshell (the common case via `direnv` or
+`nix develop`), `shaka` is on `$PATH` and resolves from any `cwd`:
+
+```
+shaka <subcommand>
+```
+
+That comes from a tiny shim in `kolohelios-nix.lib.workflowPackages`
+that walks up from `cwd` to find the canonical wrapper at
+`tools/shaka/bin/shaka` and exec's it.
+
+Outside a devshell (cold-start scripts), invoke the wrapper directly
+from the repo root:
+
+```
+tools/shaka/bin/shaka <subcommand>
+```
+
+The wrapper always re-enters `nix develop ./tools/shaka` (unless already
+inside, detected via the `IN_SHAKA_DEVSHELL` marker) so `shaka` inherits
+all its runtime dependencies (`cue`, `jj`, `git`, `just`, `jq`,
+`cargo-llvm-cov` on Linux, etc.) regardless of how it was invoked. It
+then runs an incremental `cargo build` (free when no source has changed)
+and exec's the resulting debug binary. Don't reach for `cargo run` or
+`nix run ./tools/shaka` — the wrapper subsumes both.
+
+## Public/private split
+
+This repo is public so its tooling can be referenced freely, but some
+apps have commercial value worth keeping private. The split is handled
+by **moving the private thing into its own repo that consumes this
+repo's tooling from FlakeHub** — never by submodules or a sanitized
+public mirror. Two shapes, picked by *where the value lives*:
+
+- **Model A — engine public, data private** (the house default). The
+  app is factored into a generic engine that stays here in `kolohelios`
+  (so it keeps `shaka` + preflight) and a private repo holding only the
+  commercial data, `op://` refs, and rendered output. The private repo
+  consumes the engine from FlakeHub and runs `<engine> validate/sync/render`
+  against local data; schemas stay tool-side
+  (`tools/<x>/data/schema.cue`). Live precedent: `blogctl` (here) +
+  `blogs-and-posts` (private data); generalized to `personal-os` (#620).
+  **Prefer this whenever the secret is data, not code.**
+- **Model B — whole app private.** The entire app (code *and*
+  configuration) lives in a private repo that runs the *generic* `shaka` project
+  tooling against its own `<slot>/<name>/project.cue` projects — same
+  slot shape as here. Live precedent: `buzzingo` (private Cloudflare
+  rust-worker monorepo). Reserve this for an app whose *code* is the
+  secret and can't be split into engine + data; per the "test the
+  simpler hypothesis" tenet, don't reach for it speculatively.
+
+What stays public regardless: `tools/shaka`, `nix/kolohelios-nix`,
+`infra/devbox`, and the reusable CI workflow templates. A private repo
+needs **no `kolohelios` checkout** — it pins both `kolohelios-nix` and
+`shaka` via their FlakeHub URLs, so `shaka` lands on `$PATH` in the
+private repo's devshell exactly as it does here. The mechanics that make
+a FlakeHub `shaka` work against an arbitrary repo are already in place:
+
+- The project schema ships *inside* the `shaka` package and resolves via
+  `$SHAKA_CUE_MODULE_DIR` (set by the packaged flake's `wrapProgram`),
+  not a source-tree path — so `schema-check` / `generate-*` / `preflight`
+  run with no `tools/shaka/` present (#741). A repo with no domain
+  registry validates against a stubbed one (#863).
+- `shaka preflight`'s repo-level `CHECKS` are path-gated: the
+  kolohelios-only ones (domains, tokens, deploy-tf) simply never fire in
+  a repo that lacks those paths (#829). Audit rules that target a flake
+  input only fire on projects declaring it (#830).
+- Generated `rust-worker` flakes can be parameterized for external
+  consumers (FlakeHub `shaka` input + PATH-prepend ahead of the
+  `workflowPackages` shim) (#831, #885), and generated deploy/cleanup
+  workflows emit cross-repo `reusableWorkflow` `uses:` refs (#868) so a
+  private repo references this repo's `cf-deploy.yml` / `tf-apply.yml`
+  rather than copy-pasting.
+
+So a private repo runs its own `shaka preflight` and its own GitHub
+Actions, independently; nothing crosses repo boundaries at gate time.
+Secrets stay in 1Password with the same `op` patterns. Auditing external
+`kolohelios-*` repos *from* here is the one open companion (#387).
+
+## Version control
+
+- **`Jujutsu` (`jj`)** for all VCS operations — never `git` for working-copy
+  changes. The repo is colocated, so `git` reads work, but mutations should go
+  through `jj`.
+- **Conventional commits**, enforced by `shaka commit lint`:
+  - Title: `<type>(<scope>): <subject>` (max 70 chars, declarative — no
+    `Generated`/`Co-Authored-By` trailers)
+  - Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `style`, `perf`,
+    `ci`, `build`
+  - Scope is usually the project name (`shaka`, `infra/devbox`) or `ci`/`build`
+    for cross-cutting changes
+  - Body wrapped at 80 chars; explains *why*, not *what*
+- **Atomic, vertical commits**: one logical change per commit, one
+  layer/concern per commit. `shaka commit lint` warns when a commit spans
+  multiple projects.
+- **Workflow**: rebase on `main@origin`, self-review, then push and open a PR.
+  `shaka repo send` automates push + PR creation.
+
+### Pull requests
+
+- **PR body is a brief summary paragraph — no test plan section.**
+  `shaka preflight` gates correctness; long PR bodies add noise without
+  value.
+- **PR title comes from your latest commit's title** — `shaka repo send`
+  propagates the `@` commit title and body straight to the PR. Plan the
+  tip commit's message accordingly.
+- **If the change closes an issue, include `Closes #<N>` in the commit
+  body.** GitHub auto-links and auto-closes on merge. Sub-agents don't
+  have the `/ship` skill that bakes this in — include it explicitly in
+  any sub-agent brief. (#146 tracks teaching `shaka commit lint` to
+  catch this automatically.)
+
+### Auto-rebase on `main` movement
+
+When `main@origin` moves, `.github/workflows/auto-rebase-prs.yaml`
+rebases every open PR whose base is `main` onto the new tip. Successful
+rebases force-push the PR branch (with `--force-with-lease`) and post a
+`success` `auto-rebase` commit status; conflicts post a `failure`
+status on the PR head describing the conflicting paths, and the
+workflow run goes red.
+
+- **Opt out with the `do-not-rebase` label.** Apply it to a PR you
+  don't want the bot touching (for example, one you're actively
+  rebasing yourself).
+- **`auto-rebase` is informational, not a required check.** It only
+  appears on a PR after `main` has moved — making it required would
+  block every freshly opened PR. Its job is to flag conflicts the
+  author needs to resolve, not to gate merge.
+- **After a bot rebase, run `jj git fetch` locally.** The bookmark
+  tracks the `change_id`, so `jj` reconciles automatically: the local
+  bookmark moves to the rebased commit and your `@` (if it was on the
+  bookmark) follows. To resolve a conflict the bot couldn't, run
+  `jj rebase --branch <bookmark> -d main@origin` then
+  `jj git push --bookmark <bookmark>`.
+- **The bot authenticates as the `kolohelios-bot` GitHub App** —
+  required so post-rebase pushes re-trigger the normal CI for the PR
+  (which pushes via `GITHUB_TOKEN` do not). App settings,
+  secret/variable names, and rotation steps live in
+  `.github/auto-rebase-app.md`.
+- See also #147 (`shaka repo rebase-wip`), the local-side companion
+  for branches you're actively iterating on.
+
+### Auto-merge gating
+
+Branch protection is shaka-managed: each repo declares a policy in
+`.shaka/repo.cue` (`#RepoPolicy`) that `shaka repo audit [--fix]` applies
+to GitHub. Two rules keep auto-merge from misfiring — both learned the
+hard way shipping a burst of PRs (#964):
+
+- **Use `strictStatusChecks: false` with a single aggregate `Gate`
+  required check.** Strict mode (require-branch-up-to-date) plus
+  `auto-rebase-prs` is a treadmill: when `main` moves, the bot re-heads
+  every open PR, but the required `validate`/`Gate` doesn't reliably
+  re-run on the rebased head, so strict mode keeps the PR `BLOCKED` until
+  `main` happens to idle. Non-strict lets a PR merge once its checks
+  passed once; auto-rebase still keeps branches close to `main`. The
+  generated `main.yaml` exposes one `Gate` job (`if: always()`, `needs`
+  every other job) so a single required check covers the whole matrix —
+  add or remove jobs without touching branch protection.
+- **A `deploy.d1` binding must carry a real `database_id` before it
+  merges.** `shaka deploy generate-tf` provisions the D1 database and
+  emits its id as a Terraform output you paste into the consumer's
+  `wrangler.toml` `[[d1_databases]] database_id`. A placeholder id
+  *passes* the PR-time `wrangler deploy --dry-run` (`verify`) but fails
+  the real post-merge deploy (`binding … must have a valid database_id`,
+  code 10021), which breaks `main`'s deploy and blocks every deploy
+  after it. `shaka deploy check-d1` (a preflight check) fails when any
+  project declaring `deploy.d1` has a non-UUID `database_id`, so paste
+  the real id (`tofu output`) before merging.
+
+### Daily `nixpkgs` lock bump
+
+`.github/workflows/bump-nixpkgs.yaml` runs daily at 00:00 UTC (also
+`workflow_dispatch:`). It runs `shaka repo bump-locks --input nixpkgs
+--pr-branch bot/bump-nixpkgs --auto-merge`, which re-locks the **one**
+project that declares `nixpkgs.url` directly — `nix/kolohelios-nix` — and
+opens (or updates) a single PR titled `chore(deps): bump nixpkgs flake
+input`. Consumers declare `nixpkgs.follows = "kolohelios-nix/nixpkgs"`
+rather than a direct `nixpkgs.url`, so the bumper's grep-based discovery
+skips them; this job moves only the shared source-of-truth lock.
+
+This is the **only** clock-based poll in the lock chain, and it has to be:
+upstream `NixOS/nixpkgs` releases have no event we can subscribe to.
+Downstream is event-driven — see the kolohelios-nix bump below. Without
+this job, `nix/kolohelios-nix/flake.lock` only advances on a manual
+`nix flake update nixpkgs`; that staleness caused #593 (the crates.io
+`importCargoLock` fix existed upstream for a month before our lock caught
+up).
+
+### Daily kolohelios-nix lock bump
+
+`.github/workflows/bump-kolohelios-nix.yaml` fires on a
+`repository_dispatch` (`kolohelios-nix-published`) that `build-nix-lib`
+emits right after publishing a fresh release — so a new `kolohelios-nix`
+(and the `nixpkgs` revision it carries) reaches consumers within minutes
+of its source landing on `main`, not on a clock. A daily 00:00 UTC
+`cron` and `workflow_dispatch:` remain as a backstop and manual trigger. It runs
+`shaka repo bump-locks --input kolohelios-nix --pr-branch
+bot/bump-kolohelios-nix`, which:
+
+1. Walks every project, runs `nix flake update kolohelios-nix` inside
+   each that consumes the input, and notes which `flake.lock`s changed.
+2. If anything changed, branches off `main`, commits all changed
+   `flake.lock`s in one commit titled
+   `chore(deps): bump kolohelios-nix flake input`, and force-pushes
+   to `bot/bump-kolohelios-nix`.
+3. Opens a single lockstep PR; if one is already open for that branch,
+   the force-push updates it in place instead of creating a duplicate.
+
+Auto-merge is queued automatically (`--auto-merge` passes
+`gh pr merge --auto --rebase` to GitHub). The PR merges as soon as
+the `Gate` check passes; if any consumer's CI breaks, the merge
+waits until the lock is fixed — same one-place fix a manual review
+would land. The `kolohelios-nix-via-flakehub` audit rule guarantees
+that every consumer pins via the FlakeHub URL, so the bumper's
+grep-based discovery is safe.
+
+The workflow authenticates as the `kolohelios-bot` GitHub App (same
+secret/variable as `auto-rebase-prs.yaml`) so the post-bump push
+re-triggers the normal CI for the PR — pushes via the default
+`GITHUB_TOKEN` do not.
+
+### Pi home lock updates
+
+`infra/home` installs Pi from the independent
+`github:earendil-works/pi/stable` input, not `pkgs.pi-coding-agent`.
+Pi moves faster than the `nixpkgs` package, so keep its pin decoupled
+from `kolohelios-nix`/`nixpkgs`. The shared lock-bump jobs above do not
+update Pi. `shaka repo bump-locks --input pi` already supports refreshing
+this input; no change to those jobs is needed.
+
+For the standalone Linux desktop:
+
+```sh
+cd ~/code/kolohelios/infra/home
+nix flake update pi
+home-manager switch --flake .#jone
+pi --version
+```
+
+Commit the lock change. `pi update` cannot update this Nix-managed
+installation. See [`infra/home/README.md`](infra/home/README.md) for
+macOS activation and troubleshooting. Input declarations belong in
+`infra/home/project.cue` (`infra.extraInputs`); regenerate with
+`shaka project generate-flakes`, never hand-edit `infra/home/flake.nix`.
+Lock-only updates do not require regeneration.
+
+### Working with `jj`
+
+A few `jj` behaviors trip up agents whose mental model comes from git. Read
+this before scripting against `jj`:
+
+- **Change IDs come in two lengths.** Templates emit the 32-char form by
+  default (`utxssoyuknns...`); the 12-char prefix shown in `jj log`
+  (`utxssoyuknns`) only resolves while the change exists. Use
+  `change_id.short()` in templates to get the prefix explicitly.
+- **Empty `@` auto-abandons.** `jj new <ref>` from an empty `@` switches
+  `@` and abandons the empty change. To move `@` without creating a new
+  change, use `jj edit <rev>`.
+- **Bookmarks track `change_id`, not `commit_id`.** `jj describe @`
+  rewrites the commit but the bookmark moves with the change — you
+  rarely need to re-set a bookmark after editing.
+- **`jj restore <path>` resolves paths relative to the repo root**, not
+  the `cwd`. Pass absolute paths from automation.
+- **Useful revsets**: `main@origin..@` (commits ahead of remote main),
+  `main@origin..@ ~ empty()` (same, excluding empty), `@-` (parent),
+  `roots(...)`, `heads(...)`.
+- **`jj op log` is the source of truth for past operations** — fetches,
+  rebases, snapshots. Filter by first-line `description` content in
+  templates when scripting.
+- **Concurrent operations can diverge.** When two workspaces (or a
+  background job) touch the shared `.jj/repo` at once, a command can fail
+  with `Internal error: The repo was loaded at operation X, which seems
+  to be a sibling of the working copy's operation Y`. It's recoverable —
+  the working copy reconciles on the next operation, so re-run the
+  command; use `jj op log` to inspect what raced.
+- **`jj diff --summary -r @`** prefixes each path with a single letter
+  (`A`/`M`/`D`/`R`/`C`); stable enough to parse.
+- **`jj git push --allow-new`** (or `-N`) is required the first time a
+  bookmark goes to origin; without it, push fails for unknown bookmarks.
+- **Colocated repos** keep git refs in `.git/`;
+  `.jj/repo/store/git_target` points at the git dir. Useful when poking
+  at `FETCH_HEAD` or pack files directly.
+
+## Issue tracking
+
+Work is tracked in **GitHub Issues**. References like `#21` are GitHub issue
+numbers; use `gh issue view <n>` to read them.
+
+When asked "what's next" (or to suggest work to pick up), run **`shaka issue
+next`** — don't hand-roll `gh issue list` filtered by intuition. `issue next`
+returns only issues that aren't already in flight: it drops any issue with an
+assignee, an open PR that would close it, or a local `i<N>` workspace. Pair
+it with `--json` when routing programmatically. Because `shaka workspace new
+--issue <N>` (which `/start` calls) self-assigns you on GitHub, starting an
+issue removes it from `issue next` automatically.
+
+## Secrets
+
+**1Password** is the canonical secret store for local development
+(`op` command-line tool), CI (GitHub Actions integration), and
+infrastructure. Never commit secrets, never propose `.env` files checked
+into the repo.
+
+## Adding a new project
+
+For rust projects, run:
+
+```
+shaka project new --name <name> --slot <slot>
+```
+
+`<slot>` is one of `apps`, `packages`, `projects`, `tools`. The command
+writes the canonical skeleton (`project.cue`, `Cargo.toml`, `.envrc`,
+`README.md`, `.gitignore`, `deny.toml`, `src/main.rs`), generates the
+per-project `justfile` and `flake.nix`, and runs `schema-check` +
+`audit` against the result.
+
+For `infra` and `nix-lib` projects (and any non-rust kind), scaffold by
+hand for now — `project new` only ships the rust template:
+
+1. Create `<slot>/<name>/project.cue` matching `tools/shaka/schema/project-schema.cue`.
+2. Run `shaka project schema-check` to confirm the schema accepts it.
+3. Run `shaka project generate-justfiles` to produce the per-project `justfile`.
+4. Add the project's source files and flake inputs.
+5. If the project introduces new preflight checks, add them to
+   `tools/shaka/src/preflight.rs` rather than to CI YAML.
+
+## Workspaces
+
+**Every issue gets its own `shaka workspace` — and the primary tree is
+off-limits for issue work.** Before your first `Edit` or `Write` in
+this repo, verify `cwd` ends in `kolohelios-i<N>/` (a workspace), not
+bare `kolohelios/` (the primary tree). If you're in primary, **stop
+and create the workspace first** — don't edit-now-reshuffle-later.
+
+`/start` invokes `shaka workspace new --issue <N>` by default. The
+primary tree is reserved for sync, audit, and cross-cutting reads —
+never carrying WIP for the issue you're picking up.
+
+Why workspace-per-issue is the default:
+
+- Primary stays clean. Cross-cutting ops (`shaka repo sync`,
+  `shaka repo audit`, `gh`-from-cwd, reading state across all in-flight
+  changes) never compete with WIP for some specific issue.
+- Parallel slices are free. Pick up a second issue while the first is
+  in CI; both have their own filesystem trees but share `.jj/repo`.
+- Hygiene is solved. `shaka workspace cleanup` finds merged workspaces
+  via persisted issue links (no longer dependent on bookmark presence).
+
+Shape:
+
+1. `/start <N>` (or manually: `shaka workspace new --issue <N>`)
+   creates a sibling working copy at `../kolohelios-i<N>` that shares
+   the same `.jj/repo` but has its own `@`. Each workspace has a
+   filesystem-level full copy of the repo but the underlying commit
+   storage is shared.
+2. Run `pi` or `claude` inside each workspace, or spawn sub-agents pointed at
+   each workspace's path. Each session bookmarks, commits, and pushes
+   independently. Concurrent `jj` operations are serialized via the repo
+   lock — light contention at worst.
+3. As PRs land, rebase the remaining branches on the new `main@origin`.
+   Until #147 (`shaka repo rebase-wip`) lands, this is manual:
+   `jj rebase --branch <bookmark> -d main@origin` per branch, then
+   `jj git push --bookmark <name>` (`jj` allows the non-fast-forward
+   "move sideways" without `--force` for rebased branches).
+4. `shaka workspace status` shows a per-workspace summary at any time.
+5. `shaka workspace cleanup` forgets workspaces whose PRs have merged
+   (uses the persisted issue link, so it works regardless of remote
+   branch deletion). Workspaces created without `--issue` (ad-hoc
+   names) need `shaka workspace forget --force <name>`. **Cleanup needs
+   no preceding `shaka repo sync`** — it forgets a merged workspace from
+   the persisted link alone. Don't sync the primary tree as a cleanup
+   side effect: a primary-tree `shaka repo sync` rebases whatever
+   in-flight WIP sits on the primary `@` onto the new `main@origin`,
+   which can surface conflicts in unrelated work (and because `jj` conflict
+   markers read as ordinary modified content to `git`, a stale unresolved
+   conflict can resurface confusingly mid-cleanup). Sync the primary tree
+   only as a deliberate act, never to "freshen up" before cleanup.
+
+When briefing sub-agents to work in their own workspaces, the brief must
+restate two rules that `/start` and `/ship` would otherwise enforce:
+
+- **The standard PR conventions apply** — including `Closes #<N>` in the
+  tip commit body. See [Pull requests](#pull-requests). Sub-agents don't
+  have `/ship` to bake this in; the brief must require it explicitly.
+- **Re-run `nix develop . --command just validate` immediately before
+  pushing.** It's easy to make a final tweak after a successful validate
+  and forget to re-run; the resulting CI failure cycle is far more
+  expensive than the local validate.
+
+## Periodic maintenance
+
+A few tasks pay off when run on a cadence rather than per-PR:
+
+- **`/audit-workflow`** — every few days or weekly. Scans recent
+  Claude session JSONL files across all `~/.claude/projects/*/`
+  directories for churn loops (push→CI-fail→fix→push, repeated user
+  corrections, multi-step sequences ripe for one `shaka` subcommand)
+  and surfaces them as a triage table for new issues. Findings without
+  a failure→fix→retry triple are dropped, so the output stays
+  signal-heavy. Defined in `.claude/commands/audit-workflow.md`.
+
+## Things to avoid
+
+- **Don't edit code in the primary tree.** Issue work belongs in a
+  `shaka workspace` — see [Workspaces](#workspaces). If you catch
+  yourself about to run `Edit` or `Write` from bare `kolohelios/`
+  (not `kolohelios-i<N>/`), stop and create a workspace first.
+- **Don't edit generated `justfile`s.** They carry a "Do not edit by hand"
+  header and CI fails on drift. Change
+  `tools/shaka/src/project/generate_justfiles.rs` instead.
+- **Don't edit generated workflow files under `.github/workflows/`.**
+  Files carrying a `# Generated by shaka` header come from each
+  project's `ci:` block via `shaka ci generate-workflows`; CI fails on
+  drift. Change the project's `project.cue` (or the generator in
+  `tools/shaka/src/ci/`). The current hand-authored allowlist —
+  reusable templates and repo-event workflows — lives in
+  `tools/shaka/src/ci/audit_workflows.rs`; `shaka ci audit-workflows`
+  fails on a new workflow file that's neither generated nor in the
+  allowlist.
+- **Don't add CI jobs to `.github/workflows/main.yaml`** for new validation
+  steps — extend `shaka preflight` so CI and local stay in lockstep.
+- **Don't reach for `anyhow` or `thiserror` in new rust code.** The repo
+  standardized on `snafu` (typed per-module error `enum`s with named-field
+  variants, `.context(XSnafu)` attach, `#[snafu(display("..."))]` for
+  user-facing messages) via #640 / #654. See `tools/shaka/src/gh.rs` or
+  `tools/todoist/src/api.rs` for the canonical shape.
+- **Don't add AI attribution** to commits, code, or docs.
+- **Don't run mutating `git` commands.** The repo is `jj`-colocated;
+  `git stash`, `git stash pop`, `git checkout`, `git reset`,
+  `git commit`, `git rebase`, `git merge` all leave the working copy
+  out of step with what `jj` knows about it. Read-only `git` (`status`, `log`, `diff`)
+  is fine. To test "what does main look like without these changes,"
+  use `jj new main@origin` (the original change is preserved and
+  reachable via `jj log` / `jj edit`); to inspect a previous state, use
+  `jj op log` and `jj op restore`. Use `shaka repo sync` for the
+  rebase-on-`main@origin` flow.
+- **Don't add thin pass-through wrappers.** Don't add `justfile` targets,
+  scripts, or aliases whose only job is to forward to another tool. If
+  `shaka preflight` is the entry point, document and call it directly —
+  don't put a layer in front whose only purpose is to advertise it.
+  Per-project `justfile`s with multiple real recipes (`build`, `test`,
+  `lint`, `validate`) are not pass-throughs — those are aggregations.
+- **Don't embed external-format fixtures as string literals in Rust
+  tests.** When testing code that processes external file formats (CUE,
+  YAML, JSON, etc.) by shelling out to tooling, write fixtures as real
+  files in `<crate>/tests/fixtures/<topic>/{valid,invalid}/...` and walk
+  them from integration tests. Real files are syntax-highlighted, can be
+  inspected directly with the underlying tool (for example,
+  `cue vet schema fixture`), and are the actual artifacts shipped in the
+  repo. Adding coverage = adding a fixture file, not editing test code.
+  See `tools/shaka/tests/schema.rs` for the pattern.
+- **Don't push without re-running `just validate` after your last edit.**
+  Even if validate passed earlier in your session, a final tweak can
+  introduce `cargo fmt` or `clippy` violations. The CI failure cycle is
+  slow; the validate run immediately before pushing is the cheap
+  insurance.
+- **Don't poll CI or background commands with a foreground `sleep`.** The
+  harness blocks `sleep N` followed by another command, so loops like
+  `sleep 30; cat <bg-output>` or `sleep 45; gh pr checks <pr>` just burn a
+  turn without advancing anything. Reach for the right wait instead: for
+  CI, `gh pr checks <pr> --watch` blocks until the checks resolve; for a
+  background command (`shaka preflight`, a long build), the harness
+  re-invokes you when it exits — there's nothing to poll; for any other
+  condition, use the `Monitor` tool with an until-loop rather than a
+  foreground `sleep`.
+- **Don't document or automate clipboard-paste-of-DOM patterns.** Snippets
+  shaped like "open DevTools, paste this `JSON.stringify(...)` of
+  authenticated DOM data, copy the result" match credential-stealer
+  signatures (Atomic, StealC, etc.) and are blocked by macOS Sequoia's
+  `XProtect` clipboard scanner. They're also a pattern users should
+  rightly distrust on sight. When extracting structured data from an
+  authenticated browser session, build the payload in-page and trigger a
+  `Blob` download instead — no clipboard transit, no `XProtect`
+  involvement, no
+  cargo-cultable shape that resembles malware. See `shaka domain
+  inventory --help` for the canonical example.

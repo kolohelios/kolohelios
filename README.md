@@ -42,6 +42,14 @@ shaka preflight --since main@origin
 `kolohelios-nix.lib.workflowPackages`); from outside a devshell, the
 wrapper at `tools/shaka/bin/shaka` is the cold-start escape hatch.
 
+## Agent instructions
+
+[`AGENTS.md`](AGENTS.md) is the canonical repository guidance for coding
+agents. `CLAUDE.md` links to it for Claude Code compatibility. Shared
+personal directives for Pi and Claude Code are managed by
+[`infra/home`](infra/home/README.md#shared-agent-directives); commands and
+hooks remain agent-specific.
+
 ## Build system
 
 - **Per-project flakes**, with [`nix/kolohelios-nix`](nix/kolohelios-nix)
