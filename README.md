@@ -60,6 +60,15 @@ wrapper at `tools/shaka/bin/shaka` is the cold-start escape hatch.
   - `shaka repo sync|send|status` — `jj`/PR workflow helpers.
   - `shaka workspace` — sibling `jj` working copies for parallel sessions.
 
+## Home environment
+
+[`infra/home`](infra/home/README.md) manages the cross-platform home
+and Pi installation. Pi comes from its own pinned
+`github:earendil-works/pi/stable` input, intentionally decoupled from
+`nixpkgs` because Pi releases move faster than the `nixpkgs` package.
+Update that input and activate the home — not `pi update`, and no
+`kolohelios-nix`/`nixpkgs` bump required. See the home README for commands.
+
 ## Public/private split
 
 This repo is public, but some apps have commercial value worth keeping

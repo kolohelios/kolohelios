@@ -19,6 +19,7 @@
       url = "github:LnL7/nix-darwin/nix-darwin-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pi.url = "github:earendil-works/pi/stable";
     shaka = {
       url = "https://flakehub.com/f/kolohelios/shaka/*.tar.gz";
       inputs.kolohelios-nix.follows = "kolohelios-nix";
@@ -34,6 +35,7 @@
       claude-hooks,
       home-manager,
       nix-darwin,
+      pi,
       shaka,
       ...
     }:
@@ -53,13 +55,20 @@
       # Standalone desktop profile; independent of the host's NixOS release.
       homeConfigurations.jone = home-manager.lib.homeManagerConfiguration {
         pkgs = import nixpkgs { system = "x86_64-linux"; };
-        extraSpecialArgs = { inherit claude-hooks shaka; };
+        extraSpecialArgs = { inherit claude-hooks pi shaka; };
         modules = [ ./modules/desktop.nix ];
       };
 
       darwinConfigurations.Jons-MacBook-Pro = nix-darwin.lib.darwinSystem {
         system = "aarch64-darwin";
-        specialArgs = { inherit claude-hooks kolohelios-nix shaka; };
+        specialArgs = {
+          inherit
+            claude-hooks
+            kolohelios-nix
+            pi
+            shaka
+            ;
+        };
         modules = [
           home-manager.darwinModules.home-manager
           ./modules/darwin.nix
@@ -69,14 +78,21 @@
       # NixOS module — imported by `infra/devbox` to apply this user's
       # home-manager profile to the `jon` account on the devbox.
       # `_module.args` is the NixOS equivalent of the `specialArgs`
-      # plumbing above (claude-hooks, kolohelios-nix) so `infra/devbox`
+      # plumbing above (claude-hooks, kolohelios-nix, pi, shaka) so `infra/devbox`
       # doesn't have to know about them.
       nixosModules.home = {
         imports = [
           home-manager.nixosModules.home-manager
           ./modules/linux.nix
         ];
-        _module.args = { inherit claude-hooks kolohelios-nix shaka; };
+        _module.args = {
+          inherit
+            claude-hooks
+            kolohelios-nix
+            pi
+            shaka
+            ;
+        };
       };
 
       formatter = kolohelios-nix.formatter;
