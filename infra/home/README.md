@@ -167,6 +167,26 @@ brightness keys if the color is too dim. The power-button LED is not
 reliably controlled by this tool. No OpenRGB daemon, root GUI, or extra
 I2C access is needed for this USB controller.
 
+## Shared agent directives
+
+Personal directives live in `dotfiles/agents/AGENTS.md`. Home Manager
+installs that one source at `~/.pi/agent/AGENTS.md` for Pi and
+`~/.claude/CLAUDE.md` for Claude Code. Edit the source here, not the
+installed Nix-store symlinks, then activate the home/system profile.
+In Pi, run `/reload` after activation to refresh instructions in an
+existing session.
+
+Repository conventions live in the root `AGENTS.md`; root `CLAUDE.md`
+is a relative symlink to it for Claude Code compatibility. Pi discovers
+context files in its working directory and parent directories, so start
+it inside the checkout or workspace. There is no second copy to maintain.
+
+This shares instructions, not agent integrations. Claude Code commands,
+settings, and hooks remain under `.claude/`; Pi does not automatically
+import those. Migrating them to Pi prompts, skills, or extensions is
+separate work. Pi's global path assumes the default agent directory
+(`~/.pi/agent`); a custom `PI_CODING_AGENT_DIR` needs matching wiring.
+
 ## Adding a tool
 
 1. If it's a binary, add to `home.packages` in `modules/common.nix`.

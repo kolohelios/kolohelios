@@ -1,4 +1,4 @@
-# Personal Claude Code Directives
+# Personal Agent Directives
 
 ## Version Control
 - **Always use Jujutsu (jj)** instead of git for all version control operations
@@ -11,19 +11,19 @@
   - Body should explain the "why" not the "what"
 
 ## Output Guidelines
-- **NEVER include Claude attribution** in commits, code, documentation, or any other output
-- No "Generated with Claude Code" messages
-- No "Co-Authored-By: Claude" attributions
+- **NEVER include AI attribution** in commits, code, documentation, or any other output
+- No "Generated with" agent messages
+- No AI "Co-Authored-By" attributions
 - Focus on clean, professional output without AI meta-commentary
 
 ## Memory and persistence
-- **Don't use the auto-memory system as a substitute for writing things down where I can see them.** Memory files at `~/.claude/projects/.../memory/` are private to you and invisible to me — I can't grep them, version them in dotfiles, or take them with me if I switch tools. From my perspective, anything in memory is not durable.
+- **Don't use an agent's private memory as a substitute for writing things down where I can see them.** Agent-specific memory is not a shared, version-controlled source of truth I can take with me if I switch tools. From my perspective, anything in memory is not durable.
 - **Durable knowledge belongs in files I own and can see:**
-  - Cross-project behavioral rules / preferences: this file (`~/.claude/CLAUDE.md`)
-  - Project-specific conventions: the project's `CLAUDE.md`
+  - Cross-project behavioral rules / preferences: this file (source: `infra/home/dotfiles/agents/AGENTS.md`, installed at `~/.pi/agent/AGENTS.md` and `~/.claude/CLAUDE.md`)
+  - Project-specific conventions: the project's `AGENTS.md`
   - Project runbooks, snippets, architecture notes, inventories: a `docs/` folder in the relevant project, or a GitHub issue
 - **Memory is only appropriate for** ephemeral within-session/within-project state that genuinely doesn't need to be surfaced to me — and even then, prefer surfacing.
 - When you catch yourself reaching for memory to "make something durable," that's the signal to instead propose an edit to one of the files above and let me approve it.
 
 ## Shell commands
-- **The Bash tool runs on macOS with BSD coreutils, not GNU.** GNU-only flags fail — no `grep -P`/`grep -oP` (Perl regex), no `cat -A`, no GNU-only `sed`/`head`/`date` options. Reach for `rg`, `grep -E`, or `perl` for regex; verify with `man` when unsure. Devshells may ship GNU tools, but the Bash tool doesn't activate `direnv`, so commands run against the base BSD userland.
+- **Check the host and available tools instead of assuming a platform.** macOS commonly has BSD utilities; Linux commonly has GNU utilities. GNU-only flags may fail on macOS. Prefer portable commands and `rg`, `grep -E`, or `perl` for regex; verify support when unsure. Agent shell tools don't necessarily activate `direnv`; explicitly enter the project's devshell when its toolchain is required.

@@ -88,7 +88,7 @@ taxonomy and evidence rules are load-bearing):
 > - Pattern: one-sentence description
 > - Evidence: 2-3 session ID prefixes + approximate turn number + the
 >   triggering command/error
-> - Proposed fix shape: new `shaka <subcommand>`, CLAUDE.md hint,
+> - Proposed fix shape: new `shaka <subcommand>`, AGENTS.md hint,
 >   `/skill` addition, `settings.json` allowlist entry, or hook
 > - Priority: high / medium / low (frequency × time-cost per
 >   occurrence)
