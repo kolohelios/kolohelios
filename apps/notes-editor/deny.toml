@@ -15,9 +15,9 @@ private = { ignore = true }
 version = 2
 
 [bans]
+allow-wildcard-paths = true
 multiple-versions    = "warn"
 wildcards            = "deny"
-allow-wildcard-paths = true
 
 [sources]
 allow-registry   = ["https://github.com/rust-lang/crates.io-index"]

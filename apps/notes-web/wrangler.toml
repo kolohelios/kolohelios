@@ -1,6 +1,6 @@
-name               = "notes-web"
 compatibility_date = "2026-05-14"
 main               = "build/worker/shim.mjs"
+name               = "notes-web"
 
 # Workers Static Assets: Cloudflare serves files from `./dist/` at the
 # edge, bypassing the Worker for matched paths; unmatched paths fall
