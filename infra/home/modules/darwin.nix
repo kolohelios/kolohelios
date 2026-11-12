@@ -1,5 +1,6 @@
 {
   claude-hooks,
+  herdr,
   kolohelios-nix,
   pi,
   shaka,
@@ -37,6 +38,7 @@
   home-manager.extraSpecialArgs = {
     inherit
       claude-hooks
+      herdr
       kolohelios-nix
       pi
       shaka
