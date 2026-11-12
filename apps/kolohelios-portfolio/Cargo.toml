@@ -27,7 +27,7 @@ worker = "0.8"
 
 # Shared by the worker (`/api/subscribe` payload) and the build-site
 # binary (work-history parsing), so they're always resolved.
-serde = { version = "1", features = ["derive"] }
+serde      = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 
 # build-site-only deps. Optional + behind the `build-site` feature

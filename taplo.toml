@@ -1,4 +1,10 @@
-exclude = ["tools/shaka/tests/fixtures/**", "**/target/**"]
+# Generated Wrangler files are checked by shaka deploy generate-wrangler.
+exclude = [
+  "tools/shaka/tests/fixtures/**",
+  "**/target/**",
+  "apps/kolohelios-portfolio/wrangler.toml",
+  "apps/pollen-alert/wrangler.toml",
+]
 include = ["**/*.toml"]
 
 [formatting]
