@@ -133,6 +133,22 @@ in
     # not nix-managed; live in ~/.zshrc.local so the generated zshrc
     # doesn't track every IDE installer's path injection.
     initContent = ''
+      # A line of N dots goes up N-1 directories, without limiting depth.
+      dot-parent-accept-line() {
+        if [[ $BUFFER =~ '^\.{2,}$' ]]; then
+          local dots=$BUFFER path=..
+          while (( ''${#dots} > 2 )); do
+            path+=/..
+            dots=''${dots[2,-1]}
+          done
+          BUFFER="cd -- $path"
+        fi
+        zle .accept-line
+      }
+      zle -N dot-parent-accept-line
+      bindkey '^M' dot-parent-accept-line
+      bindkey '^J' dot-parent-accept-line
+
       [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
     '';
   };
