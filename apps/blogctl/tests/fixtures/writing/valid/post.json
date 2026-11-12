@@ -1,0 +1,8 @@
+{
+  "id": "synthetic-post",
+  "target": {"kind": "post", "slug": "existing-post"},
+  "seed": "A synthetic observation.",
+  "instructions": "Write a short opening and flag missing facts.",
+  "fiction": false,
+  "variants": {"ordinary": "An everyday scene."}
+}

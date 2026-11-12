@@ -6,6 +6,7 @@ pub mod classify;
 pub mod demote;
 pub mod doctor;
 pub mod draft;
+pub mod experiment;
 pub mod final_edit;
 pub mod fix;
 pub mod import;

@@ -4,6 +4,16 @@ Command-line tool for managing Markdown blog post drafts across a linear
 workflow. Drafts live in a private `workdir` outside this repo (passed
 via `--workdir`); `blogctl` itself ships only as tooling.
 
+## Local writing experiments
+
+<!-- ai_provenance: This section was written by an OpenAI coding assistant. -->
+
+Private writing experiments and immutable candidates also support chapters
+within books, without changing the post pipeline. `blogctl experiment` prepares
+prompts locally; `blogctl candidate` imports/lists/reads separate artifacts
+awaiting review. Neither command generates text, edits drafts, or auto-syncs.
+See [WRITING.md](WRITING.md) for private storage, formats, and examples.
+
 ## Workflow stages
 
 ```

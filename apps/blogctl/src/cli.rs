@@ -32,6 +32,10 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Manage private writing experiments independently of post stages.
+    Experiment(commands::experiment::ExperimentArgs),
+    /// Record and inspect immutable candidates; never generate or promote prose.
+    Candidate(commands::experiment::CandidateArgs),
     /// Create the workdir layout and write `.blog-os.toml`.
     Init {
         #[arg(long, value_name = "PATH")]
@@ -553,6 +557,8 @@ pub fn run() -> Result<()> {
 /// shelling out to a real `jj` binary.
 pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
     match cmd {
+        Command::Experiment(args) => commands::experiment::experiment(args),
+        Command::Candidate(args) => commands::experiment::candidate(args),
         Command::Init { workdir, no_sync } => commands::init::run(jj, workdir, no_sync),
         Command::New {
             title,

@@ -1,0 +1,12 @@
+{
+  "id": "synthetic-chapter",
+  "target": {"kind": "chapter", "book": "A Synthetic Book", "chapter": "The Patient Potter"},
+  "seed": "A potter pauses to learn why a kiln behaves strangely.\nThe apprentice is impatient.\n",
+  "instructions": "Write warmly, thoughtfully, and with a little wry humor. Avoid a tidy moral.",
+  "fiction": true,
+  "variants": {
+    "workshop": "A craftsperson, an apprentice, and a capable machine.",
+    "woodland": "A whimsical animal parable about understanding.",
+    "ordinary": "A grounded everyday scene without fantasy."
+  }
+}

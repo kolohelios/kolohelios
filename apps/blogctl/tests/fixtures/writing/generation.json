@@ -1,0 +1,6 @@
+{
+  "provider": "synthetic-provider",
+  "model": "test-model",
+  "ai_provenance": "Synthetic fixture, not a real model response; created by an OpenAI coding assistant.",
+  "parameters": {"max_tokens": 100, "n": 1, "temperature": 0.8}
+}
