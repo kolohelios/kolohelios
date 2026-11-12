@@ -18,5 +18,5 @@ package cloudflare_token
 		account: "kolohelios"
 		zones:   "all"
 	}
-	expires_on: "2026-08-07T00:00:00Z"
+	expires_on: "2027-02-10T00:00:00Z"
 }

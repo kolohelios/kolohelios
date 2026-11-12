@@ -146,6 +146,12 @@ Run `just validate` to make sure the schema and TF agree, then `op run
 ## Rotation
 
 Tokens carry an `expires_on` field; CF revokes them at the deadline.
+Keep the dates in `tokens/*.cue` and `terraform/main.tf` in sync and
+advance them before rotating. The Terraform resources reject past dates
+at plan time: Cloudflare can otherwise accept a newly created token that
+is already expired, and a successful apply does not prove it can deploy.
+Wrangler dry-runs do not validate live API credentials either (#1134).
+
 v1 rotation is manual:
 
 ```
