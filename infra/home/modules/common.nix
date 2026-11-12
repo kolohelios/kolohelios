@@ -54,6 +54,7 @@ in
     pkgs.eza
     pkgs.zellij
     herdr.packages.${pkgs.stdenv.hostPlatform.system}.default
+    (pkgs.callPackage ../packages/visor.nix { })
     # Pi moves faster than its nixpkgs package: use the independent stable
     # flake pin. Update with `nix flake update pi` in infra/home, then switch
     # the home/system; `pi update` cannot update this Nix-managed install.

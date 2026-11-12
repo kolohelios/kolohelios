@@ -70,6 +70,19 @@ PATH additions that aren't worth nix-managing (for example, `lmstudio`)
 live in `~/.zshrc.local`, which the generated zshrc sources at the end
 if it exists. `~/.zshrc.local` is hand-maintained, not nix-managed.
 
+## Visor
+
+`modules/common.nix` installs Visor and its bundled `visor-weather` plugin
+alongside `herdr` on Linux and macOS. `packages/visor.nix` pins upstream
+release binaries and their checksums; update its version and checksums,
+then rebuild the home/system to upgrade. Do not use `visor upgrade` for
+this Nix-managed installation.
+
+Run `visor demo` to try it without signing in. Widget configuration and
+`herdr` keybindings remain user-managed; installation does not enable
+integrations or install agent skills. Calendar and Reminders are macOS
+only.
+
 ## Pi installation and updates
 
 `modules/common.nix` installs Pi on both platforms from the independent
