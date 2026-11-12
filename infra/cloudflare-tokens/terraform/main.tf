@@ -63,7 +63,9 @@ data "cloudflare_api_token_permission_groups_list" "cache_settings_write" {
 }
 
 locals {
-  account_id = var.cloudflare_account_id
+  account_id                = var.cloudflare_account_id
+  dns_management_expires_on = "2027-02-10T00:00:00Z"
+  deploy_expires_on         = "2027-02-10T00:00:00Z"
 }
 
 # ── dns-management ────────────────────────────────────────────────────
@@ -97,7 +99,14 @@ resource "cloudflare_api_token" "dns_management" {
     },
   ]
 
-  expires_on = "2026-08-07T00:00:00Z"
+  expires_on = local.dns_management_expires_on
+
+  lifecycle {
+    precondition {
+      condition     = timecmp(local.dns_management_expires_on, plantimestamp()) > 0
+      error_message = "DNS management token expiry is in the past; update the expiry before applying."
+    }
+  }
 }
 
 # 1Password item the consumer references. Category `password` is the
@@ -154,7 +163,14 @@ resource "cloudflare_api_token" "deploy" {
     },
   ]
 
-  expires_on = "2026-08-11T00:00:00Z"
+  expires_on = local.deploy_expires_on
+
+  lifecycle {
+    precondition {
+      condition     = timecmp(local.deploy_expires_on, plantimestamp()) > 0
+      error_message = "Deploy token expiry is in the past; update the expiry before applying."
+    }
+  }
 }
 
 # Reference path: `op://<vault>/Cloudflare Deploy Token/password`.
