@@ -198,6 +198,12 @@ jobs:
         # than holding the runner until the job limit; root cause in #1115.
         timeout-minutes: 15
         id: wrangler
+        # Determinate Nix's Crashpad handler retains this step's output pipe
+        # after nix develop execs the consumer, preventing tee from seeing
+        # EOF (#1125). Disable only Nix crash reporting for this invocation;
+        # keep streaming, secret masking, and real consumer exit status.
+        env:
+          NIX_SENTRY_ENDPOINT: ""
         working-directory: ${{ inputs.project_dir }}
         # `.env` is gitignored; copy from the in-repo example so the
         # `op run` invocation finds the file. `.env.example` already
