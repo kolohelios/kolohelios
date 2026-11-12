@@ -1,0 +1,8 @@
+{
+  "id": "synthetic-article",
+  "target": {"kind": "article", "slug": "existing-article"},
+  "seed": "An explicitly synthetic essay premise.",
+  "instructions": "Draft an accessible introduction.",
+  "fiction": false,
+  "variants": {"reflective": "A thoughtful opening question."}
+}

@@ -9,6 +9,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
+    #[snafu(display("{source}"))]
+    Writing { source: crate::writing::Error },
+
     #[snafu(display("workdir not initialized at {} (run `blogctl init`)", path.display()))]
     WorkdirNotInitialized { path: PathBuf },
 

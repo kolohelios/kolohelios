@@ -20,6 +20,7 @@ pub mod storage;
 pub mod sync;
 pub mod target;
 pub mod taxonomy;
+pub mod writing;
 
 pub use analytics::DerivedMetrics;
 pub use classifications::Classifications;
