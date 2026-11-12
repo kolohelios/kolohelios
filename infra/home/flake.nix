@@ -11,6 +11,10 @@
       inputs.kolohelios-nix.follows = "kolohelios-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    herdr = {
+      url = "github:herdrdev/herdr/v0.9.5";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -33,6 +37,7 @@
       kolohelios-nix,
       nixpkgs,
       claude-hooks,
+      herdr,
       home-manager,
       nix-darwin,
       pi,
@@ -55,7 +60,14 @@
       # Standalone desktop profile; independent of the host's NixOS release.
       homeConfigurations.jone = home-manager.lib.homeManagerConfiguration {
         pkgs = import nixpkgs { system = "x86_64-linux"; };
-        extraSpecialArgs = { inherit claude-hooks pi shaka; };
+        extraSpecialArgs = {
+          inherit
+            claude-hooks
+            herdr
+            pi
+            shaka
+            ;
+        };
         modules = [ ./modules/desktop.nix ];
       };
 
@@ -64,6 +76,7 @@
         specialArgs = {
           inherit
             claude-hooks
+            herdr
             kolohelios-nix
             pi
             shaka
@@ -78,7 +91,7 @@
       # NixOS module — imported by `infra/devbox` to apply this user's
       # home-manager profile to the `jon` account on the devbox.
       # `_module.args` is the NixOS equivalent of the `specialArgs`
-      # plumbing above (claude-hooks, kolohelios-nix, pi, shaka) so `infra/devbox`
+      # plumbing above (claude-hooks, herdr, kolohelios-nix, pi, shaka) so `infra/devbox`
       # doesn't have to know about them.
       nixosModules.home = {
         imports = [
@@ -88,6 +101,7 @@
         _module.args = {
           inherit
             claude-hooks
+            herdr
             kolohelios-nix
             pi
             shaka
