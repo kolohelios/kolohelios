@@ -41,8 +41,8 @@ jobs:
         run: |
           nix develop ./tools/shaka --command bash -euc '
             jj git init --colocate
-            jj config set --repo user.name "kolohelios-bot[bot]"
-            jj config set --repo user.email "3591292+kolohelios-bot[bot]@users.noreply.github.com"
+            jj config set --repo user.name "\"kolohelios-bot[bot]\""
+            jj config set --repo user.email "\"3591292+kolohelios-bot[bot]@users.noreply.github.com\""
             jj new main@origin
             shaka token cloudflare renew \
               --pr-bookmark bot/renew-cloudflare-tokens --auto-merge
