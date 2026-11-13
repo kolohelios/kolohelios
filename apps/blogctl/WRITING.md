@@ -4,9 +4,10 @@ ai_provenance: "Written by an OpenAI coding assistant for issue #1131; examples 
 
 # Writing experiments and candidates
 
-This is a local-only addition to `blogctl`, not a replacement for the post
-pipeline. It makes no provider calls and needs no credentials. NovelAI generation
-is a follow-up (#1132); review records and MCP integration follow in #1133.
+Experiments and candidate import are local-only additions to `blogctl`, not a
+replacement for the post pipeline. They make no provider calls and need no
+credentials. Optional [NovelAI generation](NOVELAI.md) requires an explicitly
+authorized invocation; review records and MCP integration follow in #1133.
 
 ## Private working directory
 

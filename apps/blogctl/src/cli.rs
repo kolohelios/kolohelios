@@ -32,6 +32,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Discover NovelAI text models or explicitly request one creative candidate.
+    Novelai(commands::novelai::NovelaiArgs),
     /// Manage private writing experiments independently of post stages.
     Experiment(commands::experiment::ExperimentArgs),
     /// Record and inspect immutable candidates; never generate or promote prose.
@@ -557,6 +559,7 @@ pub fn run() -> Result<()> {
 /// shelling out to a real `jj` binary.
 pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
     match cmd {
+        Command::Novelai(args) => commands::novelai::run(args),
         Command::Experiment(args) => commands::experiment::experiment(args),
         Command::Candidate(args) => commands::experiment::candidate(args),
         Command::Init { workdir, no_sync } => commands::init::run(jj, workdir, no_sync),

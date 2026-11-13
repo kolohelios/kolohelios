@@ -13,6 +13,9 @@ within books, without changing the post pipeline. `blogctl experiment` prepares
 prompts locally; `blogctl candidate` imports/lists/reads separate artifacts
 awaiting review. Neither command generates text, edits drafts, or auto-syncs.
 See [WRITING.md](WRITING.md) for private storage, formats, and examples.
+Optional [NovelAI text generation](NOVELAI.md) discovers models, previews a
+request locally, and requires fresh terminal confirmation for each candidate.
+Credentials come from 1Password at invocation time, not from the engine.
 
 ## Workflow stages
 
