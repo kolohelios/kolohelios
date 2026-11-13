@@ -27,6 +27,7 @@ const HAND_AUTHORED: &[&str] = &[
     "auto-rebase-prs.yaml",
     "bump-kolohelios-nix.yaml",
     "bump-nixpkgs.yaml",
+    "renew-cloudflare-tokens.yaml",
     // Cross-repo: bumps the external buzzingo repo's `shaka` flake input via
     // `bump-locks --repo` (buzzingo has no in-monorepo project.cue to generate
     // from). Schedule + manual-dispatch driven.

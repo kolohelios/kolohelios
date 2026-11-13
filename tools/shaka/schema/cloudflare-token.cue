@@ -32,6 +32,17 @@ package cloudflare_token
 	// expiry, which is only acceptable for the bootstrap meta-token.
 	expires_on?: string & =~"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
 
+	// Opt-in renewal. Renew before expiry, with a new bounded lifetime.
+	// The reference identifies the existing 1Password item updated by TF.
+	renewal?: {
+		valid_days:        int & >=2 & <=365
+		renew_before_days: int & >=1 & <valid_days
+		secret_ref:        string & =~"^op://[^/]+/[^/]+/[^/]+$"
+	}
+	if renewal != _|_ {
+		expires_on: string
+	}
+
 	// Optional client IP CIDR allowlist (IPv4 or IPv6, at least one).
 	client_ip_cidrs?: [string, ...string]
 }

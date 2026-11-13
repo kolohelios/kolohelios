@@ -104,6 +104,8 @@
                     pkgs.cue
                     pkgs.just
                     pkgs.jq
+                    pkgs.curl
+                    pkgs._1password-cli
                   ]
                 } \
                 --set SHAKA_CUE_MODULE_DIR $out/share/shaka/cue
@@ -131,6 +133,7 @@
               pkgs.actionlint
               pkgs.shellcheck
               pkgs.opentofu
+              pkgs.curl
               pkgs.taplo
               pkgs.whois
               pkgs.dnsutils

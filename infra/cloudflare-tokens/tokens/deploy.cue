@@ -45,4 +45,9 @@ package cloudflare_token
 		zones:   "all"
 	}
 	expires_on: "2027-02-10T00:00:00Z"
+	renewal: {
+		valid_days:        90
+		renew_before_days: 14
+		secret_ref:        "op://vedq2v6cmtkglnonkenrjneepa/Cloudflare Deploy Token/password"
+	}
 }

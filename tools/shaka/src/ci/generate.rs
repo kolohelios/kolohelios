@@ -32,6 +32,8 @@ struct Ci {
 #[derive(Deserialize)]
 struct CiApply {
     reusable_workflow: String,
+    #[serde(default)]
+    post_apply_command: Option<String>,
 }
 
 pub fn run(check: bool) {
@@ -135,6 +137,13 @@ fn build_apply_workflow(name: &str, project_dir: &Path, apply: &CiApply) -> Work
         "project_dir".to_string(),
         serde_yaml_ng::Value::String(project_dir_str.clone()),
     );
+
+    if let Some(command) = &apply.post_apply_command {
+        with.insert(
+            "post_apply_command".to_string(),
+            serde_yaml_ng::Value::String(command.clone()),
+        );
+    }
 
     let mut secrets = BTreeMap::new();
     secrets.insert(
@@ -276,6 +285,7 @@ mod tests {
             Path::new("./infra/cloudflare-dns"),
             &CiApply {
                 reusable_workflow: "./.github/workflows/tf-apply.yml".to_string(),
+                post_apply_command: None,
             },
         )
     }
@@ -321,6 +331,27 @@ mod tests {
             parsed["concurrency"]["group"].as_str(),
             Some("cloudflare-dns-apply")
         );
+    }
+
+    #[test]
+    fn post_apply_command_is_forwarded_only_when_configured() {
+        let workflow = build_apply_workflow(
+            "cloudflare-tokens",
+            Path::new("infra/cloudflare-tokens"),
+            &CiApply {
+                reusable_workflow: "./.github/workflows/tf-apply.yml".into(),
+                post_apply_command: Some(
+                    "shaka token cloudflare verify --registry-dir tokens".into(),
+                ),
+            },
+        );
+        let yaml = workflow::emit(&workflow);
+        let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(
+            parsed["jobs"]["apply"]["with"]["post_apply_command"].as_str(),
+            Some("shaka token cloudflare verify --registry-dir tokens")
+        );
+        assert!(!workflow::emit(&apply_fixture()).contains("post_apply_command"));
     }
 
     #[test]
