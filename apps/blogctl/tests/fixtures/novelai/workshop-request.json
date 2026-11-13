@@ -1,0 +1,10 @@
+{
+  "model": "model-a",
+  "prompt": "This is a fictional exploration, not autobiography. Do not invent incidents from the author's life.\n\nWrite warmly, thoughtfully, and with a little wry humor. Avoid a tidy moral.\n\nBook: A Synthetic Book\nChapter: The Patient Potter\nOriginal seed:\nA potter pauses to learn why a kiln behaves strangely.\nThe apprentice is impatient.\n\n\nApproach (workshop):\nA craftsperson, an apprentice, and a capable machine.\n\nCandidate:\n",
+  "max_tokens": 600,
+  "temperature": 0.8,
+  "n": 1,
+  "best_of": 1,
+  "stream": false,
+  "echo": false
+}

@@ -15,6 +15,7 @@ pub mod linkedin;
 pub mod list;
 pub mod metrics;
 pub mod new;
+pub mod novelai;
 pub mod promote;
 pub mod readme;
 pub mod refine;

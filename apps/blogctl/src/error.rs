@@ -10,6 +10,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("{source}"))]
+    Novelai { source: crate::novelai::Error },
+
+    #[snafu(display("NovelAI returned text, but saving its candidate failed: {source}. A request was already made; do not automatically generate again"))]
+    NovelaiCandidateNotSaved { source: crate::writing::Error },
+
+    #[snafu(display("{source}"))]
     Writing { source: crate::writing::Error },
 
     #[snafu(display("workdir not initialized at {} (run `blogctl init`)", path.display()))]

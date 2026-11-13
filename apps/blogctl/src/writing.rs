@@ -313,6 +313,17 @@ impl Store {
         read_text(&dir.join(format!("{id}.md")))
     }
 
+    /// Probe the managed directory and a private temporary file before a paid
+    /// request. A later write can still fail; no candidate is published here.
+    pub fn check_candidate_storage(&self, prepared: &PreparedExperiment) -> Result<()> {
+        let dir = self
+            .directory(&["candidates", &prepared.experiment.id], true)?
+            .ok_or_else(|| invalid("missing candidate directory"))?;
+        let probe = NamedTempFile::new_in(&dir).context(IoSnafu { path: &dir })?;
+        probe.as_file().sync_all().context(IoSnafu { path: &dir })?;
+        Ok(())
+    }
+
     /// Store one candidate from an already-prepared snapshot. No network, stage
     /// transition, review decision, draft write, or implicit VCS operation.
     pub fn record_candidate(
