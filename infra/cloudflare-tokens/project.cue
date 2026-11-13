@@ -14,5 +14,8 @@ package project
 			purpose: "Terraform remote state for Cloudflare API tokens (per-token resources + 1Password sync)"
 		},
 	]
-	ci: apply: reusable_workflow: "./.github/workflows/tf-apply.yml"
+	ci: apply: {
+		reusable_workflow: "./.github/workflows/tf-apply.yml"
+		post_apply_command: "shaka token cloudflare verify --registry-dir tokens"
+	}
 }

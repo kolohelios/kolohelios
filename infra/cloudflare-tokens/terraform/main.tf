@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.5"
 
   required_providers {
     cloudflare = {
@@ -68,6 +68,16 @@ locals {
   deploy_expires_on         = "2027-02-10T00:00:00Z"
 }
 
+# Expiry changes rotate the credential, not just its metadata. Keep the old
+# token alive while creating the replacement and updating its 1Password item.
+resource "terraform_data" "dns_management_expiry" {
+  triggers_replace = local.dns_management_expires_on
+}
+
+resource "terraform_data" "deploy_expiry" {
+  triggers_replace = local.deploy_expires_on
+}
+
 # ── dns-management ────────────────────────────────────────────────────
 #
 # Mirrors `tokens/dns-management.cue`. CUE → TF sync is manual until
@@ -102,6 +112,8 @@ resource "cloudflare_api_token" "dns_management" {
   expires_on = local.dns_management_expires_on
 
   lifecycle {
+    create_before_destroy = true
+    replace_triggered_by  = [terraform_data.dns_management_expiry]
     precondition {
       condition     = timecmp(local.dns_management_expires_on, plantimestamp()) > 0
       error_message = "DNS management token expiry is in the past; update the expiry before applying."
@@ -166,6 +178,8 @@ resource "cloudflare_api_token" "deploy" {
   expires_on = local.deploy_expires_on
 
   lifecycle {
+    create_before_destroy = true
+    replace_triggered_by  = [terraform_data.deploy_expiry]
     precondition {
       condition     = timecmp(local.deploy_expires_on, plantimestamp()) > 0
       error_message = "Deploy token expiry is in the past; update the expiry before applying."

@@ -6,9 +6,8 @@ and provisioned by the TF module under `terraform/`. Token values land
 in 1Password automatically via the `1Password/onepassword` provider; no
 hand-paste step.
 
-Canonical issue: #289. Sub-issues for deferred scope: #290 (scheduled
-rotation), #291 (1Password service account for CI applies), #292 (TF
-reads CUE registries directly).
+Canonical issue: #289. Scheduled renewal: #290. Deferred scope: #292
+(TF reads CUE registries directly).
 
 ## Layout
 
@@ -152,18 +151,45 @@ at plan time: Cloudflare can otherwise accept a newly created token that
 is already expired, and a successful apply does not prove it can deploy.
 Wrangler dry-runs do not validate live API credentials either (#1134).
 
-v1 rotation is manual:
+Tokens opt into automatic renewal with a `renewal` policy in their CUE
+entry: `valid_days: 90`, `renew_before_days: 14`, and a `secret_ref` for
+the existing 1Password item. The bootstrap meta-token and the 1Password
+service-account token are not managed by this renewal policy.
 
+`.github/workflows/renew-cloudflare-tokens.yaml` runs daily and supports
+manual dispatch. It invokes `shaka token cloudflare renew`, which advances
+both CUE and TF expiry declarations for due tokens and opens one bot PR.
+An existing open renewal PR is left alone; CI failures on that PR need
+attention before the current credentials expire. Auto-merge queues the PR
+behind the normal gate. The scheduler needs no Cloudflare or 1Password
+credentials, only the existing GitHub App token.
+
+After merge, the existing token-apply workflow replaces credentials when
+their expiry changes and updates the same 1Password items. Terraform uses
+create-before-destroy; state remains in the remote backend, never in a
+commit. Post-apply verification reads the fresh values from 1Password and
+checks Cloudflare's live token-verification endpoint for active status
+and the expected expiry. It never prints token values. Failures leave the
+apply workflow red rather than treating a successful apply as sufficient.
+
+Preview a renewal locally without credentials or file changes:
+
+```sh
+shaka token cloudflare renew --dry-run
+shaka token cloudflare renew --dry-run --now 2027-01-27T00:00:00Z
 ```
-op run --env-file=.env -- tofu apply -replace=cloudflare_api_token.<name>
+
+Without `--dry-run`, the command edits the declarations locally. For an
+emergency manual rotation, advance the expiry first, then run:
+
+```sh
+op run --env-file=.env -- just apply -replace=cloudflare_api_token.<name>
+shaka token cloudflare verify --registry-dir tokens
 ```
 
-The 1Password item updates automatically because `onepassword_item`
-depends on the token's `value` attribute, so the next apply rewrites
-the secret in place. Consumers picking up the new value need only
-re-run `op run` — `op` resolves references at invocation time.
-
-#290 tracks moving rotation to a scheduled GH Action.
+Consumers need only re-run `op run` to read the new value. Keep the
+GitHub App, bootstrap meta-token, and 1Password service-account credentials
+valid separately; their failure will also block automated renewal.
 
 ## Remote state
 

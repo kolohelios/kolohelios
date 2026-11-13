@@ -32,6 +32,8 @@ package project
 			"cue",
 			"just",
 			"jq",
+			"curl",
+			"_1password-cli",
 		]
 		extraDevShellPackages: [
 			// actionlint runs in `shaka preflight` against
@@ -42,6 +44,7 @@ package project
 			// opentofu is needed by `shaka terraform emit` and the
 			// integration tests under `tests/terraform_emit.rs`.
 			"opentofu",
+			"curl",
 			// taplo runs the `taplo fmt --check` preflight gate.
 			"taplo",
 			// `shaka domain check` shells out to `whois` and `dig`.

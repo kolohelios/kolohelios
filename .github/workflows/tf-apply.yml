@@ -26,6 +26,11 @@ on:
         description: "Path to the infra project (e.g. infra/cloudflare-deploy)"
         required: true
         type: string
+      post_apply_command:
+        description: "Optional runtime verification after a successful apply (project cwd)"
+        required: false
+        default: ""
+        type: string
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN:
         description: "1Password Service Account token used by `op run` to resolve `.env` references"
@@ -75,3 +80,12 @@ jobs:
           nix develop . --command shaka ci mask-and-run --env-file=.env \
             --retry-on "This Worker does not exist" --max-retries 5 --retry-delay 30 -- \
             just apply -auto-approve -input=false
+      - name: Verify applied resources
+        if: ${{ inputs.post_apply_command != '' }}
+        working-directory: ${{ inputs.project_dir }}
+        env:
+          POST_APPLY_COMMAND: ${{ inputs.post_apply_command }}
+          NIX_SENTRY_ENDPOINT: ""
+        # Resolve credentials afresh inside the command: the apply may have
+        # just replaced the 1Password items. Do not reuse pre-apply values.
+        run: nix develop . --command bash -c "$POST_APPLY_COMMAND"

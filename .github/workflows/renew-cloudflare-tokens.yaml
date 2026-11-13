@@ -1,0 +1,49 @@
+name: Renew Cloudflare tokens
+
+# Time-based expiry needs a clock-driven backstop. This job only changes
+# declarations; the existing post-merge apply owns secrets and remote state.
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: renew-cloudflare-tokens
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.KOLOHELIOS_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.KOLOHELIOS_BOT_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+          flakehub: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: Renew declarations and open PR when due
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          NIX_SENTRY_ENDPOINT: ""
+        run: |
+          nix develop ./tools/shaka --command bash -euc '
+            jj git init --colocate
+            jj config set --repo user.name "kolohelios-bot[bot]"
+            jj config set --repo user.email "3591292+kolohelios-bot[bot]@users.noreply.github.com"
+            jj new main@origin
+            shaka token cloudflare renew \
+              --pr-bookmark bot/renew-cloudflare-tokens --auto-merge
+          '

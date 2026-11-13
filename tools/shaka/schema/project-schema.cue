@@ -558,6 +558,8 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// workflow files involved.
 		apply?: {
 			reusable_workflow: =~"^\\./\\.github/workflows/[a-z0-9-]+\\.ya?ml$"
+			// Credential-safe runtime verification after a successful apply.
+			post_apply_command?: string & !=""
 		}
 		build?: #CiBuild
 	}

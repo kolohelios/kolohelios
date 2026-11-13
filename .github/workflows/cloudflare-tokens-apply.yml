@@ -23,6 +23,7 @@ jobs:
   apply:
     uses: ./.github/workflows/tf-apply.yml
     with:
+      post_apply_command: shaka token cloudflare verify --registry-dir tokens
       project_dir: infra/cloudflare-tokens
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
