@@ -1,6 +1,6 @@
 package cloudflare_token
 
-// CF Worker-deploy token. Used for three flows:
+// CF Worker-deploy token. Used for four flows:
 //
 //   - `infra/cloudflare-deploy` `tofu apply` that attaches Worker
 //     custom domains (`cloudflare_workers_custom_domain` needs
@@ -18,23 +18,23 @@ package cloudflare_token
 //     on the zone, which is the smallest scope CF exposes.
 //   - `infra/cloudflare-deploy` `tofu apply` that creates the
 //     portfolio's `cloudflare_web_analytics_site` (#195). The RUM
-//     `site_info` endpoint is account-scoped and CF gates it behind
-//     `Account Settings:Edit` — there is no narrower "Web Analytics"
-//     write group, so this is the smallest scope CF exposes (same
-//     situation as Cache Settings above).
+//     `site_info` endpoints require `Account Settings:Read` for GET/list
+//     and `Account Settings:Edit` for create/update/delete. Edit does not
+//     satisfy the GET permission: Terraform refresh needs Read explicitly
+//     (#1020). Both grants are scoped to the same account.
 //
 // Sharing one token for all four flows keeps the credential surface
 // tight; if rotation cadences diverge, split later.
 //
-// 90-day expiry, mirroring `dns-management`; rotate via
-// `tofu apply -replace=cloudflare_api_token.deploy` until #290 lands
-// automated rotation.
+// 90-day expiry, mirroring `dns-management`; `shaka token cloudflare renew`
+// advances the declarations before expiry and triggers rotation (#290).
 
 #Token & {
 	name:    "deploy"
 	purpose: "Worker deploys (TF custom-domain attach + wrangler code uploads + cache rules)"
 	permission_groups: [
 		"Account:Workers Scripts:Edit",
+		"Account Settings:Read",
 		"Account Settings:Edit",
 		"Zone:Cache Settings:Edit",
 		"Zone:DNS:Edit",
