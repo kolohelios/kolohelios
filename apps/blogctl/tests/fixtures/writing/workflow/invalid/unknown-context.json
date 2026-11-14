@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Synthetic unknown context fixture.",
+  "fiction": true,
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Return an outline.",
+      "context": ["missing"]
+    }
+  ]
+}

@@ -40,6 +40,8 @@ pub enum Command {
     Experiment(commands::experiment::ExperimentArgs),
     /// Record and inspect immutable candidates; never generate or promote prose.
     Candidate(commands::experiment::CandidateArgs),
+    /// Prepare consumer-configured writing passes without generation or advancement.
+    Workflow(commands::workflow::WorkflowArgs),
     /// Create the workdir layout and write `.blog-os.toml`.
     Init {
         #[arg(long, value_name = "PATH")]
@@ -565,6 +567,7 @@ pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
         Command::Novelai(args) => commands::novelai::run(args),
         Command::Experiment(args) => commands::experiment::experiment(args),
         Command::Candidate(args) => commands::experiment::candidate(args),
+        Command::Workflow(args) => commands::workflow::run(args),
         Command::Init { workdir, no_sync } => commands::init::run(jj, workdir, no_sync),
         Command::New {
             title,

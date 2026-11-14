@@ -216,6 +216,10 @@ fn artifact_identifier(value: &str) -> Result<()> {
     identifier(value)
 }
 
+pub(crate) fn validate_identifier(value: &str) -> Result<()> {
+    identifier(value)
+}
+
 fn identifier(value: &str) -> Result<()> {
     if value.len() > 120 || crate::slug::validate(value).is_err() {
         return Err(invalid(
@@ -278,7 +282,11 @@ impl Experiment {
 
 /// SHA-256 of the exact UTF-8 bytes, with no whitespace normalization.
 pub fn hash(text: &str) -> String {
-    format!("{:x}", Sha256::digest(text.as_bytes()))
+    hash_bytes(text.as_bytes())
+}
+
+pub(crate) fn hash_bytes(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 /// Read a regular file, refusing a symlink leaf or non-file (e.g. FIFO).
@@ -316,6 +324,10 @@ impl Store {
             return Err(Error::UnsafePath { path: root });
         }
         Ok(Self { root })
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
     }
 
     // Check every managed directory, not just the leaf. Symlinked workdir roots
@@ -367,6 +379,51 @@ impl Store {
         pending.write_all(&bytes).context(IoSnafu { path: &path })?;
         publish(pending, &path, 0o600)?;
         Ok(exp.id)
+    }
+
+    pub fn ensure_experiment(&self, exp: Experiment) -> Result<String> {
+        exp.validate()?;
+        let dir = self
+            .directory(&["experiments"], true)?
+            .ok_or_else(|| invalid("missing experiment directory"))?;
+        let path = dir.join(format!("{}.json", exp.id));
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                if !metadata.is_file() || metadata.file_type().is_symlink() {
+                    return Err(Error::UnsafePath { path });
+                }
+                let existing: Experiment = read_json(&path)?;
+                if existing != exp {
+                    return Err(invalid(
+                        "existing experiment differs; refusing to overwrite",
+                    ));
+                }
+                return Ok(exp.id);
+            }
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
+            Err(source) => return Err(Error::Io { path, source }),
+        }
+        let bytes = serde_json::to_vec_pretty(&exp).context(JsonSnafu { path: &path })?;
+        let mut pending = NamedTempFile::new_in(&dir).context(IoSnafu { path: &dir })?;
+        pending.write_all(&bytes).context(IoSnafu { path: &path })?;
+        match publish(pending, &path, 0o600) {
+            Ok(()) => Ok(exp.id),
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::AlreadyExists => {
+                let metadata = fs::symlink_metadata(&path).context(IoSnafu { path: &path })?;
+                if !metadata.is_file() || metadata.file_type().is_symlink() {
+                    return Err(Error::UnsafePath { path });
+                }
+                let existing: Experiment = read_json(&path)?;
+                if existing == exp {
+                    Ok(exp.id)
+                } else {
+                    Err(invalid(
+                        "existing experiment differs; refusing to overwrite",
+                    ))
+                }
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn experiment(&self, id: &str) -> Result<Experiment> {

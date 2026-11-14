@@ -72,6 +72,73 @@ Previews print private text to your terminal; do not publish session logs.
 Prompt format version 1 is deterministic: no timestamps, model defaults, template
 execution, implicit whitespace trimming, or network access.
 
+## Prepare a config-driven writing pass
+
+`workflow prepare` composes one deterministic experiment from a consumer-owned
+workflow definition, explicit local context files, the source experiment in the
+private store, and an optional explicitly selected prior candidate. It does not
+generate, select, review, advance, promote, or mutate manuscript text.
+
+A workflow JSON file uses reusable context sets so multiple passes can share a
+profile or selected samples without duplicating paths:
+
+```json
+{
+  "version": 1,
+  "source_experiment": "private-source-experiment",
+  "instructions": "Instructions shared by every pass.",
+  "fiction": false,
+  "context_sets": {
+    "profile": [
+      {"label": "Voice profile", "path": "docs/voice/profile.md"}
+    ],
+    "samples": [
+      {
+        "label": "Voice sample (style only)",
+        "path": "published/example.md",
+        "format": "markdown-body"
+      }
+    ]
+  },
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Return only a compact outline."
+    },
+    {
+      "name": "draft",
+      "requires_input": true,
+      "approach": "Draft from the selected outline.",
+      "context": ["profile", "samples"]
+    }
+  ]
+}
+```
+
+Paths are relative to an explicit configuration root. `text` (the default)
+includes the whole UTF-8 file after trimming its outside whitespace;
+`markdown-body` removes a leading YAML frontmatter block and includes only the
+nonempty body. Configuration and context paths must stay beneath the root and
+may not traverse symlinks. The root and private working directory are refused beneath the Nix store.
+
+```sh
+blogctl workflow --workdir "$HOME/.local/share/writing-lab" prepare shape \
+  --config-root /private/consumer-repo \
+  --config books/example/workflow.json
+
+blogctl workflow --workdir "$HOME/.local/share/writing-lab" prepare draft \
+  --config-root /private/consumer-repo \
+  --config books/example/workflow.json \
+  --input PRIOR_EXPERIMENT/PRIOR_CANDIDATE
+```
+
+A pass declaring `requires_input` fails unless `--input` is supplied; no latest
+candidate is inferred. Candidate bodies are obtained through typed integrity
+inspection rather than Markdown parsing. Preparation prints the deterministic
+experiment ID. Repeating the same preparation confirms the existing definition;
+a differing definition at the same ID is never overwritten.
+
 ## Record an externally obtained candidate
 
 The local import command is useful for manually obtained text. It **does not**

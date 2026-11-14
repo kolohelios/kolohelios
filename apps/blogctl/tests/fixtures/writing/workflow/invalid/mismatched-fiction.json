@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Synthetic mismatch fixture.",
+  "fiction": false,
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Return an outline."
+    }
+  ]
+}

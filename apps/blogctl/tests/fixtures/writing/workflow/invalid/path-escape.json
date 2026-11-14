@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Synthetic path fixture.",
+  "fiction": true,
+  "context_sets": {
+    "escaped": [
+      {
+        "label": "Escaped context",
+        "path": "../candidate.txt"
+      }
+    ]
+  },
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Return an outline.",
+      "context": ["escaped"]
+    }
+  ]
+}

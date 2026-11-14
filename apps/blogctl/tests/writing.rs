@@ -107,6 +107,15 @@ fn import_never_overwrites_and_reads_do_not_create_directories() {
         .import_experiment(&fixture("valid/chapter.json"))
         .is_err());
     assert_eq!(before, fs::read(&path).unwrap());
+    let existing = store.experiment("synthetic-chapter").unwrap();
+    assert_eq!(
+        store.ensure_experiment(existing.clone()).unwrap(),
+        "synthetic-chapter"
+    );
+    let mut different = existing;
+    different.seed.push_str("changed");
+    assert!(store.ensure_experiment(different).is_err());
+    assert_eq!(before, fs::read(&path).unwrap());
     assert_eq!(store.experiments().unwrap(), ["synthetic-chapter"]);
     assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
     for path in [
