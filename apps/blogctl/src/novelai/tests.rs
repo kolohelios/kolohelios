@@ -18,7 +18,7 @@ fn fixture(name: &str) -> PathBuf {
 
 fn generation(model: &str) -> PreparedGeneration {
     let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
-    PreparedGeneration::new(exp.prepare("workshop").unwrap(), model.into()).unwrap()
+    PreparedGeneration::new(exp.prepare("workshop").unwrap(), model.into(), None, None).unwrap()
 }
 
 fn client(server: &mockito::ServerGuard) -> Client {
@@ -76,6 +76,47 @@ fn preview_matches_the_exact_single_completion_request() {
     assert_eq!(metadata.parameters.len(), 6);
     assert!(!metadata.parameters.contains_key("prompt"));
     assert!(!metadata.parameters.contains_key("Authorization"));
+}
+
+#[test]
+fn bounded_parameters_match_preview_and_provenance() {
+    let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+    let generation = PreparedGeneration::new(
+        exp.prepare("workshop").unwrap(),
+        "model-a".into(),
+        Some(1200),
+        Some(0.25),
+    )
+    .unwrap();
+    let preview: serde_json::Value = serde_json::from_str(&generation.preview().unwrap()).unwrap();
+    assert_eq!(preview["max_tokens"], 1200);
+    assert_eq!(preview["temperature"], 0.25);
+    let metadata = generation.metadata();
+    assert_eq!(metadata.parameters["max_tokens"], 1200);
+    assert_eq!(metadata.parameters["temperature"], 0.25);
+
+    for max_tokens in [0, MAX_TOKENS_LIMIT + 1] {
+        assert!(matches!(
+            PreparedGeneration::new(
+                exp.prepare("workshop").unwrap(),
+                "model-a".into(),
+                Some(max_tokens),
+                None,
+            ),
+            Err(Error::InvalidMaxTokens)
+        ));
+    }
+    for temperature in [-0.1, MAX_TEMPERATURE + 0.1, f64::NAN, f64::INFINITY] {
+        assert!(matches!(
+            PreparedGeneration::new(
+                exp.prepare("workshop").unwrap(),
+                "model-a".into(),
+                None,
+                Some(temperature),
+            ),
+            Err(Error::InvalidTemperature)
+        ));
+    }
 }
 
 #[test]
@@ -208,7 +249,7 @@ fn invalid_models_and_tokens_fail_locally() {
     let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
     for bad in ["", "   ", "model\nunsafe", &"m".repeat(201)] {
         assert!(matches!(
-            PreparedGeneration::new(exp.prepare("ordinary").unwrap(), bad.into()),
+            PreparedGeneration::new(exp.prepare("ordinary").unwrap(), bad.into(), None, None),
             Err(Error::InvalidModel)
         ));
     }
