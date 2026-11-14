@@ -21,15 +21,32 @@
   "passes": [
     {
       "name": "shape",
+      "mode": "generate",
       "requires_input": false,
       "approach": "Return a compact structural outline.",
-      "context": []
+      "context": [],
+      "artifact_kind": "outline",
+      "max_tokens": 256,
+      "temperature": 0.4,
+      "max_words": 100,
+      "forbid_workflow_metadata": true,
+      "require_complete_ending": true
     },
     {
       "name": "draft",
       "requires_input": true,
       "approach": "Write a complete synthetic draft from the selected outline.",
-      "context": ["profile", "samples"]
+      "context": ["profile", "samples"],
+      "min_words": 20,
+      "max_words": 80,
+      "require_complete_ending": true
+    },
+    {
+      "name": "investigation",
+      "mode": "import-only",
+      "requires_input": true,
+      "approach": "Import an inspectable evidence pack.",
+      "context": []
     }
   ]
 }

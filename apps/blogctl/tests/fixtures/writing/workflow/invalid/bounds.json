@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Synthetic invalid bounds.",
+  "fiction": true,
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Never prepared.",
+      "max_tokens": 8193,
+      "temperature": 2.1
+    }
+  ]
+}
