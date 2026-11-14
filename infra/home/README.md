@@ -146,12 +146,12 @@ those backups after activation. Start a new terminal for the managed shell
 configuration. This does not change `/etc/nixos/configuration.nix` or
 install system device permissions.
 
-## Writing tools (opt-in)
+## Writing tools
 
-`modules/writing-lab.nix` provides the private `blogctl` workflow, 1Password
-invocation boundary, and additive Pi/Codex MCP registration. It remains off by
-default until the FlakeHub package pin includes the new MCP commands. See
-[WRITING.md](WRITING.md) for release ordering, local validation, and activation.
+The desktop enables `modules/writing-lab.nix` for the private `blogctl` workflow,
+1Password invocation boundary, and additive Pi/Codex MCP registration. Its
+FlakeHub pin includes candidate review and read-only MCP support. See
+[WRITING.md](WRITING.md) for updates, local validation, and activation.
 
 ## MSI Vector keyboard backlight (opt-in)
 

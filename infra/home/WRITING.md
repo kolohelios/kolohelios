@@ -1,19 +1,19 @@
-# Optional writing integration
+# Desktop writing integration
 
-The desktop imports `modules/writing-lab.nix`, but its enable option defaults to
-false. The `blogctl` input consumes the existing FlakeHub package. The initial
-lock contains the generation-only release, not the new MCP commands. Do not
-turn the option on against that older package.
+The desktop enables `modules/writing-lab.nix`. The `blogctl` input is pinned to a
+published FlakeHub release with review, migration, and read-only MCP support;
+normal Home Manager activation needs no local package override.
 
-After the engine changes publish, update the pin inside `infra/home`:
+For future engine changes, publish the engine first, then update the pin inside
+`infra/home`:
 
 ```sh
 nix flake update blogctl
 ```
 
-Then set `programs.writing-lab.enable = true` in `modules/desktop.nix`, build and
-activate using the normal commands in [README.md](README.md). The pin and flag
-are the final release-order step; no local/path input should be committed.
+Build and activate using the normal commands in [README.md](README.md). Keep
+`programs.writing-lab.enable = true` in the desktop module; no local/path input
+should be committed.
 
 The enabled module installs `blogctl`, `blogctl-novelai`, the 1Password CLI, and
 Codex. Activation creates `~/.local/share/blogctl-writing` privately and merges
@@ -40,11 +40,9 @@ nix build --impure --expr "
 HOME_MANAGER_BACKUP_EXT=backup /tmp/writing-home/activate
 ```
 
-This is a declarative validation profile, not a claim that the published pin
-already contains the new commands. It uses the local package only for that
-build; the normal source profile stays safely off until publication and the
-pin/flag update. Rebuilding the ordinary profile before that step will not
-reinstall the optional tools. No privileged system changes are needed.
+This declarative validation profile uses the local package only for that build
+and does not change the published package pin. The normal desktop profile uses
+the pinned FlakeHub package. No privileged system changes are needed.
 
 ## Private setup
 
