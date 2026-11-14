@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use blogctl::writing::{
-    self, CandidateProvenance, Experiment, GenerationMetadata, ReviewStatus, Store,
+    self, ArtifactReference, CandidateContext, CandidateProvenance, Experiment, GenerationMetadata,
+    ReviewStatus, Store,
 };
 use tempfile::TempDir;
 
@@ -166,6 +167,8 @@ fn immutable_candidates_have_exact_provenance_and_frozen_snapshot() {
     let candidate = store.candidate("synthetic-chapter", &first).unwrap();
     assert_eq!(candidate.provenance.candidate_id, first);
     assert_eq!(candidate.provenance.experiment_id, "synthetic-chapter");
+    assert_eq!(candidate.provenance.artifact_kind, None);
+    assert_eq!(candidate.provenance.parent, None);
     assert_eq!(candidate.body, body);
     assert_eq!(candidate.request_snapshot, prepared);
     let snapshot = text
@@ -198,6 +201,57 @@ fn immutable_candidates_have_exact_provenance_and_frozen_snapshot() {
     );
     assert!(!tmp.path().join("concepts").exists());
     assert!(!tmp.path().join(".blog-os.toml").exists());
+}
+
+#[test]
+fn candidate_lineage_is_explicit_validated_and_branchable() {
+    let (_tmp, store) = setup();
+    let parent = record(&store);
+    let prepared = store
+        .experiment("synthetic-chapter")
+        .unwrap()
+        .prepare("ordinary")
+        .unwrap();
+    let metadata = writing::read_json(&fixture("generation.json")).unwrap();
+    let context = CandidateContext {
+        artifact_kind: Some("structural-refinement".into()),
+        parent: Some(ArtifactReference {
+            experiment_id: "synthetic-chapter".into(),
+            candidate_id: parent.clone(),
+        }),
+    };
+    let first = store
+        .record_candidate_with_context(&prepared, &metadata, "First branch", &context)
+        .unwrap();
+    let second = store
+        .record_candidate_with_context(&prepared, &metadata, "Second branch", &context)
+        .unwrap();
+    assert_ne!(first, second);
+    let candidate = store.candidate("synthetic-chapter", &first).unwrap();
+    assert_eq!(
+        candidate.provenance.artifact_kind.as_deref(),
+        Some("structural-refinement")
+    );
+    assert_eq!(candidate.provenance.parent, context.parent);
+
+    let missing = CandidateContext {
+        artifact_kind: Some("draft".into()),
+        parent: Some(ArtifactReference {
+            experiment_id: "synthetic-chapter".into(),
+            candidate_id: "1794692328968498272-geo88i6fcmera5uopiju".into(),
+        }),
+    };
+    assert!(store
+        .record_candidate_with_context(&prepared, &metadata, "Missing parent", &missing)
+        .is_err());
+    let invalid_kind = CandidateContext {
+        artifact_kind: Some("not a kind".into()),
+        parent: None,
+    };
+    assert!(store
+        .record_candidate_with_context(&prepared, &metadata, "Invalid kind", &invalid_kind)
+        .is_err());
+    assert_eq!(store.candidates("synthetic-chapter").unwrap().len(), 3);
 }
 
 #[test]
@@ -382,11 +436,43 @@ fn cli_local_workflow_works_without_credentials_sync_or_post_stages() {
     )))
     .unwrap();
     assert_eq!(inspected["provenance"]["candidate_id"], id);
-    assert_eq!(inspected["body"], fs::read_to_string(body).unwrap());
+    assert_eq!(inspected["body"], fs::read_to_string(&body).unwrap());
     assert_eq!(
         inspected["request_snapshot"]["experiment"]["id"],
         "synthetic-chapter"
     );
+    let parent = format!("synthetic-chapter/{id}");
+    let child = ok(cli(
+        tmp.path(),
+        "candidate",
+        &[
+            "import",
+            "synthetic-chapter",
+            "--variant",
+            "ordinary",
+            "--metadata-file",
+            metadata.to_str().unwrap(),
+            "--body-file",
+            body.to_str().unwrap(),
+            "--artifact-kind",
+            "draft",
+            "--parent",
+            &parent,
+        ],
+    ));
+    let child = child.trim();
+    let inspected: serde_json::Value = serde_json::from_str(&ok(cli(
+        tmp.path(),
+        "candidate",
+        &["inspect", "synthetic-chapter", child],
+    )))
+    .unwrap();
+    assert_eq!(inspected["provenance"]["artifact_kind"], "draft");
+    assert_eq!(
+        inspected["provenance"]["parent"]["experiment_id"],
+        "synthetic-chapter"
+    );
+    assert_eq!(inspected["provenance"]["parent"]["candidate_id"], id);
     assert!(!cli(
         tmp.path(),
         "experiment",
@@ -456,6 +542,8 @@ fn writing_dispatch_never_calls_vcs_even_with_sync_enabled() {
                 variant: "ordinary".into(),
                 metadata_file: fixture("generation.json"),
                 body_file: fixture("candidate.txt"),
+                artifact_kind: None,
+                parent: None,
             },
         }),
         &jj,

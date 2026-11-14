@@ -133,6 +133,33 @@ fn bounded_parameters_preview_exactly_and_invalid_values_fail_locally() {
 }
 
 #[test]
+fn invalid_lineage_fails_before_credentials_network_or_writes() {
+    let (dir, _) = setup();
+    let output = command()
+        .args([
+            "generate",
+            "synthetic-chapter",
+            "--variant",
+            "workshop",
+            "--model",
+            "model-a",
+            "--artifact-kind",
+            "draft",
+            "--parent",
+            "synthetic-chapter/missing-parent",
+            "--workdir",
+        ])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("candidate not found"));
+    assert!(!error.contains("NOVELAI_API_TOKEN"));
+    assert!(!dir.path().join(".writing/candidates").exists());
+}
+
+#[test]
 fn missing_credentials_fail_without_network_or_sensitive_output() {
     let output = command().arg("models").output().unwrap();
     assert!(!output.status.success());

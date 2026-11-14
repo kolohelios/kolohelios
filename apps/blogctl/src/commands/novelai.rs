@@ -7,7 +7,7 @@ use snafu::ResultExt;
 
 use crate::error::{NovelaiCandidateNotSavedSnafu, NovelaiSnafu, Result, WritingSnafu};
 use crate::novelai::{self, Client, PreparedGeneration};
-use crate::writing::Store;
+use crate::writing::{ArtifactReference, CandidateContext, Store};
 
 #[derive(Debug, Args)]
 pub struct NovelaiArgs {
@@ -40,6 +40,12 @@ pub enum NovelaiAction {
         /// Sampling temperature for this one request (default 0.8, range 0–2).
         #[arg(long)]
         temperature: Option<f64>,
+        /// Pass or artifact kind recorded separately from prompt prose.
+        #[arg(long, value_name = "KIND")]
+        artifact_kind: Option<String>,
+        /// Explicit parent as EXPERIMENT/CANDIDATE.
+        #[arg(long, value_name = "EXPERIMENT/CANDIDATE")]
+        parent: Option<ArtifactReference>,
         /// Preview the request without credentials, network access, or writes.
         #[arg(long)]
         dry_run: bool,
@@ -73,6 +79,8 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
             model,
             max_tokens,
             temperature,
+            artifact_kind,
+            parent,
             dry_run,
         } => {
             let store = Store::open(&workdir).context(WritingSnafu)?;
@@ -83,12 +91,22 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
                 .context(WritingSnafu)?;
             let generation = PreparedGeneration::new(snapshot, model, max_tokens, temperature)
                 .context(NovelaiSnafu)?;
+            let context = CandidateContext {
+                artifact_kind,
+                parent,
+            };
+            store
+                .validate_candidate_context(&context)
+                .context(WritingSnafu)?;
             if dry_run {
                 println!("{}", generation.preview().context(NovelaiSnafu)?);
                 return Ok(());
             }
             let client = Client::from_env().context(NovelaiSnafu)?;
-            println!("{}", generate_candidate(&client, &store, generation)?);
+            println!(
+                "{}",
+                generate_candidate(&client, &store, generation, &context)?
+            );
         }
     }
     Ok(())
@@ -100,6 +118,7 @@ pub(crate) fn generate_candidate(
     client: &Client,
     store: &Store,
     generation: PreparedGeneration,
+    context: &CandidateContext,
 ) -> Result<String> {
     // Catch known path/permission problems before sending a generation. This
     // is a probe, not a guarantee against later disk failure or concurrent edits.
@@ -108,6 +127,11 @@ pub(crate) fn generate_candidate(
         .context(WritingSnafu)?;
     let body = client.generate(&generation).context(NovelaiSnafu)?;
     store
-        .record_candidate(generation.snapshot(), &generation.metadata(), &body)
+        .record_candidate_with_context(
+            generation.snapshot(),
+            &generation.metadata(),
+            &body,
+            context,
+        )
         .context(NovelaiCandidateNotSavedSnafu)
 }

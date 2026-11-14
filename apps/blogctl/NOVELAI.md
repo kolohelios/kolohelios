@@ -53,8 +53,14 @@ those two bounded fields:
 
 ```sh
 blogctl novelai generate EXPERIMENT_ID --workdir /private/writing-lab \
-  --variant workshop --model MODEL --max-tokens 1200 --temperature 0.25
+  --variant workshop --model MODEL --max-tokens 1200 --temperature 0.25 \
+  --artifact-kind draft --parent PRIOR_EXPERIMENT/PRIOR_CANDIDATE
 ```
+
+Artifact kind and parent are optional structured provenance. A supplied parent
+must already exist and pass candidate integrity checks; invalid lineage fails
+before credential lookup or a request. No parent is inferred from timestamps or
+the latest candidate.
 
 `max_tokens` must be 1–8192 and temperature must be a finite value from 0–2.
 Invalid values fail before credential lookup, network access, or candidate writes.

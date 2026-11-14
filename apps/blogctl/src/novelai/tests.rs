@@ -6,7 +6,9 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use crate::commands::novelai::generate_candidate;
-use crate::writing::{self, CandidateProvenance, Experiment, ReviewStatus, Store};
+use crate::writing::{
+    self, CandidateContext, CandidateProvenance, Experiment, ReviewStatus, Store,
+};
 
 const TOKEN: &str = "fake-token-must-not-appear-in-errors";
 
@@ -289,9 +291,21 @@ fn explicit_programmatic_calls_make_separate_candidates_without_terminal_input()
         .expect(2)
         .create();
     let client = client(&server);
-    let first = generate_candidate(&client, &store, generation("model-a")).unwrap();
+    let first = generate_candidate(
+        &client,
+        &store,
+        generation("model-a"),
+        &CandidateContext::default(),
+    )
+    .unwrap();
     assert_eq!(store.candidates("synthetic-chapter").unwrap().len(), 1);
-    let second = generate_candidate(&client, &store, generation("model-a")).unwrap();
+    let second = generate_candidate(
+        &client,
+        &store,
+        generation("model-a"),
+        &CandidateContext::default(),
+    )
+    .unwrap();
     assert_ne!(first, second);
     assert_eq!(store.candidates("synthetic-chapter").unwrap().len(), 2);
     mock.assert();
@@ -374,7 +388,13 @@ fn generation_records_one_unreviewed_candidate_from_the_frozen_snapshot() {
         })
         .expect(1)
         .create();
-    let id = generate_candidate(&client(&server), &store, request).unwrap();
+    let id = generate_candidate(
+        &client(&server),
+        &store,
+        request,
+        &CandidateContext::default(),
+    )
+    .unwrap();
     let text = store.read_candidate("synthetic-chapter", &id).unwrap();
     let yaml = text
         .strip_prefix("---\n")
@@ -405,7 +425,13 @@ fn unsafe_storage_aborts_before_post_and_successful_request_save_failure_is_clea
     let mut server = mockito::Server::new();
     let no_post = server.mock("POST", "/completions").expect(0).create();
     let request = generation("model-a");
-    assert!(generate_candidate(&client(&server), &store, request).is_err());
+    assert!(generate_candidate(
+        &client(&server),
+        &store,
+        request,
+        &CandidateContext::default(),
+    )
+    .is_err());
     no_post.assert();
     fs::remove_file(dir.path().join(".writing/candidates")).unwrap();
     let path = dir.path().join(".writing/candidates/synthetic-chapter");
@@ -420,7 +446,13 @@ fn unsafe_storage_aborts_before_post_and_successful_request_save_failure_is_clea
         .expect(1)
         .create();
     let request = generation("model-a");
-    let err = generate_candidate(&client(&server), &store, request).unwrap_err();
+    let err = generate_candidate(
+        &client(&server),
+        &store,
+        request,
+        &CandidateContext::default(),
+    )
+    .unwrap_err();
     assert!(matches!(
         err,
         crate::error::Error::NovelaiCandidateNotSaved { .. }
