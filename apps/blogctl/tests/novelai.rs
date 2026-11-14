@@ -1,9 +1,11 @@
 //! Exercise the shipped CLI without allowing any remote generation.
 use std::fs;
-use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
+
+use blogctl::cli::{Cli, Command as CliCommand};
+use blogctl::commands::novelai::NovelaiAction;
+use clap::Parser;
 
 use blogctl::writing::Store;
 
@@ -38,6 +40,7 @@ fn request_preview_needs_no_valid_credentials_and_writes_nothing() {
                 "synthetic-chapter",
                 "--variant",
                 variant,
+                "--dry-run",
                 "--model",
                 "model-a",
                 "--workdir",
@@ -94,7 +97,6 @@ fn missing_credentials_fail_without_network_or_sensitive_output() {
             "workshop",
             "--model",
             "model-a",
-            "--run",
             "--workdir",
         ])
         .arg(dir.path())
@@ -122,55 +124,37 @@ fn invalid_or_unresolved_credentials_fail_without_echoing_values() {
 }
 
 #[test]
-fn piped_generate_cannot_authorize_a_request_without_a_controlling_terminal() {
-    let (dir, _) = setup();
-    let mut command = command();
-    command
-        .args([
-            "generate",
-            "synthetic-chapter",
-            "--variant",
-            "workshop",
-            "--model",
-            "model-a",
-            "--run",
-            "--workdir",
-        ])
-        .arg(dir.path())
-        .env("NOVELAI_API_TOKEN", "synthetic-test-token")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    // SAFETY: setsid is an async-signal-safe syscall. Starting a new session
-    // removes the inherited controlling terminal, regardless of the test runner.
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = command.spawn().unwrap();
-    // The child may reject authorization and close stdin before this write.
-    let _ = child.stdin.take().unwrap().write_all(b"GENERATE\n");
-    let output = child.wait_with_output().unwrap();
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    let error = String::from_utf8(output.stderr).unwrap();
-    assert!(error.contains("controlling terminal"));
-    assert!(error.contains("no request was sent"));
-    assert!(!error.contains("synthetic-test-token"));
-    assert!(!dir.path().join(".writing/candidates").exists());
+fn generate_runs_by_default_and_preview_is_explicit() {
+    let args = [
+        "blogctl",
+        "novelai",
+        "generate",
+        "synthetic-chapter",
+        "--variant",
+        "workshop",
+        "--model",
+        "model-a",
+        "--workdir",
+        "/private/test",
+    ];
+    let parsed = Cli::try_parse_from(args).unwrap();
+    assert!(
+        matches!(parsed.command, CliCommand::Novelai(args) if matches!(args.action, NovelaiAction::Generate { dry_run: false, .. }))
+    );
+    let parsed = Cli::try_parse_from(args.into_iter().chain(["--dry-run"])).unwrap();
+    assert!(
+        matches!(parsed.command, CliCommand::Novelai(args) if matches!(args.action, NovelaiAction::Generate { dry_run: true, .. }))
+    );
 }
 
 #[test]
-fn unknown_variants_missing_models_and_unsupported_approval_flags_fail() {
+fn unknown_variants_missing_models_and_obsolete_flags_fail() {
     let (dir, _) = setup();
     for args in [
         vec!["--variant", "missing", "--model", "model-a"],
         vec!["--variant", "workshop"],
         vec!["--variant", "workshop", "--model", "model-a", "--yes"],
+        vec!["--variant", "workshop", "--model", "model-a", "--run"],
     ] {
         let output = command()
             .args(["generate", "synthetic-chapter", "--workdir"])

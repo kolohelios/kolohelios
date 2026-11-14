@@ -6,7 +6,7 @@ use clap::{Args, Subcommand};
 use snafu::ResultExt;
 
 use crate::error::{NovelaiCandidateNotSavedSnafu, NovelaiSnafu, Result, WritingSnafu};
-use crate::novelai::{self, Authorization, Client, PreparedGeneration};
+use crate::novelai::{self, Client, PreparedGeneration};
 use crate::writing::Store;
 
 #[derive(Debug, Args)]
@@ -23,7 +23,7 @@ pub enum NovelaiAction {
         #[arg(long)]
         json: bool,
     },
-    /// Preview a single request; --run also requires terminal confirmation.
+    /// Generate one candidate; --dry-run previews locally without credentials.
     /// Supply NOVELAI_API_TOKEN through 1Password, never as an argument.
     Generate {
         experiment: String,
@@ -34,9 +34,9 @@ pub enum NovelaiAction {
         /// Explicit model ID from `novelai models`; no fallback or substitution.
         #[arg(long)]
         model: String,
-        /// Request one generation, after fresh confirmation at the terminal.
+        /// Preview the request without credentials, network access, or writes.
         #[arg(long)]
-        run: bool,
+        dry_run: bool,
     },
 }
 
@@ -65,7 +65,7 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
             workdir,
             variant,
             model,
-            run,
+            dry_run,
         } => {
             let store = Store::open(&workdir).context(WritingSnafu)?;
             let snapshot = store
@@ -74,37 +74,30 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
                 .prepare(&variant)
                 .context(WritingSnafu)?;
             let generation = PreparedGeneration::new(snapshot, model).context(NovelaiSnafu)?;
-            if !run {
+            if dry_run {
                 println!("{}", generation.preview().context(NovelaiSnafu)?);
                 return Ok(());
             }
             let client = Client::from_env().context(NovelaiSnafu)?;
-            let authorization = novelai::authorize(&generation).context(NovelaiSnafu)?;
-            println!(
-                "{}",
-                generate_candidate(&client, &store, generation, authorization)?
-            );
+            println!("{}", generate_candidate(&client, &store, generation)?);
         }
     }
     Ok(())
 }
 
-/// The terminal grant is consumed before returning. No VCS hook, stage update,
-/// manuscript write, model lookup, retry, or automatic follow-up is performed.
+/// One explicit request, without a VCS hook, stage update, manuscript write,
+/// model lookup, retry, or automatic follow-up.
 pub(crate) fn generate_candidate(
     client: &Client,
     store: &Store,
     generation: PreparedGeneration,
-    authorization: Authorization,
 ) -> Result<String> {
-    // Catch known path/permission problems before spending a generation. This
+    // Catch known path/permission problems before sending a generation. This
     // is a probe, not a guarantee against later disk failure or concurrent edits.
     store
         .check_candidate_storage(generation.snapshot())
         .context(WritingSnafu)?;
-    let body = client
-        .generate(&generation, authorization)
-        .context(NovelaiSnafu)?;
+    let body = client.generate(&generation).context(NovelaiSnafu)?;
     store
         .record_candidate(generation.snapshot(), &generation.metadata(), &body)
         .context(NovelaiCandidateNotSavedSnafu)

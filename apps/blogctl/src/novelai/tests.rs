@@ -1,13 +1,12 @@
 //! All responses come from local mocks and real synthetic fixture files.
 use super::*;
 use std::fs;
-use std::io::Cursor;
 use std::net::TcpListener;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use crate::commands::novelai::generate_candidate;
-use crate::writing::{CandidateProvenance, Experiment, ReviewStatus, Store};
+use crate::writing::{self, CandidateProvenance, Experiment, ReviewStatus, Store};
 
 const TOKEN: &str = "fake-token-must-not-appear-in-errors";
 
@@ -24,10 +23,6 @@ fn generation(model: &str) -> PreparedGeneration {
 
 fn client(server: &mockito::ServerGuard) -> Client {
     Client::new(TOKEN.into(), server.url(), Duration::from_secs(5)).unwrap()
-}
-
-fn approval(generation: &PreparedGeneration) -> Authorization {
-    confirm(generation, Cursor::new(b"GENERATE\n"), &mut Vec::new()).unwrap()
 }
 
 fn setup() -> (tempfile::TempDir, Store) {
@@ -98,9 +93,7 @@ fn completion_is_one_post_and_preserves_utf8_whitespace() {
     let discovery = server.mock("GET", "/models").expect(0).create();
     let generation = generation("model-a");
     assert_eq!(
-        client(&server)
-            .generate(&generation, approval(&generation))
-            .unwrap(),
+        client(&server).generate(&generation).unwrap(),
         "  The potter waited. Café clocks were less patient.\n"
     );
     mock.assert();
@@ -117,9 +110,7 @@ fn malformed_completions_never_retry_or_leak_the_body() {
             .expect(1)
             .create();
         let generation = generation("model-a");
-        let err = client(&server)
-            .generate(&generation, approval(&generation))
-            .unwrap_err();
+        let err = client(&server).generate(&generation).unwrap_err();
         assert!(matches!(err, Error::Response));
         assert!(!format!("{err:?} {err}").contains(TOKEN));
         assert!(err.to_string().contains("outcome may be unknown"));
@@ -149,9 +140,7 @@ fn http_errors_are_sanitized_and_never_retried() {
             let err = if method == "GET" {
                 client.models().map(|_| ())
             } else {
-                client
-                    .generate(&generation, approval(&generation))
-                    .map(|_| ())
+                client.generate(&generation).map(|_| ())
             }
             .unwrap_err();
             match status {
@@ -190,7 +179,7 @@ fn redirects_never_send_a_second_request_or_forward_credentials() {
             .create();
         let generation = generation("model-a");
         assert!(matches!(
-            client(&source).generate(&generation, approval(&generation)),
+            client(&source).generate(&generation),
             Err(Error::Http { .. })
         ));
         forbidden.assert();
@@ -250,47 +239,21 @@ fn invalid_models_and_tokens_fail_locally() {
 }
 
 #[test]
-fn approval_is_explicit_and_bound_to_the_full_request() {
+fn explicit_programmatic_calls_make_separate_candidates_without_terminal_input() {
+    let (_dir, store) = setup();
     let mut server = mockito::Server::new();
-    let no_post = server.mock("POST", "/completions").expect(0).create();
-    let one = generation("model-a");
-    for denied in [
-        "",
-        "no\n",
-        "generate\n",
-        "GENERATE please\n",
-        " GENERATE\n",
-        "GENERATE \n",
-    ] {
-        assert!(matches!(
-            confirm(&one, Cursor::new(denied), &mut Vec::new()),
-            Err(Error::NotAuthorized)
-        ));
-    }
-    let mut output = Vec::new();
-    let grant = confirm(&one, Cursor::new("GENERATE\n"), &mut output).unwrap();
-    let prompt = String::from_utf8(output).unwrap();
-    assert!(prompt.contains("model=model-a"));
-    assert!(prompt.contains(&one.fingerprint().unwrap()));
-    assert!(!prompt.contains(TOKEN));
-    let two = generation("model-b");
-    assert!(matches!(
-        client(&server).generate(&two, grant),
-        Err(Error::AuthorizationMismatch)
-    ));
-    let mut exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
-    exp.seed = "A different synthetic idea".into();
-    let changed_prompt =
-        PreparedGeneration::new(exp.prepare("workshop").unwrap(), "model-a".into()).unwrap();
-    let mut changed_parameters = generation("model-a");
-    changed_parameters.request.max_tokens = 100;
-    for changed in [changed_prompt, changed_parameters] {
-        assert!(matches!(
-            client(&server).generate(&changed, approval(&one)),
-            Err(Error::AuthorizationMismatch)
-        ));
-    }
-    no_post.assert();
+    let mock = server
+        .mock("POST", "/completions")
+        .with_body_from_file(fixture("novelai/completions/valid/single.json"))
+        .expect(2)
+        .create();
+    let client = client(&server);
+    let first = generate_candidate(&client, &store, generation("model-a")).unwrap();
+    assert_eq!(store.candidates("synthetic-chapter").unwrap().len(), 1);
+    let second = generate_candidate(&client, &store, generation("model-a")).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(store.candidates("synthetic-chapter").unwrap().len(), 2);
+    mock.assert();
 }
 
 #[test]
@@ -305,9 +268,7 @@ fn transport_disconnect_has_an_explicit_unknown_outcome() {
     });
     let client = Client::new(TOKEN.into(), base, Duration::from_secs(1)).unwrap();
     let generation = generation("model-a");
-    let err = client
-        .generate(&generation, approval(&generation))
-        .unwrap_err();
+    let err = client.generate(&generation).unwrap_err();
     assert!(matches!(err, Error::Transport));
     assert!(err.to_string().contains("outcome may be unknown"));
     assert!(!format!("{err:?} {err}").contains(TOKEN));
@@ -329,7 +290,7 @@ fn request_timeout_does_not_retry_or_assume_the_request_failed_remotely() {
     });
     let client = Client::new(TOKEN.into(), base, Duration::from_millis(500)).unwrap();
     let request = generation("model-a");
-    let result = client.generate(&request, approval(&request));
+    let result = client.generate(&request);
     release.send(()).unwrap();
     worker.join().unwrap();
     let err = result.unwrap_err();
@@ -372,8 +333,7 @@ fn generation_records_one_unreviewed_candidate_from_the_frozen_snapshot() {
         })
         .expect(1)
         .create();
-    let grant = approval(&request);
-    let id = generate_candidate(&client(&server), &store, request, grant).unwrap();
+    let id = generate_candidate(&client(&server), &store, request).unwrap();
     let text = store.read_candidate("synthetic-chapter", &id).unwrap();
     let yaml = text
         .strip_prefix("---\n")
@@ -404,8 +364,7 @@ fn unsafe_storage_aborts_before_post_and_successful_request_save_failure_is_clea
     let mut server = mockito::Server::new();
     let no_post = server.mock("POST", "/completions").expect(0).create();
     let request = generation("model-a");
-    let grant = approval(&request);
-    assert!(generate_candidate(&client(&server), &store, request, grant).is_err());
+    assert!(generate_candidate(&client(&server), &store, request).is_err());
     no_post.assert();
     fs::remove_file(dir.path().join(".writing/candidates")).unwrap();
     let path = dir.path().join(".writing/candidates/synthetic-chapter");
@@ -420,8 +379,7 @@ fn unsafe_storage_aborts_before_post_and_successful_request_save_failure_is_clea
         .expect(1)
         .create();
     let request = generation("model-a");
-    let grant = approval(&request);
-    let err = generate_candidate(&client(&server), &store, request, grant).unwrap_err();
+    let err = generate_candidate(&client(&server), &store, request).unwrap_err();
     assert!(matches!(
         err,
         crate::error::Error::NovelaiCandidateNotSaved { .. }

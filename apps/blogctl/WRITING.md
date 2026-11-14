@@ -6,8 +6,8 @@ ai_provenance: "Written by an OpenAI coding assistant for issue #1131; examples 
 
 Experiments and candidate import are local-only additions to `blogctl`, not a
 replacement for the post pipeline. They make no provider calls and need no
-credentials. Optional [NovelAI generation](NOVELAI.md) requires an explicitly
-authorized invocation. See [INTEGRATIONS.md](INTEGRATIONS.md) for separate review
+credentials. Optional [NovelAI generation](NOVELAI.md) runs one request per
+explicit `generate` invocation; add `--dry-run` for a local-only preview. See [INTEGRATIONS.md](INTEGRATIONS.md) for separate review
 records, read-only MCP, and explicit prototype migration.
 
 ## Private working directory
