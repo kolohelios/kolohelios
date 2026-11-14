@@ -421,7 +421,7 @@ impl Store {
         Ok(records)
     }
 
-    /// Probe the managed directory and a private temporary file before a paid
+    /// Probe the managed directory and a private temporary file before a remote
     /// request. A later write can still fail; no candidate is published here.
     pub fn check_candidate_storage(&self, prepared: &PreparedExperiment) -> Result<()> {
         let dir = self

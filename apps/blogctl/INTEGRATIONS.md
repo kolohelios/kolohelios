@@ -17,8 +17,9 @@ blogctl candidate --workdir /private/writing-lab reviews EXPERIMENT_ID CANDIDATE
 
 Use `--decision reject` to reject it; the notes file is optional. You must type
 `ACCEPT` or `REJECT` at the controlling terminal for that invocation. Piped input
-is not approval. As with generation, terminal confirmation is an accident guard,
-not a sandbox against another process with full user permissions.
+is not approval of an editorial review. This is separate from generation, which
+now runs directly when requested. Review confirmation is not a sandbox against
+another process with full user permissions.
 
 Decisions are separate immutable JSON records under
 `.writing/reviews/<experiment>/<candidate>/<review-id>.json` (0400, private
@@ -65,12 +66,11 @@ Annotations advertise read-only behavior, but the closed dispatch table enforces
 it. Standard input/output carry bounded line-delimited JSON-RPC only, with no
 prompt logging or debug output. Tool errors suppress local/private error details.
 
-Pi 1.4.0's native MCP support has no mandatory per-call confirmation by default.
-Extensions can gate calls, but configuration can change. Current Codex supports
-`default_tools_approval_mode` and per-tool `approval_mode`; those settings are
-also mutable. Neither is used as a claim of reliable human generation approval.
-The common integration therefore remains read-only, with generation on the
-explicit terminal-confirmed CLI path.
+Pi and Codex have different, mutable approval settings. The common MCP
+integration remains deliberately read-only rather than relying on those settings
+as a security boundary. Generation is available through the explicit CLI,
+including from a coding agent when requested; it needs no extra approval flag or
+terminal. This does not add a generation tool to MCP or authorize automatic loops.
 
 ### Client registration
 
@@ -112,8 +112,8 @@ mkdir -p ~/.config/blogctl
 printf '%s\n' 'op://YOUR_VAULT/NovelAI/credential' > ~/.config/blogctl/novelai-token-reference
 ```
 
-Authenticate `op` locally. `blogctl-novelai models` and generation with `--run`
-use `op run` at invocation time; previews do not access credentials. Pass the same
+Authenticate `op` locally. `blogctl-novelai models` and `generate` use `op run`
+at invocation time; `generate --dry-run` and help do not access credentials. Pass the same
 arguments as `blogctl novelai`, including the explicit `--workdir` for generation.
 `NOVELAI_API_TOKEN_REF` can override the reference file. Existing process-scoped
 `NOVELAI_API_TOKEN` is supported. No token is copied into a keyring or local file.

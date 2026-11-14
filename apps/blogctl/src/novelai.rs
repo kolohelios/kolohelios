@@ -4,14 +4,13 @@
 
 use std::collections::BTreeMap;
 use std::env;
-use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
+use std::io::Read;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
-use crate::writing::{self, GenerationMetadata, PreparedExperiment};
+use crate::writing::{GenerationMetadata, PreparedExperiment};
 
 const BASE: &str = "https://text.novelai.net/oa/v1";
 const RESPONSE_LIMIT: u64 = 4 * 1024 * 1024;
@@ -46,20 +45,12 @@ pub enum Error {
     Transport,
     #[snafu(display("NovelAI returned an invalid, incomplete, or oversized response. No retry was made; generation outcome may be unknown. Inspect account usage before another invocation"))]
     Response,
-    #[snafu(display(
-        "generation requires fresh confirmation at a controlling terminal; no request was sent"
-    ))]
-    TerminalRequired,
-    #[snafu(display("generation was not authorized; no request was sent"))]
-    NotAuthorized,
-    #[snafu(display("authorization does not match this request; no request was sent"))]
-    AuthorizationMismatch,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Exact one-candidate, bounded-output request. Fields are private so neither a
-/// caller nor a future adapter can turn an authorized request into a batch.
+/// caller nor a future adapter can turn a single request into a batch.
 #[derive(Debug, Serialize)]
 struct CompletionRequest {
     model: String,
@@ -72,7 +63,7 @@ struct CompletionRequest {
     echo: bool,
 }
 
-/// Captures the local prompt before authorization/network IO. Model selection is
+/// Captures the local prompt before network IO. Model selection is
 /// always explicit; no discovery request or fallback happens during generation.
 #[derive(Debug)]
 pub struct PreparedGeneration {
@@ -103,11 +94,6 @@ impl PreparedGeneration {
         serde_json::to_string_pretty(&self.request).map_err(|_| Error::InvalidRequest)
     }
 
-    fn fingerprint(&self) -> Result<String> {
-        let bytes = serde_json::to_string(&self.request).map_err(|_| Error::InvalidRequest)?;
-        Ok(writing::hash(&bytes))
-    }
-
     pub fn snapshot(&self) -> &PreparedExperiment {
         &self.snapshot
     }
@@ -128,62 +114,6 @@ impl PreparedGeneration {
             ]),
         }
     }
-}
-
-/// A single-use, non-Clone grant bound to the exact request (model + prompt +
-/// parameters). Only terminal confirmation constructs one in production.
-///
-/// ```compile_fail
-/// use blogctl::novelai::Authorization;
-/// let forged = Authorization { fingerprint: String::new() };
-/// ```
-///
-/// ```compile_fail
-/// use blogctl::novelai::{Authorization, Client, PreparedGeneration};
-/// fn twice(client: &Client, request: &PreparedGeneration, grant: Authorization) {
-///     let _ = client.generate(request, grant);
-///     let _ = client.generate(request, grant); // Grant already consumed.
-/// }
-/// ```
-pub struct Authorization {
-    fingerprint: String,
-}
-
-/// Piped stdin, flags, and environment variables cannot grant approval. This is
-/// an accident guard, not a boundary against a process controlling the user's
-/// terminal or otherwise holding the user's full OS permissions.
-pub fn authorize(generation: &PreparedGeneration) -> Result<Authorization> {
-    let mut tty = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open("/dev/tty")
-        .map_err(|_| Error::TerminalRequired)?;
-    if !tty.is_terminal() {
-        return Err(Error::TerminalRequired);
-    }
-    let input = tty.try_clone().map_err(|_| Error::TerminalRequired)?;
-    confirm(generation, BufReader::new(input), &mut tty)
-}
-
-fn confirm(
-    generation: &PreparedGeneration,
-    input: impl BufRead,
-    output: &mut impl Write,
-) -> Result<Authorization> {
-    let fingerprint = generation.fingerprint()?;
-    writeln!(output,
-        "One NovelAI request (may incur cost): model={}, max_tokens=600, request_sha256={fingerprint}\nType GENERATE to authorize this request:",
-        generation.request.model).map_err(|_| Error::TerminalRequired)?;
-    output.flush().map_err(|_| Error::TerminalRequired)?;
-    let mut answer = String::new();
-    input
-        .take(256)
-        .read_line(&mut answer)
-        .map_err(|_| Error::TerminalRequired)?;
-    if answer.trim_end_matches(['\r', '\n']) != "GENERATE" {
-        return Err(Error::NotAuthorized);
-    }
-    Ok(Authorization { fingerprint })
 }
 
 /// The credential is never Debug-formatted, serialized, stored, or accepted as a
@@ -241,16 +171,9 @@ impl Client {
         Ok(models)
     }
 
-    /// Consumes the matching authorization; exactly one POST, no model lookup,
-    /// redirect, automatic retry, or subsequent request on malformed output.
-    pub fn generate(
-        &self,
-        generation: &PreparedGeneration,
-        authorization: Authorization,
-    ) -> Result<String> {
-        if authorization.fingerprint != generation.fingerprint()? {
-            return Err(Error::AuthorizationMismatch);
-        }
+    /// Exactly one POST per explicit call, with no model lookup, redirect,
+    /// automatic retry, or subsequent request on malformed output.
+    pub fn generate(&self, generation: &PreparedGeneration) -> Result<String> {
         let request = self
             .agent
             .post(&format!("{}/completions", self.base))

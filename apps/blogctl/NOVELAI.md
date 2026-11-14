@@ -18,7 +18,7 @@ network access:
 ```sh
 blogctl experiment --workdir /private/writing-lab prepare EXPERIMENT_ID --variant workshop
 blogctl novelai generate EXPERIMENT_ID --workdir /private/writing-lab \
-  --variant workshop --model MODEL
+  --variant workshop --model MODEL --dry-run
 ```
 
 Model discovery makes one authenticated GET, not a generation:
@@ -32,32 +32,35 @@ and model entitlement; discovery does not guarantee that generation is allowed.
 The tool never falls back to another model or sends a discovery request during
 generation.
 
-To request a candidate, invoke this yourself in a normal terminal:
+To request one candidate, invoke the explicit generation command:
 
 ```sh
 blogctl novelai generate EXPERIMENT_ID --workdir /private/writing-lab \
-  --variant workshop --model MODEL --run
+  --variant workshop --model MODEL
 ```
 
-Supply credentials as described below. `--run` is necessary but insufficient:
-the command opens the controlling terminal, shows the model, output cap, and
-SHA-256 fingerprint of the full request, then asks you to type `GENERATE`. Each
-invocation requires fresh confirmation. There is no `--yes`, environment approval,
-standard-input approval, saved authorization, or batch mode. Review the request preview
-before authorizing; the fingerprint covers the compact JSON sent to the API,
-including model, prompt, and parameters. The preview uses readable indentation.
+Supply credentials as described below. The `generate` command itself is the
+explicit action: there is no `--run`, typed `GENERATE`, or terminal requirement.
+It also works from a coding agent or a redirected shell when you request a
+candidate. Use `--dry-run` when you want only a credential-free local preview;
+the older preview-by-default behavior has intentionally changed.
+`experiment prepare` remains local-only.
 
-One authorization permits one POST with streaming turned off, requesting one candidate:
+Each invocation sends one POST with streaming turned off, requesting one candidate:
 `n=1`, `best_of=1`, `max_tokens=600`, `temperature=0.8`, `stream=false`, and
 `echo=false`. These deliberately small initial settings are not configurable in
 this slice. The request has a 60-second timeout. No redirects, automatic retries,
 schedules, autonomous loops, or chained generations are implemented. Connection
 pooling is disabled to avoid hidden stale-connection retries by the HTTP client.
 
-Terminal confirmation prevents accidental unattended use; it is not a sandbox
-against agents/processes with full user permissions or control of a terminal.
-The authorization is single-use and bound to the exact request in the Rust API.
-Generation is not exposed through MCP in this issue.
+The MCP surface remains read-only; this change does not expose generation or
+manuscript mutation through MCP. There are no automatic batches or follow-up
+requests. Candidate review is separate from the decision to generate.
+
+NovelAI's [subscription documentation](https://docs.novelai.net/en/subscription/)
+currently includes unlimited text generation with eligible subscriptions; `Anlas`
+are used for images. The output cap is a length limit, not a dollar budget.
+The CLI does not report billing receipts; account/model entitlements still apply.
 
 ## 1Password at the invocation boundary
 
@@ -76,7 +79,7 @@ NOVELAI_API_TOKEN='op://YOUR_VAULT/NovelAI/credential' \
 
 NOVELAI_API_TOKEN='op://YOUR_VAULT/NovelAI/credential' \
   op run -- blogctl novelai generate EXPERIMENT_ID --workdir /private/writing-lab \
-    --variant workshop --model MODEL --run
+    --variant workshop --model MODEL
 ```
 
 Alternatively use `op run --env-file /private/novelai.env -- ...` with a private
@@ -92,7 +95,7 @@ accessible to sufficiently privileged processes; this is not credential isolatio
 from other processes running as the same user.
 
 The production API base is fixed to `https://text.novelai.net/oa/v1`. There is no
-API-base environment override that could silently redirect a real token to an
+API-base environment override that could silently redirect a real token to a
 server you did not choose. Mock tests use private constructors and local servers.
 
 ## Artifacts and failures
@@ -101,7 +104,7 @@ Success prints one candidate ID. The text is published through the existing
 immutable candidate store, with provider/model, exact prompt and seed hashes,
 UTC record timestamp, parameters, attribution, fiction flag, and initial
 `review_status: unreviewed`. The prompt/experiment snapshot is captured before
-confirmation and network access, so subsequent definition edits cannot alter it.
+network access, so subsequent definition edits cannot alter it.
 No headers or credentials enter provenance. No post body, canonical manuscript,
 stage, or VCS state is modified.
 
@@ -119,10 +122,10 @@ candidates and account usage before deciding on any further action.
 - Missing/invalid token: fails locally without sending a request.
 - HTTP 401: check or rotate the persistent token.
 - HTTP 403: check subscription and model entitlement.
-- HTTP 429: wait before a new manually authorized invocation; no retry occurs.
+- HTTP 429: wait before a new explicit invocation; no retry occurs.
 - Redirect, transport, timeout, malformed/oversized response, or server error:
   generation outcome may be unknown even if no candidate was saved. Do not
-  assume it is safe/free to repeat. API bodies and raw transport errors are
+  assume nothing happened and repeat blindly. API bodies and raw transport errors are
   suppressed to avoid leaking credentials or private request material.
 
 Use only your own token within subscription limits and the
@@ -144,8 +147,8 @@ nix develop . --command env -u OPENROUTER_API_KEY -u NOVELAI_API_TOKEN just vali
 ```
 
 Tests cover model discovery, exact request shape, response parsing, UTF-8 and
-whitespace, credentials, rate limits/errors, redirect refusal, single-use request
-binding, terminal-required CLI behavior, local previews, immutable provenance,
+whitespace, credentials, rate limits/errors, redirect refusal, explicit single
+requests without terminal input, dry-run previews, immutable provenance,
 pre-request storage checks, and post-response storage failure. New API tests use
 only local mocks and synthetic files. Removing credentials also prevents the
 existing opt-in OpenRouter live test from running during this validation.
