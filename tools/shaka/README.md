@@ -41,7 +41,10 @@ changed) and exec's the debug binary.
 - `commit lint -r <revset>` — enforces conventional commit format, title
   length, body wrap, and atomicity.
 - `repo sync|send|pr|audit|status` — `jj`/PR workflow helpers.
-- `workspace new|list|forget|status|cleanup` — `jj` workspace management
+- `workspace new|list|forget|status|cleanup` — `jj` workspace management.
+  `new` recovers a stale invoking workspace using native safeguards;
+  conflicts or divergent recovery revisions stop creation for inspection.
+  `jj` retains local edits, including in recovery revisions.
   for parallel work.
 
 See `shaka <subcommand> --help` for full options.

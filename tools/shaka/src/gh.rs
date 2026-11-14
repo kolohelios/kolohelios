@@ -1226,9 +1226,10 @@ pub fn detect_repo_or_env() -> Result<String, GhError> {
 /// Uses `jj git remote list` rather than `git remote get-url` so that this
 /// works from inside a non-default jj workspace, which has no `.git` of its
 /// own — it only has a `.jj` directory that links back to the shared repo.
+/// Reading the remote must not snapshot the tree or fail because it is stale.
 pub fn detect_repo() -> Result<String, GhError> {
     let output = Command::new("jj")
-        .args(["git", "remote", "list"])
+        .args(["--ignore-working-copy", "git", "remote", "list"])
         .output()
         .context(SpawnSnafu)?;
 

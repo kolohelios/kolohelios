@@ -3,6 +3,12 @@ use super::{die, workspace_path, BOLD, DIM, GREEN, RESET, YELLOW};
 use crate::{gh, jj};
 
 pub fn run(name: Option<&str>, issue: Option<u64>) {
+    if name.is_none() && issue.is_none() {
+        die("provide either a workspace <name> or --issue <N>");
+    }
+    if let Err(error) = jj::recover_stale_workspace() {
+        die(&error.to_string());
+    }
     // Resolve the workspace name and an optional confirmation suffix.
     let (derived_name, issue_info) = match (name, issue) {
         (Some(n), None) => (n.to_string(), None),
@@ -16,7 +22,7 @@ pub fn run(name: Option<&str>, issue: Option<u64>) {
         _ => die("provide either a workspace <name> or --issue <N>"),
     };
 
-    let repo_root = match jj::repo_root() {
+    let repo_root = match jj::primary_workspace_root() {
         Ok(p) => p,
         Err(e) => die(&e.to_string()),
     };
@@ -34,14 +40,22 @@ pub fn run(name: Option<&str>, issue: Option<u64>) {
         die(&format!("workspace already registered: {derived_name}"));
     }
 
-    // Parent the new workspace on the freshly-fetched `main@origin` so it
+    // Parent the new workspace on the recorded `main@origin` so it
     // never inherits a stale base from wherever the invoking tree's `@`
     // happens to sit (#805). Fall back to jj's default when `main@origin`
     // doesn't resolve (fresh repo / no remote) rather than local `main`,
     // which could itself lag behind the remote.
-    let revision = jj::commit_id_of("main@origin")
-        .is_ok()
-        .then_some("main@origin");
+    let revision = jj::run(&[
+        "--ignore-working-copy",
+        "log",
+        "-r",
+        "main@origin",
+        "--no-graph",
+        "-T",
+        r#"commit_id ++ "\n""#,
+    ])
+    .is_ok_and(|ids| ids.lines().count() == 1)
+    .then_some("main@origin");
     if let Err(e) = jj::workspace_add(&derived_name, &path, revision) {
         die(&e.to_string());
     }
