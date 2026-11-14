@@ -25,6 +25,12 @@ pub struct Entry {
     /// Source refresh failed or is pending; never advertise its old vector.
     #[serde(default)]
     pub stale: bool,
+    #[serde(default)]
+    pub text_chunks: usize,
+    #[serde(default)]
+    pub text_hash: Option<String>,
+    #[serde(default)]
+    pub git_conflict: bool,
 }
 
 impl Entry {
@@ -52,6 +58,13 @@ impl Entry {
             links: wikilinks(&canonical),
             vector,
             stale: false,
+            text_chunks: old
+                .filter(|old| old.key.content_hash == frontmatter::content_hash(note))
+                .map_or(0, |old| old.text_chunks),
+            text_hash: old
+                .filter(|old| old.key.content_hash == frontmatter::content_hash(note))
+                .and_then(|old| old.text_hash.clone()),
+            git_conflict: old.is_some_and(|old| old.git_conflict),
         }
     }
     pub fn needs_embedding(&self) -> bool {

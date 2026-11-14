@@ -162,6 +162,11 @@ This also subsumes the "vault freshness gap" mitigation from
 `storage-tiers.md`: promoting the index to a hot-tier `Vault` DO is option
 2 there, and the AI layer needs that registry anyway.
 
+The drift-control implementation and operational contract are documented in
+[`drift-and-search.md`](drift-and-search.md): read-only verification,
+explicit repair, guarded Git imports through the single writer, and
+full-text/semantic search over the shared index.
+
 ## Frontend: Rust-WASM editor, HTMX enhancer
 
 The editing surface is the **Rust-WASM editor** (`apps/notes-editor`) — the

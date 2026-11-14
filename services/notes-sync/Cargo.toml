@@ -18,7 +18,10 @@ base64 = "0.22"
 # Worker target.
 getrandom = { version = "0.4", features = ["wasm_js"] }
 # HMAC-SHA256 for the signed session cookie.
-hmac = "0.12"
+futures-util = "0.3"
+hmac         = "0.12"
+# Git blob identity only; artifact/security hashes remain SHA-256.
+sha1 = "0.10"
 # ES256 (P-256 ECDSA) for the DPoP proofs — the portable crypto part of
 # the ATProto OAuth flow (RustCrypto, compiles to wasm).
 p256 = { version = "0.14", features = ["ecdsa"] }

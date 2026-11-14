@@ -158,10 +158,58 @@ pub fn note_paths_from_tree(tree_json: &str) -> Result<Vec<String>, CommitError>
     Ok(ids)
 }
 
+/// The same registry with Git blob versions for an efficient drift scan.
+/// A truncated tree is not a complete vault and must never report clean.
+pub fn note_blobs_from_tree(
+    tree_json: &str,
+) -> Result<std::collections::BTreeMap<String, String>, CommitError> {
+    let value: serde_json::Value =
+        serde_json::from_str(tree_json).map_err(|e| CommitError::Transport(e.to_string()))?;
+    if value.get("truncated").and_then(|v| v.as_bool()) == Some(true) {
+        return Err(CommitError::Transport("Git tree is truncated".into()));
+    }
+    let entries = value["tree"]
+        .as_array()
+        .ok_or_else(|| CommitError::Transport("tree missing".into()))?;
+    let mut blobs = std::collections::BTreeMap::new();
+    for entry in entries
+        .iter()
+        .filter(|entry| entry["type"].as_str() == Some("blob"))
+    {
+        let Some(id) = entry["path"]
+            .as_str()
+            .and_then(|path| path.strip_prefix("notes/")?.strip_suffix(".md"))
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        let sha = entry["sha"]
+            .as_str()
+            .ok_or_else(|| CommitError::Transport("Git blob hash missing".into()))?;
+        blobs.insert(id.to_owned(), sha.to_owned());
+    }
+    Ok(blobs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn versioned_tree_fixtures_reject_incomplete_registries() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/git-tree");
+        let valid = std::fs::read_to_string(root.join("valid.json")).unwrap();
+        let blobs = note_blobs_from_tree(&valid).unwrap();
+        assert_eq!(blobs.len(), 1);
+        assert_eq!(blobs["target"], crate::drift::git_blob_hash("hello"));
+        for filename in ["truncated.json", "missing-hash.json"] {
+            assert!(
+                note_blobs_from_tree(&std::fs::read_to_string(root.join(filename)).unwrap())
+                    .is_err()
+            );
+        }
+    }
 
     /// Fake that returns `stale_first` StaleRef outcomes before
     /// succeeding, counting how many times each method was called.
@@ -505,6 +553,19 @@ mod worker_client {
             repo: &str,
             branch: &str,
         ) -> Result<Vec<String>, CommitError> {
+            Ok(self
+                .list_note_blobs(owner, repo, branch)
+                .await?
+                .into_keys()
+                .collect())
+        }
+
+        pub async fn list_note_blobs(
+            &self,
+            owner: &str,
+            repo: &str,
+            branch: &str,
+        ) -> Result<std::collections::BTreeMap<String, String>, CommitError> {
             let url = format!(
                 "https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
             );
@@ -519,10 +580,10 @@ mod worker_client {
                         .text()
                         .await
                         .map_err(|e| CommitError::Transport(e.to_string()))?;
-                    super::note_paths_from_tree(&body)
+                    super::note_blobs_from_tree(&body)
                 }
                 // No commits on the branch yet (empty repo) — an empty vault.
-                404 | 409 => Ok(Vec::new()),
+                409 => Ok(std::collections::BTreeMap::new()),
                 other => Err(CommitError::Transport(format!(
                     "GET trees returned {other}"
                 ))),

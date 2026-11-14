@@ -32,8 +32,9 @@ in [`docs/vault-architecture.md`](docs/vault-architecture.md) (epic #989).
 `VaultDurableObject` (`VAULT`, owner-scoped) persists disposable per-note
 metadata, vectors, a refresh queue, and cached connections. It is not a
 second note authority. Refresh reads the note DO's snapshot; a note with no
-hot edit log falls back to its Git body. Rebuilding never writes into the
-note's edit log. `GET /vault` remains the existing portable Git listing.
+hot edit log falls back to its Git body. Clean, idle notes can accept Git
+changes through an opaque edit-log append; hot edits are never overwritten.
+`GET /vault` remains the existing portable Git listing.
 
 Accepted edits persist an index-delivery flag alongside the edit log.
 Delivery runs on the existing commit/disconnect cadence, independently of
@@ -46,9 +47,9 @@ stale artifacts. There is no periodic vault scan.
 Owner-session-authenticated endpoints:
 
 - `POST /vault/rebuild` discovers Git note paths and queues those plus
-  existing index records, reporting a count of skipped unsupported ids.
-  Use this once to backfill an existing vault, or
-  to rebuild disposable records. A supplied browser Origin must match the
+  existing index records under a durable discovery job. Use this once to
+  backfill an existing vault or rebuild disposable records; counts appear
+  through `GET /vault/status`. A supplied browser Origin must match the
   configured app or backend base URL.
 - `GET /vault/index` returns indexed ids, title/tags/aliases, cache keys,
   and source/embedding status, without bodies or vectors.
@@ -82,9 +83,10 @@ limits, or whose provider returns an invalid or error response, keep a
 missing vector rather than silently truncating text or claiming freshness. Similarity is brute-force at
 personal-vault scale; no external vector database is required.
 
-This implements #993's shared index/embedding seam. Open-time drift
-verification, Git-push-triggered reconciliation, repair diagnostics, and
-full-text/semantic search remain #996.
+Drift verification/repair, safe open/push reconciliation, and full-text or
+semantic search build on this same index. See
+[`docs/drift-and-search.md`](docs/drift-and-search.md) for `shaka notes`
+commands, hook installation, source-conflict policy, and HTTP contracts.
 
 ## Wire protocol
 

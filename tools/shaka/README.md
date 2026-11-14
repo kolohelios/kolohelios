@@ -39,6 +39,10 @@ changed) and exec's the debug binary.
 - `project audit` — structural audit (README/.gitignore presence, rust test
   presence, coverage threshold sanity). Rust worker migrations reject
   `new_classes` in favor of `new_sqlite_classes` for free-plan compatibility.
+- `notes verify [--repair --wait]` — scan the shared vault index and heal
+  stale artifacts without overwriting hot edits. `notes webhook-install`
+  configures signed push delivery; `notes search [--semantic]` searches the
+  index. See [the operator guide](../../services/notes-sync/docs/drift-and-search.md).
 - `commit lint -r <revset>` — enforces conventional commit format, title
   length, body wrap, and atomicity.
 - `repo sync|send|pr|audit|status` — `jj`/PR workflow helpers.

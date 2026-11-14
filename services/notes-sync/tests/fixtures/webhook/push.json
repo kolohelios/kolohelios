@@ -1,0 +1,1 @@
+{"repository":{"full_name":"example/notes"},"ref":"refs/heads/main","size":1,"commits":[{"added":["notes/a.md","outside.md","notes/unsafe name.md"],"modified":["notes/folder/b.md","notes/a.md"],"removed":["notes/gone.md"]}]}

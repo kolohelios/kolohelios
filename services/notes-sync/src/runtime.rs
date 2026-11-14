@@ -41,6 +41,7 @@ const PURGE_PATH: &str = "/__purge";
 /// (returned as `{"seq":…,"text":…}`) before the move. Read-only — it never
 /// mutates the source, so a later failure leaves the source recoverable.
 pub(crate) const EXPORT_PATH: &str = "/__export";
+pub(crate) const RECONCILE_PATH: &str = "/__reconcile";
 
 /// Internal DO control path: the `/rename` orchestrator forwards a `POST`
 /// here to the *destination* note's Durable Object with the migrated body in
@@ -124,8 +125,10 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
         "/me" => return handle_me(&req, &env),
         "/vault" => return handle_vault(&req, &env).await,
-        "/vault/index" | "/vault/connections" | "/vault/rebuild" => {
-            return crate::vault_runtime::handle(&req, &env).await;
+        "/vault/events/github" => return crate::vault_runtime::handle_webhook(req, &env).await,
+        "/vault/index" | "/vault/connections" | "/vault/rebuild" | "/vault/verify"
+        | "/vault/status" | "/vault/search" => {
+            return crate::vault_runtime::handle(req, &env).await;
         }
         "/suggest-path" => return handle_suggest_path(req, &env).await,
         "/delete" => return handle_delete(&req, &env).await,
@@ -714,6 +717,8 @@ async fn purge_note_with_retry(env: &Env, note_id: &str) -> Result<()> {
 #[derive(Serialize, Deserialize)]
 struct SocketAttachment {
     note_id: String,
+    #[serde(default)]
+    opened: bool,
 }
 
 /// Storage key for the log entry at `seq`, zero-padded so a prefix
@@ -750,6 +755,75 @@ impl NoteDurableObject {
         Ok((seq, text))
     }
 
+    async fn snapshot(&self) -> Result<crate::drift::Snapshot> {
+        let (seq, text) = self.load_state().await?;
+        Ok(crate::drift::Snapshot {
+            seq,
+            text,
+            committed_seq: self
+                .state
+                .storage()
+                .get("committed_seq")
+                .await?
+                .unwrap_or(0),
+            active_sockets: self.state.get_websockets().len(),
+            deleted: self.state.storage().get("deleted").await?.unwrap_or(false),
+            leased: rename_lease_active(
+                self.state.storage().get(RENAME_LEASE_KEY).await?,
+                Date::now().as_millis() as i64,
+            ),
+        })
+    }
+
+    /// Compare-and-append opaque Git text through the same single writer.
+    /// Never reset sequence/log state or overwrite an active editor.
+    async fn import_git(
+        &self,
+        expected: &crate::drift::Snapshot,
+        text: Option<&str>,
+        sockets: usize,
+    ) -> Result<bool> {
+        if self.snapshot().await? != *expected {
+            return Ok(false);
+        }
+        match crate::drift::reconcile(expected, text, sockets) {
+            crate::drift::Reconcile::Unchanged => Ok(true),
+            crate::drift::Reconcile::Conflict => Ok(false),
+            crate::drift::Reconcile::Apply { text, deleted } => {
+                let seq = expected.seq + 1;
+                self.commit_edit(seq, &Delta::Whole { text: text.clone() }, &text)
+                    .await?;
+                self.state.storage().put("deleted", deleted).await?;
+                self.state.storage().put("committed_seq", seq).await?;
+                // Delivery is recoverable even if the importing Vault job dies.
+                self.state.storage().set_alarm(COMMIT_RETRY_BACKOFF).await?;
+                Ok(true)
+            }
+        }
+    }
+
+    async fn hydrate_open(&self, id: &str) -> Result<()> {
+        let snapshot = self.snapshot().await?;
+        if snapshot.seq != snapshot.committed_seq || snapshot.active_sockets > 1 {
+            return Ok(());
+        }
+        let client = WorkerGitHubClient::new(self.env.secret("GITHUB_TOKEN")?.to_string());
+        let target = self.git_target_for(id)?;
+        let git = client
+            .get_file_content(&target)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        if git.is_none() {
+            // A missing/inaccessible branch is not an instruction to delete.
+            client
+                .list_note_paths(&target.owner, &target.repo, &target.branch)
+                .await
+                .map_err(|e| Error::RustError(e.to_string()))?;
+        }
+        self.import_git(&snapshot, git.as_deref(), 1).await?;
+        Ok(())
+    }
+
     /// Append `delta` to the log under `seq` and update the materialized
     /// `(seq, text)` snapshot plus the index-delivery flag. All writes land
     /// in one message handler, so workerd's output gate applies them before
@@ -759,6 +833,7 @@ impl NoteDurableObject {
         self.state.storage().put("seq", seq).await?;
         self.state.storage().put("text", text).await?;
         self.state.storage().put("index_dirty", true).await?;
+        self.state.storage().put("deleted", false).await?;
         Ok(())
     }
 
@@ -833,6 +908,7 @@ impl NoteDurableObject {
         self.state.storage().delete_all().await?;
         let _ = self.state.storage().delete_alarm().await;
         self.state.storage().put("note_id", note_id).await?;
+        self.state.storage().put("deleted", true).await?;
         self.state.storage().put("index_dirty", true).await?;
         self.notify_index().await?;
         Response::ok("purged")
@@ -1040,9 +1116,22 @@ impl DurableObject for NoteDurableObject {
         // Rename, source side: report the current body so the orchestrator can
         // carry it to the new path. Read-only.
         if req.path() == EXPORT_PATH {
-            let (seq, text) = self.load_state().await?;
-            let body = serde_json::json!({ "seq": seq, "text": text }).to_string();
-            return Response::ok(body);
+            return Response::from_json(&self.snapshot().await?);
+        }
+        if req.path() == RECONCILE_PATH {
+            let id = req.headers().get("X-Note-Id")?.unwrap_or_default();
+            if !crate::route::is_valid_note_id(&id) {
+                return Response::error("invalid id", 400);
+            }
+            let import: crate::drift::Import = req.json().await?;
+            self.state.storage().put("note_id", id).await?;
+            if !self
+                .import_git(&import.expected, import.text.as_deref(), 0)
+                .await?
+            {
+                return Response::error("hot note conflict", 409);
+            }
+            return Response::from_json(&self.snapshot().await?);
         }
         // Rename guard: report how many live editor sockets this object holds
         // so the orchestrator can refuse a rename of a note open in another
@@ -1109,7 +1198,10 @@ impl DurableObject for NoteDurableObject {
         // Hibernation accept: the runtime may evict this object while the
         // socket stays open, waking it on the next inbound message.
         self.state.accept_web_socket(&server);
-        server.serialize_attachment(SocketAttachment { note_id })?;
+        server.serialize_attachment(SocketAttachment {
+            note_id,
+            opened: false,
+        })?;
 
         Ok(ResponseBuilder::new()
             .with_status(101)
@@ -1124,7 +1216,7 @@ impl DurableObject for NoteDurableObject {
     ) -> Result<()> {
         // The attachment proves we accepted this socket and carries the
         // note id across hibernation.
-        let _attachment: SocketAttachment = ws
+        let mut attachment: SocketAttachment = ws
             .deserialize_attachment()?
             .ok_or_else(|| Error::RustError("socket missing attachment".into()))?;
 
@@ -1148,6 +1240,23 @@ impl DurableObject for NoteDurableObject {
             // the client is already current; phase 2 always sends the
             // snapshot so a reconnecting editor resyncs from the truth.
             ClientMsg::Open { since_seq: _ } => {
+                if !attachment.opened {
+                    attachment.opened = true;
+                    ws.serialize_attachment(&attachment)?;
+                    if self.hydrate_open(&attachment.note_id).await.is_err() {
+                        console_log!(
+                            "note-open Git reconciliation unavailable; retaining durable text"
+                        );
+                        if self.load_state().await?.0 == 0 {
+                            ws.close(Some(1011), Some("cold note unavailable; retry"))?;
+                            return Ok(());
+                        }
+                    }
+                }
+                self.state.storage().put("index_dirty", true).await?;
+                if self.notify_index().await.is_err() {
+                    self.state.storage().set_alarm(COMMIT_RETRY_BACKOFF).await?;
+                }
                 let (seq, text) = self.load_state().await?;
                 send(&ws, &ServerMsg::Sync { seq, text })
             }
