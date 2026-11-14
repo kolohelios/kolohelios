@@ -29,9 +29,9 @@ fn fixtures_root() -> PathBuf {
 fn staged_repo() -> tempfile::TempDir {
     let root = tempfile::TempDir::new().unwrap();
     std::fs::create_dir_all(root.path().join("cue.mod")).unwrap();
-    std::fs::write(
+    std::fs::copy(
+        fixtures_root().join("module.cue.fixture"),
         root.path().join("cue.mod/module.cue"),
-        "module: \"kolohelios.com\"\nlanguage: version: \"v0.15.1\"\n",
     )
     .unwrap();
     std::fs::write(root.path().join("LICENSE"), "MIT OR Apache-2.0\n").unwrap();
@@ -66,6 +66,102 @@ fn run(root: &Path, args: &[&str]) -> std::process::Output {
         .current_dir(root)
         .output()
         .expect("spawn shaka")
+}
+
+/// Exercise the same unscoped entry point as external consumer CI. The
+/// fixture isn't buildable (no flake/justfile), so unrelated failures are
+/// expected; applicability must still be reported via --keep-going.
+fn preflight(root: &Path) -> serde_json::Value {
+    let out = run(root, &["preflight", "--keep-going", "--json"]);
+    serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "preflight did not emit JSON: {e}\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    })
+}
+
+fn check_report<'a>(report: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+    report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == name)
+        .unwrap_or_else(|| panic!("missing check {name}: {report}"))
+}
+
+#[test]
+fn unscoped_preflight_skips_absent_monorepo_owners_and_vale_config() {
+    let repo = staged_repo();
+    let report = preflight(repo.path());
+    for name in [
+        "shaka domain schema-check",
+        "shaka domain check",
+        "shaka token cloudflare schema-check",
+        "shaka deploy generate-tf --check",
+        "shaka profile generate --check",
+        "resume synced to portfolio dist",
+        "vale",
+    ] {
+        assert_eq!(check_report(&report, name)["status"], "skipped", "{name}");
+    }
+    // No --since: universal checks really ran, rather than skipping the
+    // entire suite through path scoping.
+    assert_eq!(
+        check_report(&report, "shaka project schema-check")["status"],
+        "pass"
+    );
+}
+
+#[test]
+fn unscoped_preflight_fails_on_missing_owned_profile_and_resume_artifacts() {
+    let repo = staged_repo();
+    std::fs::create_dir_all(repo.path().join("tools/resume")).unwrap();
+    let report = preflight(repo.path());
+    for (name, missing) in [
+        (
+            "shaka profile generate --check",
+            "tools/resume/schema/profile.cue",
+        ),
+        ("resume synced to portfolio dist", "tools/resume/resume.pdf"),
+    ] {
+        let check = check_report(&report, name);
+        assert_eq!(check["status"], "fail", "{check}");
+        assert!(
+            check["detail"].as_str().unwrap().contains(missing),
+            "{check}"
+        );
+    }
+}
+
+#[test]
+fn unscoped_preflight_preserves_vale_config_errors() {
+    let repo = staged_repo();
+    std::fs::copy(
+        fixtures_root().join("invalid/vale.ini"),
+        repo.path().join(".vale.ini"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_root().join("README.md"),
+        repo.path().join("README.md"),
+    )
+    .unwrap();
+    let init = Command::new("jj")
+        .args(["git", "init", "--colocate"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    assert!(init.status.success(), "{init:?}");
+
+    let report = preflight(repo.path());
+    let check = check_report(&report, "vale");
+    assert_eq!(check["status"], "fail", "{check}");
+    assert!(
+        check["detail"].as_str().unwrap().contains("MissingStyle"),
+        "{check}"
+    );
 }
 
 #[test]

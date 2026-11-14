@@ -71,6 +71,7 @@
               pkgs.git
               pkgs.opentofu
               pkgs.actionlint
+              pkgs.vale
             ];
             preCheck = ''
               export HOME="$(mktemp -d)"
