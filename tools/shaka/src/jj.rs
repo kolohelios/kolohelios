@@ -38,6 +38,9 @@ pub enum JjError {
     #[snafu(display("could not derive primary workspace root from .jj/repo target {target}"))]
     PrimaryRootDerive { target: String },
 
+    #[snafu(display("stale workspace recovered with conflicts or divergent revisions; jj preserved local edits in recovery revisions. Inspect the recovery diagnostics and resolve the original workspace before creating another"))]
+    StaleRecoveryNeedsResolution,
+
     #[snafu(display("workspace path is not valid UTF-8: {path}"))]
     WorkspacePathInvalidUtf8 { path: String },
 }
@@ -65,6 +68,34 @@ pub fn run_streaming(args: &[&str]) -> Result<(), JjError> {
             status,
         }
         .fail();
+    }
+    Ok(())
+}
+
+/// Recover only jj's explicit stale-working-copy error. Native recovery
+/// preserves unsnapshotted edits, but can leave divergent recovery revisions;
+/// stop in that case rather than hiding the source tree's unresolved work.
+pub fn recover_stale_workspace() -> Result<(), JjError> {
+    // Detect staleness explicitly even if the user normally enables jj's
+    // automatic recovery, so the unresolved-recovery guard always runs.
+    match run(&["--config", "snapshot.auto-update-stale=false", "status"]) {
+        Ok(_) => return Ok(()),
+        Err(JjError::JjCommand { stderr, .. }) if stderr.contains("working copy is stale") => {}
+        Err(error) => return Err(error),
+    }
+    eprintln!("Recovering stale workspace with jj's local-change safeguards...");
+    run_streaming(&["workspace", "update-stale"])?;
+    let unresolved = run(&[
+        "--ignore-working-copy",
+        "log",
+        "-r",
+        "@",
+        "--no-graph",
+        "-T",
+        "divergent || conflict",
+    ])?;
+    if unresolved.trim() == "true" {
+        return StaleRecoveryNeedsResolutionSnafu.fail();
     }
     Ok(())
 }
@@ -371,10 +402,10 @@ pub fn slugify(s: &str, max_len: usize) -> String {
     out.trim_end_matches('-').to_string()
 }
 
-/// Absolute path of the repo root (the working copy of the default
-/// workspace).
+/// Absolute path of the current workspace root. This is metadata-only:
+/// discovering a path must not snapshot or repair the working copy.
 pub fn repo_root() -> Result<PathBuf, JjError> {
-    let out = run(&["workspace", "root"])?;
+    let out = run(&["--ignore-working-copy", "workspace", "root"])?;
     Ok(PathBuf::from(out.trim()))
 }
 
@@ -404,17 +435,33 @@ fn in_repo_from(start: &Path) -> bool {
 pub fn primary_workspace_root() -> Result<PathBuf, JjError> {
     let cur = repo_root()?;
     let repo_marker = cur.join(".jj").join("repo");
-    let metadata = std::fs::metadata(&repo_marker).context(StatSnafu {
+    let metadata = std::fs::symlink_metadata(&repo_marker).context(StatSnafu {
         path: repo_marker.display().to_string(),
     })?;
     if metadata.is_dir() {
         return Ok(cur);
     }
+    if metadata.file_type().is_symlink() {
+        let target = std::fs::canonicalize(&repo_marker).context(ReadSnafu {
+            path: repo_marker.display().to_string(),
+        })?;
+        return primary_root_from_repo_marker(&target.to_string_lossy()).context(
+            PrimaryRootDeriveSnafu {
+                target: target.display().to_string(),
+            },
+        );
+    }
     let content = std::fs::read_to_string(&repo_marker).context(ReadSnafu {
         path: repo_marker.display().to_string(),
     })?;
-    primary_root_from_repo_marker(content.trim()).context(PrimaryRootDeriveSnafu {
-        target: content.trim().to_string(),
+    // jj may store a relative pointer, interpreted from the marker's
+    // directory, not from the caller's cwd (which may be nested deeper).
+    let target = cur.join(".jj").join(content.trim());
+    let target = std::fs::canonicalize(&target).context(ReadSnafu {
+        path: target.display().to_string(),
+    })?;
+    primary_root_from_repo_marker(&target.to_string_lossy()).context(PrimaryRootDeriveSnafu {
+        target: target.display().to_string(),
     })
 }
 
@@ -437,6 +484,7 @@ pub struct WorkspaceInfo {
 /// All workspaces registered in the repo, in the order `jj` reports.
 pub fn workspaces() -> Result<Vec<WorkspaceInfo>, JjError> {
     let out = run(&[
+        "--ignore-working-copy",
         "workspace",
         "list",
         "-T",

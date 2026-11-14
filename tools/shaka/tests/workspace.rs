@@ -86,6 +86,156 @@ fn new_creates_workspace_and_directory() {
     );
 }
 
+/// Rewrite this workspace's commit from a sibling, without updating this
+/// workspace's on-disk checkout. Keep an unsnapshotted edit in the stale tree.
+fn make_stale(repo: &Path, sibling: &Path, dirty: bool) {
+    std::fs::write(repo.join("tracked.txt"), "original\n").unwrap();
+    jj(repo, &["describe", "-m", "original working copy"]);
+    jj(
+        repo,
+        &[
+            "workspace",
+            "add",
+            "--name",
+            "sibling",
+            sibling.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(sibling.join("tracked.txt"), "edit from sibling\n").unwrap();
+    jj(sibling, &["describe", "-m", "sibling content"]);
+    jj(
+        sibling,
+        &[
+            "restore",
+            "--from",
+            "@",
+            "--into",
+            "default@",
+            "tracked.txt",
+        ],
+    );
+    if dirty {
+        std::fs::write(repo.join("tracked.txt"), "unsnapshotted local edit\n").unwrap();
+    }
+    let status = Command::new("jj")
+        .arg("status")
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert!(
+        !status.status.success(),
+        "test must start with a genuinely stale tree"
+    );
+    assert!(String::from_utf8_lossy(&status.stderr).contains("stale"));
+}
+
+#[test]
+fn new_from_stale_tree_recovers_without_discarding_local_edits() {
+    let parent = TempDir::new().unwrap();
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+    make_stale(&repo, &parent.path().join("sibling"), true);
+    // An enabled global/user preference must not bypass the recovery guard.
+    jj(
+        &repo,
+        &[
+            "--ignore-working-copy",
+            "config",
+            "set",
+            "--repo",
+            "snapshot.auto-update-stale",
+            "true",
+        ],
+    );
+    let out = shaka(&repo, &["workspace", "new", "fresh"]);
+    assert!(
+        !out.status.success(),
+        "unresolved recovery must block creation"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("jj preserved local edits"), "{stderr}");
+    assert_eq!(
+        jj(
+            &repo,
+            &[
+                "--ignore-working-copy",
+                "config",
+                "get",
+                "snapshot.auto-update-stale"
+            ]
+        ),
+        "true"
+    );
+    assert!(!parent.path().join("repo-fresh").exists());
+    let revisions = jj(
+        &repo,
+        &[
+            "--ignore-working-copy",
+            "log",
+            "-r",
+            "divergent()",
+            "--no-graph",
+            "-T",
+            r#"commit_id ++ "\n""#,
+        ],
+    );
+    assert!(
+        revisions.lines().any(|revision| {
+            jj(
+                &repo,
+                &[
+                    "--ignore-working-copy",
+                    "file",
+                    "show",
+                    "-r",
+                    revision,
+                    "tracked.txt",
+                ],
+            )
+            .contains("unsnapshotted local edit")
+        }),
+        "local edits must be retained in a recovery revision"
+    );
+}
+
+#[test]
+fn new_from_clean_stale_tree_recovers_and_creates_workspace() {
+    let parent = TempDir::new().unwrap();
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+    make_stale(&repo, &parent.path().join("sibling"), false);
+    let out = shaka(&repo, &["workspace", "new", "fresh"]);
+    assert_success(&out, "workspace new from clean stale tree");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Recovering stale workspace"));
+    assert!(parent.path().join("repo-fresh/.jj").is_dir());
+    assert_eq!(
+        std::fs::read_to_string(repo.join("tracked.txt")).unwrap(),
+        "edit from sibling\n"
+    );
+    assert!(!jj(&repo, &["status"]).contains("stale"));
+}
+
+#[test]
+fn new_from_sibling_uses_primary_basename() {
+    let parent = TempDir::new().unwrap();
+    let repo = parent.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    jj_init_colocated(&repo);
+    assert_success(
+        &shaka(&repo, &["workspace", "new", "first"]),
+        "first workspace",
+    );
+    let first = parent.path().join("repo-first");
+    assert_success(
+        &shaka(&first, &["workspace", "new", "second"]),
+        "workspace from sibling",
+    );
+    assert!(parent.path().join("repo-second/.jj").is_dir());
+    assert!(!parent.path().join("repo-first-second").exists());
+}
+
 #[test]
 fn forget_removes_workspace_and_directory() {
     let parent = TempDir::new().expect("tempdir");
