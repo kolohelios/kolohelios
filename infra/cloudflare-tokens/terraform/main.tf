@@ -153,9 +153,11 @@ resource "cloudflare_api_token" "deploy" {
       effect = "allow"
       permission_groups = [
         { id = data.cloudflare_api_token_permission_groups_list.workers_scripts_write.result[0].id },
-        # Account-scoped RUM `site_info` write for the portfolio's
-        # `cloudflare_web_analytics_site` (#195). Smallest CF-exposed
-        # scope — there is no narrower "Web Analytics" group.
+        # RUM `site_info` GET/list requires Read explicitly; Write only
+        # covers create/update/delete. Terraform refresh fails without
+        # both grants for `cloudflare_web_analytics_site` (#1020).
+        # https://developers.cloudflare.com/api/resources/rum/subresources/site_info/methods/get/
+        { id = data.cloudflare_api_token_permission_groups_list.account_settings_read.result[0].id },
         { id = data.cloudflare_api_token_permission_groups_list.account_settings_write.result[0].id },
       ]
       resources = jsonencode({
