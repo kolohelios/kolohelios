@@ -6,6 +6,11 @@
   inputs = {
     kolohelios-nix.url = "https://flakehub.com/f/kolohelios/kolohelios-nix/*.tar.gz";
     nixpkgs.follows = "kolohelios-nix/nixpkgs";
+    blogctl = {
+      url = "https://flakehub.com/f/kolohelios/blogctl/*.tar.gz";
+      inputs.kolohelios-nix.follows = "kolohelios-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     claude-hooks = {
       url = "https://flakehub.com/f/kolohelios/claude-hooks/*.tar.gz";
       inputs.kolohelios-nix.follows = "kolohelios-nix";
@@ -36,6 +41,7 @@
       self,
       kolohelios-nix,
       nixpkgs,
+      blogctl,
       claude-hooks,
       herdr,
       home-manager,
@@ -59,9 +65,13 @@
 
       # Standalone desktop profile; independent of the host's NixOS release.
       homeConfigurations.jone = home-manager.lib.homeManagerConfiguration {
-        pkgs = import nixpkgs { system = "x86_64-linux"; };
+        pkgs = import nixpkgs {
+          system = "x86_64-linux";
+          config.allowUnfreePredicate = pkg: nixpkgs.lib.getName pkg == "1password-cli";
+        };
         extraSpecialArgs = {
           inherit
+            blogctl
             claude-hooks
             herdr
             pi

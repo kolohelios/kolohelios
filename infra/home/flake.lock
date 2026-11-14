@@ -1,6 +1,6 @@
 {
   "nodes": {
-    "claude-hooks": {
+    "blogctl": {
       "inputs": {
         "kolohelios-nix": [
           "kolohelios-nix"
@@ -9,6 +9,29 @@
           "nixpkgs"
         ],
         "rust-overlay": "rust-overlay"
+      },
+      "locked": {
+        "lastModified": 1794546960,
+        "narHash": "sha256-jxzw6Cqmw70jwRsNujiA1Tb3nrzOdpd3y9jmuoiGcuM=",
+        "rev": "5ba83936de1419557b46a983c3e192172093403e",
+        "revCount": 803,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/blogctl/0.1.803%2Brev-5ba83936de1419557b46a983c3e192172093403e/01a1d359-f883-7461-95b4-e0f9c78436f3/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/kolohelios/blogctl/%2A.tar.gz"
+      }
+    },
+    "claude-hooks": {
+      "inputs": {
+        "kolohelios-nix": [
+          "kolohelios-nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay_2"
       },
       "locked": {
         "lastModified": 1782698087,
@@ -28,7 +51,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_2"
+        "rust-overlay": "rust-overlay_3"
       },
       "locked": {
         "lastModified": 1791993401,
@@ -172,6 +195,7 @@
     },
     "root": {
       "inputs": {
+        "blogctl": "blogctl",
         "claude-hooks": "claude-hooks",
         "herdr": "herdr",
         "home-manager": "home-manager",
@@ -186,6 +210,27 @@
       }
     },
     "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "blogctl",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1777778183,
+        "narHash": "sha256-Lqv9MZO0XAGcMbXJU+ULBSMD41Pf391uJehylUQKe7Y=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "dbba5f888c82ef3ce594c451c33ac2474eb80847",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rust-overlay_2": {
       "inputs": {
         "nixpkgs": [
           "claude-hooks",
@@ -206,7 +251,7 @@
         "type": "github"
       }
     },
-    "rust-overlay_2": {
+    "rust-overlay_3": {
       "inputs": {
         "nixpkgs": [
           "herdr",
@@ -227,7 +272,7 @@
         "type": "github"
       }
     },
-    "rust-overlay_3": {
+    "rust-overlay_4": {
       "inputs": {
         "nixpkgs": [
           "shaka",
@@ -256,7 +301,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_3"
+        "rust-overlay": "rust-overlay_4"
       },
       "locked": {
         "lastModified": 1783264557,

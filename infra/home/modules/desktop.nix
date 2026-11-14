@@ -1,7 +1,10 @@
 { ... }:
 
 {
-  imports = [ ./common.nix ];
+  imports = [
+    ./common.nix
+    ./writing-lab.nix
+  ];
 
   home.username = "jone";
   home.homeDirectory = "/home/jone";
