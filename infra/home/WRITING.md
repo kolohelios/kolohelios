@@ -44,6 +44,36 @@ This declarative validation profile uses the local package only for that build
 and does not change the published package pin. The normal desktop profile uses
 the pinned FlakeHub package. No privileged system changes are needed.
 
+## NixOS desktop-app authentication
+
+Installing the desktop app and the Home Manager CLI package is not sufficient
+for their secure connection. Enable the NixOS CLI module in the host's system
+configuration, not in Home Manager:
+
+```nix
+programs._1password.enable = true;
+```
+
+On this machine the host configuration is `/etc/nixos/configuration.nix`. After
+adding that option, apply it locally with administrator privileges:
+
+```sh
+sudo nixos-rebuild switch
+```
+
+This creates the protected `/run/wrappers/bin/op` with the required group
+permissions. Keep **Settings → Developer → Integrate with 1Password CLI** enabled
+in the desktop app, unlock it, and approve its local authorization prompt.
+Restart the app after the rebuild if necessary. A separate `op account add` or
+shell-session login is not required for desktop integration.
+
+The writing launchers explicitly prefer the protected system wrapper on NixOS.
+If it is missing, they fail with the required system option rather than silently
+using an unwrapped store binary. Home Manager cannot create that privileged
+wrapper. Do not manually change executable permissions or copy the binary.
+Outside NixOS, the launchers use the packaged CLI normally. An explicitly supplied
+process-scoped token still works, and help/previews need no authentication.
+
 ## Private setup
 
 Follow the engine's [integration guide](../../apps/blogctl/INTEGRATIONS.md)

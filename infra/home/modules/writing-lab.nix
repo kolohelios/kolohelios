@@ -8,27 +8,7 @@
 let
   cfg = config.programs.writing-lab;
   root = "${config.home.homeDirectory}/.local/share/blogctl-writing";
-  authenticate = command: ''
-    set +x
-    if [[ -n "''${NOVELAI_API_TOKEN:-}" ]]; then
-      exec ${command}
-    fi
-    reference="''${NOVELAI_API_TOKEN_REF:-}"
-    if [[ -z "$reference" ]]; then
-      reference_file="$HOME/.config/blogctl/novelai-token-reference"
-      if [[ ! -f "$reference_file" || -L "$reference_file" ]]; then
-        echo 'Configure a private 1Password token reference; see the writing runbook.' >&2
-        exit 1
-      fi
-      reference="$(< "$reference_file")"
-    fi
-    if [[ "$reference" != op://* || "$reference" == *$'\n'* || "$reference" == *$'\r'* ]]; then
-      echo 'Invalid 1Password reference (value suppressed).' >&2
-      exit 1
-    fi
-    export NOVELAI_API_TOKEN="$reference"
-    exec ${pkgs._1password-cli}/bin/op run -- ${command}
-  '';
+  authenticate = command: import ../packages/writing-credentials.nix { inherit pkgs command; };
   models = pkgs.writeShellApplication {
     name = "blogctl-writing-models";
     text = authenticate "${cfg.package}/bin/blogctl novelai models --json";

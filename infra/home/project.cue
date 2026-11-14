@@ -56,6 +56,13 @@ package project
 			}
 		}
 		extra: """
+      checks = forEachSupportedSystem (
+        { pkgs, ... }:
+        {
+          writing-credentials = import ./tests/writing-credentials.nix { inherit pkgs; };
+        }
+      );
+
       # Standalone desktop profile; independent of the host's NixOS release.
       homeConfigurations.jone = home-manager.lib.homeManagerConfiguration {
         pkgs = import nixpkgs {
