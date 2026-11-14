@@ -1,0 +1,7 @@
+# preserve user comments
+model = "existing-model"
+[mcp_servers.other]
+command = "other"
+[mcp_servers.novelai]
+command = "/nix/store/prototype-novelai-lab/bin/novelai-lab"
+args = ["mcp"]

@@ -87,7 +87,7 @@ in shell startup files, Dropbox, logs, or candidates. Update/revoke the token in
 1Password/NovelAI to rotate it; no runtime copy needs updating.
 
 This slice does not install/configure `op` or change Home Manager. Toolchain and
-prototype migration are tracked in #1133. The process environment is still
+prototype migration are described in [INTEGRATIONS.md](INTEGRATIONS.md). The process environment is still
 accessible to sufficiently privileged processes; this is not credential isolation
 from other processes running as the same user.
 

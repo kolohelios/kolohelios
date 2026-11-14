@@ -32,6 +32,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Read-only writing MCP server and additive client configuration.
+    Mcp(crate::writing_mcp::McpArgs),
     /// Discover NovelAI text models or explicitly request one creative candidate.
     Novelai(commands::novelai::NovelaiArgs),
     /// Manage private writing experiments independently of post stages.
@@ -559,6 +561,7 @@ pub fn run() -> Result<()> {
 /// shelling out to a real `jj` binary.
 pub fn dispatch_with_jj(cmd: Command, jj: &dyn Jj) -> Result<()> {
     match cmd {
+        Command::Mcp(args) => crate::writing_mcp::command(args),
         Command::Novelai(args) => commands::novelai::run(args),
         Command::Experiment(args) => commands::experiment::experiment(args),
         Command::Candidate(args) => commands::experiment::candidate(args),

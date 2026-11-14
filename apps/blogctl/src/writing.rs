@@ -17,6 +17,8 @@ use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+pub mod migration;
+
 /// Errors are typed locally so experiments do not expand the post error model.
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -115,6 +117,27 @@ pub struct CandidateProvenance {
     pub parameters: BTreeMap<String, serde_json::Value>,
 }
 
+/// Human decisions are append-only sidecars, never candidate mutations.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReviewDecision {
+    Accept,
+    Reject,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewRecord {
+    pub review_id: String,
+    pub experiment_id: String,
+    pub candidate_id: String,
+    pub candidate_hash: String,
+    pub decision: ReviewDecision,
+    pub reviewer: String,
+    pub timestamp: String,
+    pub notes: String,
+}
+
 fn invalid(reason: &str) -> Error {
     Error::Invalid {
         reason: reason.into(),
@@ -129,6 +152,22 @@ fn nonempty(value: &str) -> Result<()> {
 }
 
 /// Identifiers are single short path components, never paths or extensions.
+fn artifact_identifier(value: &str) -> Result<()> {
+    if let Some((stamp, random)) = value.split_once('-') {
+        if stamp.len() == 22
+            && stamp.as_bytes()[8] == b'T'
+            && stamp.as_bytes()[21] == b'Z'
+            && stamp.as_bytes()[..8].iter().all(u8::is_ascii_digit)
+            && stamp.as_bytes()[9..21].iter().all(u8::is_ascii_digit)
+            && random.len() == 32
+            && random.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Ok(());
+        }
+    }
+    identifier(value)
+}
+
 fn identifier(value: &str) -> Result<()> {
     if value.len() > 120 || crate::slug::validate(value).is_err() {
         return Err(invalid(
@@ -306,11 +345,80 @@ impl Store {
 
     pub fn read_candidate(&self, experiment: &str, id: &str) -> Result<String> {
         identifier(experiment)?;
-        identifier(id)?;
+        artifact_identifier(id)?;
         let dir = self
             .directory(&["candidates", experiment], false)?
             .ok_or_else(|| invalid("candidate not found"))?;
         read_text(&dir.join(format!("{id}.md")))
+    }
+
+    /// Append a decision bound to the exact artifact read by the caller. A
+    /// concurrent edit invalidates the decision rather than approving new bytes.
+    pub fn record_review(
+        &self,
+        experiment: &str,
+        candidate: &str,
+        expected_hash: &str,
+        decision: ReviewDecision,
+        reviewer: String,
+        notes: String,
+    ) -> Result<String> {
+        nonempty(&reviewer)?;
+        if reviewer.chars().any(char::is_control) {
+            return Err(invalid("reviewer must not contain control characters"));
+        }
+        if hash(&self.read_candidate(experiment, candidate)?) != expected_hash {
+            return Err(invalid("candidate changed since review began"));
+        }
+        let dir = self
+            .directory(&["reviews", experiment, candidate], true)?
+            .ok_or_else(|| invalid("missing review directory"))?;
+        let mut pending = tempfile::Builder::new()
+            .prefix(".pending-")
+            .rand_bytes(20)
+            .tempfile_in(&dir)
+            .context(IoSnafu { path: &dir })?;
+        let id = artifact_id(&pending)?;
+        let record = ReviewRecord {
+            review_id: id.clone(),
+            experiment_id: experiment.into(),
+            candidate_id: candidate.into(),
+            candidate_hash: expected_hash.into(),
+            decision,
+            reviewer,
+            timestamp: OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .context(TimestampSnafu)?,
+            notes,
+        };
+        let path = dir.join(format!("{id}.json"));
+        let bytes = serde_json::to_vec_pretty(&record).context(JsonSnafu { path: &path })?;
+        pending.write_all(&bytes).context(IoSnafu { path: &path })?;
+        publish(pending, &path, 0o400)?;
+        Ok(id)
+    }
+
+    pub fn reviews(&self, experiment: &str, candidate: &str) -> Result<Vec<ReviewRecord>> {
+        let current_hash = hash(&self.read_candidate(experiment, candidate)?);
+        let dir = self.directory(&["reviews", experiment, candidate], false)?;
+        let ids = list(dir.clone(), "json")?;
+        let mut records = Vec::new();
+        if let Some(dir) = dir {
+            for id in ids {
+                let record: ReviewRecord = read_json(&dir.join(format!("{id}.json")))?;
+                if record.review_id != id
+                    || record.experiment_id != experiment
+                    || record.candidate_id != candidate
+                    || record.candidate_hash != current_hash
+                {
+                    return Err(invalid(
+                        "review does not match this candidate's current bytes or identity",
+                    ));
+                }
+                records.push(record);
+            }
+        }
+        Ok(records)
     }
 
     /// Probe the managed directory and a private temporary file before a paid
@@ -350,16 +458,8 @@ impl Store {
             .rand_bytes(20)
             .tempfile_in(&dir)
             .context(IoSnafu { path: &dir })?;
-        let suffix = pending
-            .path()
-            .file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|n| n.strip_prefix(".pending-"))
-            .ok_or_else(|| invalid("invalid temporary filename"))?
-            .to_ascii_lowercase();
         let now = OffsetDateTime::now_utc();
-        let id = format!("{}-{suffix}", now.unix_timestamp_nanos());
-        identifier(&id)?;
+        let id = artifact_id(&pending)?;
         let meta = CandidateProvenance {
             candidate_id: id.clone(),
             provider: generation.provider.clone(),
@@ -398,6 +498,22 @@ impl Store {
     }
 }
 
+fn artifact_id(pending: &NamedTempFile) -> Result<String> {
+    let suffix = pending
+        .path()
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix(".pending-"))
+        .ok_or_else(|| invalid("invalid temporary filename"))?
+        .to_ascii_lowercase();
+    let id = format!(
+        "{}-{suffix}",
+        OffsetDateTime::now_utc().unix_timestamp_nanos()
+    );
+    identifier(&id)?;
+    Ok(id)
+}
+
 fn list(directory: Option<PathBuf>, extension: &str) -> Result<Vec<String>> {
     let Some(dir) = directory else {
         return Ok(Vec::new());
@@ -412,7 +528,11 @@ fn list(directory: Option<PathBuf>, extension: &str) -> Result<Vec<String>> {
             .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| invalid("non-UTF-8 artifact filename"))?;
-        identifier(id)?;
+        if extension == "md" {
+            artifact_identifier(id)?;
+        } else {
+            identifier(id)?;
+        }
         if !fs::symlink_metadata(&path)
             .context(IoSnafu { path: &path })?
             .is_file()
