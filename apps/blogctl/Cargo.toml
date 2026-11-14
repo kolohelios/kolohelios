@@ -35,6 +35,7 @@ time = { version = "0.3", features = [
   "macros",
 ] }
 toml = "0.8"
+toml_edit = "0.22"
 ureq = { version = "2", features = ["json"] }
 
 [dev-dependencies]

@@ -16,6 +16,8 @@ See [WRITING.md](WRITING.md) for private storage, formats, and examples.
 Optional [NovelAI text generation](NOVELAI.md) discovers models, previews a
 request locally, and requires fresh terminal confirmation for each candidate.
 Credentials come from 1Password at invocation time, not from the engine.
+See [INTEGRATIONS.md](INTEGRATIONS.md) for human review records, read-only MCP,
+and explicit migration from the writing prototype.
 
 ## Workflow stages
 

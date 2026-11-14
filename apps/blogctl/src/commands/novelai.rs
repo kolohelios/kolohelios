@@ -18,7 +18,11 @@ pub struct NovelaiArgs {
 #[derive(Debug, Subcommand)]
 pub enum NovelaiAction {
     /// Discover models with one authenticated GET, not a generation.
-    Models,
+    Models {
+        /// Machine-readable model IDs for invocation-boundary adapters.
+        #[arg(long)]
+        json: bool,
+    },
     /// Preview a single request; --run also requires terminal confirmation.
     /// Supply NOVELAI_API_TOKEN through 1Password, never as an argument.
     Generate {
@@ -38,13 +42,22 @@ pub enum NovelaiAction {
 
 pub fn run(args: NovelaiArgs) -> Result<()> {
     match args.action {
-        NovelaiAction::Models => {
-            for model in Client::from_env()
+        NovelaiAction::Models { json } => {
+            let models = Client::from_env()
                 .context(NovelaiSnafu)?
                 .models()
-                .context(NovelaiSnafu)?
-            {
-                println!("{model}");
+                .context(NovelaiSnafu)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&models)
+                        .map_err(|_| novelai::Error::InvalidRequest)
+                        .context(NovelaiSnafu)?
+                );
+            } else {
+                for model in models {
+                    println!("{model}");
+                }
             }
         }
         NovelaiAction::Generate {

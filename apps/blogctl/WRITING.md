@@ -7,7 +7,8 @@ ai_provenance: "Written by an OpenAI coding assistant for issue #1131; examples 
 Experiments and candidate import are local-only additions to `blogctl`, not a
 replacement for the post pipeline. They make no provider calls and need no
 credentials. Optional [NovelAI generation](NOVELAI.md) requires an explicitly
-authorized invocation; review records and MCP integration follow in #1133.
+authorized invocation. See [INTEGRATIONS.md](INTEGRATIONS.md) for separate review
+records, read-only MCP, and explicit prototype migration.
 
 ## Private working directory
 
@@ -127,9 +128,9 @@ artifact; inspect the list before importing again.
 - These commands never auto-commit, push, promote, or write to Notebooks/Dropbox,
   even if the surrounding blog working directory enables sync. A later explicit
   VCS action can include `.writing`; keep the whole working directory private.
-- Review outside the canonical manuscript. A later human-approved incorporation
-  is manual; do not mistake a candidate's existence for approval. Do not rewrite
-  the original artifact to record a future review decision.
+- Review outside the canonical manuscript. `candidate review` appends a separate
+  hash-bound decision; incorporation remains manual. Do not mistake a candidate's
+  existence or acceptance for manuscript promotion, or rewrite its provenance.
 
 ## Validation
 

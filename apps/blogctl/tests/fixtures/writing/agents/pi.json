@@ -1,0 +1,1 @@
+{"autoEnableCodemode":false,"mcpServers":{"other":{"command":"other","env":{"SETTING":"preserve"}},"novelai":{"command":"/nix/store/prototype-novelai-lab/bin/novelai-lab","args":["mcp"]}}}

@@ -2,6 +2,7 @@
 // and integration tests compile as separate crates (no attribute).
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
 
+pub mod agent_config;
 pub mod analytics;
 pub mod classifications;
 pub mod cli;
@@ -22,6 +23,7 @@ pub mod sync;
 pub mod target;
 pub mod taxonomy;
 pub mod writing;
+pub mod writing_mcp;
 
 pub use analytics::DerivedMetrics;
 pub use classifications::Classifications;
