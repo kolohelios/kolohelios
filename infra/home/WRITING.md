@@ -2,7 +2,9 @@
 
 The desktop enables `modules/writing-lab.nix`. The `blogctl` input is pinned to a
 published FlakeHub release with review, migration, and read-only MCP support;
-normal Home Manager activation needs no local package override.
+the stable profile uses that published package. When changing engine command
+semantics and launchers together, publish and pin the matching engine before
+normal activation. Use the local-package validation profile below until then.
 
 For future engine changes, publish the engine first, then update the pin inside
 `infra/home`:
@@ -94,13 +96,15 @@ Nix, MCP configuration, a second keyring, manuscript files, or Dropbox.
 ```sh
 blogctl-novelai models
 blogctl novelai generate EXPERIMENT_ID --workdir ~/.local/share/blogctl-writing \
-  --variant workshop --model MODEL
+  --variant workshop --model MODEL --dry-run
 blogctl-novelai generate EXPERIMENT_ID --workdir ~/.local/share/blogctl-writing \
-  --variant workshop --model MODEL --run
+  --variant workshop --model MODEL
 ```
 
-Only the final command requests generation, and it still requires fresh terminal
-confirmation. Local previews and MCP startup do not need 1Password access.
+Only the final command requests generation. The explicit `generate` command is
+the action: there is no extra flag, typed word, or terminal requirement. Use
+`--dry-run` for a credential-free preview. MCP startup also needs no 1Password
+access; its tools remain read-only.
 Restart Codex or reload Pi after activation. `pi mcp list --json` should show the
 five read-only tools under `writing`; no generation/review tool is registered.
 If registration reports a conflict or symlink-managed configuration, inspect the
