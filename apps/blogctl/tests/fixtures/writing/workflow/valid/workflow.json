@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Develop the supplied synthetic chapter without inventing autobiography.",
+  "fiction": true,
+  "context_sets": {
+    "profile": [
+      {
+        "label": "Voice profile",
+        "path": "context/profile.txt"
+      }
+    ],
+    "samples": [
+      {
+        "label": "Voice sample (style only)",
+        "path": "context/sample.md",
+        "format": "markdown-body"
+      }
+    ]
+  },
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Return a compact structural outline.",
+      "context": []
+    },
+    {
+      "name": "draft",
+      "requires_input": true,
+      "approach": "Write a complete synthetic draft from the selected outline.",
+      "context": ["profile", "samples"]
+    }
+  ]
+}

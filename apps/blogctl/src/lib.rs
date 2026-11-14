@@ -24,6 +24,7 @@ pub mod target;
 pub mod taxonomy;
 pub mod writing;
 pub mod writing_mcp;
+pub mod writing_workflow;
 
 pub use analytics::DerivedMetrics;
 pub use classifications::Classifications;
