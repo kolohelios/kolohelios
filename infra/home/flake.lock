@@ -11,12 +11,12 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1794623783,
-        "narHash": "sha256-qZBTVExSODssWCaEO3mhZq+/55WiJb5S9kR+ukVlrWs=",
-        "rev": "72cdd20d1b872bb4d1786d46632a13570d5291ab",
-        "revCount": 805,
+        "lastModified": 1794635567,
+        "narHash": "sha256-Iw/Um2Vj8apN7rhlyCNhpMqRDNvAux3Bgk0/Z5PoXzc=",
+        "rev": "d68664d0a97a4dc3fddbbd481e8eb5c5e39e64e2",
+        "revCount": 812,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/kolohelios/blogctl/0.1.805%2Brev-72cdd20d1b872bb4d1786d46632a13570d5291ab/01a1d7ee-5593-76f0-96d7-d54540279b2a/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/kolohelios/blogctl/0.1.812%2Brev-d68664d0a97a4dc3fddbbd481e8eb5c5e39e64e2/01a1d8a5-7bbd-7891-b574-cca0c89fd6e4/source.tar.gz"
       },
       "original": {
         "type": "tarball",

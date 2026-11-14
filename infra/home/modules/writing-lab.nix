@@ -15,27 +15,10 @@ let
   };
   provider = pkgs.writeShellApplication {
     name = "blogctl-novelai";
-    text = ''
-      set +x
-      for arg in "$@"; do
-        if [[ "$arg" == --help || "$arg" == -h ]]; then
-          exec ${cfg.package}/bin/blogctl novelai "$@"
-        fi
-      done
-      needs_token=false
-      case "''${1:-}" in
-        models) needs_token=true ;;
-        generate)
-          for arg in "$@"; do
-            if [[ "$arg" == --run ]]; then needs_token=true; fi
-          done
-          ;;
-      esac
-      if [[ "$needs_token" == false ]]; then
-        exec ${cfg.package}/bin/blogctl novelai "$@"
-      fi
-      ${authenticate "${cfg.package}/bin/blogctl novelai \"$@\""}
-    '';
+    text = import ../packages/writing-provider.nix {
+      engine = "${cfg.package}/bin/blogctl";
+      inherit authenticate;
+    };
   };
 in
 {

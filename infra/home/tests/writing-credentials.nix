@@ -27,6 +27,16 @@ let
         // options
       );
     };
+  provider = pkgs.writeShellApplication {
+    name = "writing-provider-test";
+    text = import ../packages/writing-provider.nix {
+      engine = toString target;
+      authenticate = command: ''
+        printf '%s\n' auth >> "$CALL_LOG"
+        exec ${command}
+      '';
+    };
+  };
   nixos = boundary {
     nixosMarker = toString marker;
     protectedOp = toString protected;
@@ -82,6 +92,25 @@ pkgs.runCommand "writing-credentials-routing-test" { nativeBuildInputs = [ pkgs.
   printf '%s\n' 'op://Synthetic/NovelAI/password' > "$HOME/.config/blogctl/novelai-token-reference"
   ${nixos}/bin/writing-credentials-test
   printf 'protected\ntarget\n' > expected
+  cmp expected "$CALL_LOG"
+
+  : > "$CALL_LOG"
+  ${provider}/bin/writing-provider-test generate test --variant workshop --model test
+  printf 'auth\ntarget\n' > expected
+  cmp expected "$CALL_LOG"
+
+  : > "$CALL_LOG"
+  ${provider}/bin/writing-provider-test generate test --variant workshop --model test --dry-run
+  printf 'target\n' > expected
+  cmp expected "$CALL_LOG"
+
+  : > "$CALL_LOG"
+  ${provider}/bin/writing-provider-test generate --help
+  cmp expected "$CALL_LOG"
+
+  : > "$CALL_LOG"
+  ${provider}/bin/writing-provider-test models --json
+  printf 'auth\ntarget\n' > expected
   cmp expected "$CALL_LOG"
 
   touch "$out"
