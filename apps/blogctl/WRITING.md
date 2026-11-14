@@ -100,7 +100,14 @@ blogctl candidate --workdir "$HOME/.local/share/writing-lab" import EXPERIMENT_I
   --variant workshop --metadata-file /private/generation.json --body-file /private/candidate.txt
 blogctl candidate --workdir "$HOME/.local/share/writing-lab" list EXPERIMENT_ID
 blogctl candidate --workdir "$HOME/.local/share/writing-lab" read EXPERIMENT_ID CANDIDATE_ID
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" inspect EXPERIMENT_ID CANDIDATE_ID
 ```
+
+`read` prints the canonical Markdown artifact byte-for-byte. `inspect` parses it
+inside `blogctl` and emits JSON with `provenance`, manuscript `body`, and the
+structured `request_snapshot`. Inspection validates the filename, experiment,
+variant, prompt hash, and original-seed hash instead of requiring an external
+wrapper to parse storage Markdown. It remains read-only and credential-free.
 
 Import outputs a timestamp/random candidate ID. The UTF-8 body is stored without
 trimming, followed by a labeled JSON request snapshot. YAML frontmatter records

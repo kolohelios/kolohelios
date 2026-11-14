@@ -80,6 +80,8 @@ pub enum CandidateAction {
     List { experiment: String },
     /// Print an immutable candidate including provenance and private snapshot.
     Read { experiment: String, id: String },
+    /// Print a typed candidate document as JSON without parsing Markdown.
+    Inspect { experiment: String, id: String },
 }
 
 fn authorize_review(
@@ -222,6 +224,18 @@ fn run_candidate(args: CandidateArgs) -> writing::Result<()> {
         }
         CandidateAction::Read { experiment, id } => {
             print!("{}", store.read_candidate(&experiment, &id)?);
+        }
+        CandidateAction::Inspect { experiment, id } => {
+            let candidate = store.candidate(&experiment, &id)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&candidate).map_err(|source| {
+                    writing::Error::Json {
+                        path: args.workdir,
+                        source,
+                    }
+                })?
+            );
         }
     }
     Ok(())

@@ -36,7 +36,7 @@ pub enum Error {
     Invalid { reason: String },
     #[snafu(display("unsafe writing path: {}", path.display()))]
     UnsafePath { path: PathBuf },
-    #[snafu(display("could not serialize candidate provenance: {source}"))]
+    #[snafu(display("could not process candidate provenance: {source}"))]
     Yaml { source: serde_yaml_ng::Error },
     #[snafu(display("could not format candidate timestamp: {source}"))]
     Timestamp { source: time::error::Format },
@@ -68,7 +68,7 @@ pub struct Experiment {
 
 /// A validated prompt snapshot, held across generation so later experiment edits
 /// cannot change the provenance of an in-flight request.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PreparedExperiment {
     prompt_format_version: u32,
     experiment: Experiment,
@@ -115,6 +115,14 @@ pub struct CandidateProvenance {
     pub fiction: bool,
     pub ai_provenance: String,
     pub parameters: BTreeMap<String, serde_json::Value>,
+}
+
+/// Typed view of an immutable candidate document.
+#[derive(Debug, Serialize)]
+pub struct CandidateDocument {
+    pub provenance: CandidateProvenance,
+    pub body: String,
+    pub request_snapshot: PreparedExperiment,
 }
 
 /// Human decisions are append-only sidecars, never candidate mutations.
@@ -352,6 +360,34 @@ impl Store {
         read_text(&dir.join(format!("{id}.md")))
     }
 
+    /// Parse and validate an immutable candidate without requiring callers to
+    /// understand its Markdown storage representation.
+    pub fn candidate(&self, experiment: &str, id: &str) -> Result<CandidateDocument> {
+        let document = parse_candidate(&self.read_candidate(experiment, id)?)?;
+        if document.provenance.candidate_id != id {
+            return Err(invalid("candidate ID disagrees with its filename"));
+        }
+        if document.provenance.experiment_id != experiment
+            || document.request_snapshot.experiment.id != experiment
+        {
+            return Err(invalid("candidate experiment disagrees with its path"));
+        }
+        if document.provenance.variant != document.request_snapshot.variant {
+            return Err(invalid(
+                "candidate variant disagrees with its request snapshot",
+            ));
+        }
+        if document.provenance.prompt_hash != hash(&document.request_snapshot.prompt)
+            || document.provenance.original_seed_hash
+                != hash(&document.request_snapshot.experiment.seed)
+        {
+            return Err(invalid(
+                "candidate hashes disagree with its request snapshot",
+            ));
+        }
+        Ok(document)
+    }
+
     /// Append a decision bound to the exact artifact read by the caller. A
     /// concurrent edit invalidates the decision rather than approving new bytes.
     pub fn record_review(
@@ -496,6 +532,43 @@ impl Store {
         publish(pending, &path, 0o400)?;
         Ok(id)
     }
+}
+
+fn parse_candidate(text: &str) -> Result<CandidateDocument> {
+    let rest = text
+        .strip_prefix("---\n")
+        .ok_or_else(|| invalid("candidate is missing provenance frontmatter"))?;
+    let (yaml, rest) = rest
+        .split_once("\n---\n")
+        .ok_or_else(|| invalid("candidate provenance frontmatter is incomplete"))?;
+    let provenance = serde_yaml_ng::from_str(yaml).context(YamlSnafu)?;
+    let rest = rest
+        .strip_prefix('\n')
+        .ok_or_else(|| invalid("candidate body separator is missing"))?;
+    let (body, snapshot) = rest
+        .rsplit_once("\n\n## Request snapshot (not manuscript)\n\n")
+        .ok_or_else(|| invalid("candidate is missing its request snapshot"))?;
+    nonempty(body)?;
+    let (opening, remainder) = snapshot
+        .split_once('\n')
+        .ok_or_else(|| invalid("candidate request snapshot fence is incomplete"))?;
+    let fence = opening
+        .strip_suffix("json")
+        .filter(|fence| fence.len() >= 3 && fence.bytes().all(|byte| byte == b'`'))
+        .ok_or_else(|| invalid("candidate request snapshot has an invalid opening fence"))?;
+    let closing = format!("\n{fence}\n");
+    let json = remainder
+        .strip_suffix(&closing)
+        .ok_or_else(|| invalid("candidate request snapshot has an invalid closing fence"))?;
+    let request_snapshot = serde_json::from_str(json).map_err(|source| Error::Json {
+        path: PathBuf::from("candidate request snapshot"),
+        source,
+    })?;
+    Ok(CandidateDocument {
+        provenance,
+        body: body.into(),
+        request_snapshot,
+    })
 }
 
 fn artifact_id(pending: &NamedTempFile) -> Result<String> {
