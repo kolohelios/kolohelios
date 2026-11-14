@@ -14,11 +14,12 @@ name               = "notes-sync"
 # Durable Object bindings: one per-note object (`NOTE`, the single writer
 # and source of truth), and one per-OAuth-flow object (`AUTH_FLOW`, keyed
 # by the `state` value, holding the PKCE verifier + DPoP key between login
-# and callback).
+# and callback), plus the owner-scoped derived index (`VAULT`).
 [durable_objects]
 bindings = [
   { name = "NOTE", class_name = "NoteDurableObject" },
   { name = "AUTH_FLOW", class_name = "AuthFlow" },
+  { name = "VAULT", class_name = "VaultDurableObject" },
 ]
 
 # SQLite-backed storage for the Durable Object classes. The SQLite backend
@@ -31,6 +32,10 @@ tag                = "v1"
 [[migrations]]
 new_sqlite_classes = ["AuthFlow"]
 tag                = "v2"
+
+[[migrations]]
+new_sqlite_classes = ["VaultDurableObject"]
+tag                = "v3"
 
 # Cold-tier git target (phase 3). The Durable Object commits each note's
 # body to `notes/<note_id>.md` in this repo on the lazy debounce/backstop

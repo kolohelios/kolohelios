@@ -27,6 +27,65 @@ The AI-native vault built on top of these tiers — one source of truth
 content-hash-keyed so drift is detectable and self-healing — is specified
 in [`docs/vault-architecture.md`](docs/vault-architecture.md) (epic #989).
 
+## Derived vault index and connections
+
+`VaultDurableObject` (`VAULT`, owner-scoped) persists disposable per-note
+metadata, vectors, a refresh queue, and cached connections. It is not a
+second note authority. Refresh reads the note DO's snapshot; a note with no
+hot edit log falls back to its Git body. Rebuilding never writes into the
+note's edit log. `GET /vault` remains the existing portable Git listing.
+
+Accepted edits persist an index-delivery flag alongside the edit log.
+Delivery runs on the existing commit/disconnect cadence, independently of
+whether the Git backup succeeds; rename seeds and deletions notify too.
+The Vault DO processes up to eight queued notes per alarm. Work survives
+eviction, and stale HTTP results cannot overwrite a newer queued refresh.
+Failed derivations get three attempts; later reads can retry missing or
+stale artifacts. There is no periodic vault scan.
+
+Owner-session-authenticated endpoints:
+
+- `POST /vault/rebuild` discovers Git note paths and queues those plus
+  existing index records, reporting a count of skipped unsupported ids.
+  Use this once to backfill an existing vault, or
+  to rebuild disposable records. A supplied browser Origin must match the
+  configured app or backend base URL.
+- `GET /vault/index` returns indexed ids, title/tags/aliases, cache keys,
+  and source/embedding status, without bodies or vectors.
+- `GET /vault/connections?id=<note-id>` returns the five nearest cosine
+  neighbors (excluding self), resolved `[[wikilink]]` ids, and unresolved links.
+  Exact ids win; otherwise basename/title/alias must resolve uniquely.
+  Code spans, fenced code, and existing Markdown links are excluded.
+
+Embedding keys contain the full canonical body hash and a model identity
+qualified by provider endpoint and preprocessing recipe. Metadata-only and
+cosmetic edits reuse vectors while still refreshing titles, aliases, and
+links. Changed bodies, models, or endpoints invalidate vectors. Known
+pending/failed source refreshes are marked `source_stale`; their vectors
+and outgoing links are not served as fresh. `embedding_fresh` means the
+vector matches the indexed content/model key, **not** that the index has
+been compared to every uncommitted edit. A read racing an index change
+returns HTTP 409; retry shortly. Connection caches are generation-keyed,
+so a changed/deleted target or alias invalidates incoming edges too.
+
+The existing `OPENROUTER_API_KEY` secret enables embeddings. Optional Worker
+vars `OPENROUTER_EMBEDDINGS_MODEL` and `OPENROUTER_EMBEDDINGS_ENDPOINT`
+default to `openai/text-embedding-3-small` and
+`https://openrouter.ai/api/v1/embeddings`. An OpenAI-compatible replacement
+can use the same adapter; credentials stay in the secret, not in the URL.
+Without a key, metadata/wikilinks still work and vectors remain missing.
+
+Long notes are batched in 2,000-character chunks and pooled using a
+length-weighted mean of unit vectors; the whole canonical body contributes.
+Limits are 128 chunks and 4,096 vector dimensions. Notes that exceed these
+limits, or whose provider returns an invalid or error response, keep a
+missing vector rather than silently truncating text or claiming freshness. Similarity is brute-force at
+personal-vault scale; no external vector database is required.
+
+This implements #993's shared index/embedding seam. Open-time drift
+verification, Git-push-triggered reconciliation, repair diagnostics, and
+full-text/semantic search remain #996.
+
 ## Wire protocol
 
 Types live in the shared `packages/notes-protocol` crate (phase 2) so the
