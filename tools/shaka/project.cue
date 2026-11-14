@@ -17,6 +17,8 @@ package project
 			"jujutsu",
 			"git",
 			"opentofu",
+			// Lint generated standalone validation workflows in integration tests.
+			"actionlint",
 		]
 		// Bake shaka's everyday runtime deps onto the wrapped
 		// binary's PATH so `nix run ./tools/shaka -- <subcmd>` works

@@ -22,6 +22,8 @@ struct ProjectMeta {
 #[derive(Deserialize)]
 struct Ci {
     #[serde(default)]
+    validate: Option<super::validate_workflow::CiValidate>,
+    #[serde(default)]
     apply: Option<CiApply>,
     #[serde(default)]
     build: Option<super::main_workflow::CiBuild>,
@@ -60,6 +62,13 @@ pub fn run(check: bool) {
             .unwrap_or(&project_dir)
             .to_path_buf();
         if let Some(ci) = meta.ci {
+            if ci.validate.is_some() {
+                let workflow = super::validate_workflow::build(&meta.name, &stripped_dir);
+                items.push((
+                    PathBuf::from(".github/workflows").join(format!("{}-validate.yml", meta.name)),
+                    workflow::emit(&workflow),
+                ));
+            }
             if let Some(apply) = ci.apply {
                 let workflow = build_apply_workflow(&meta.name, &project_dir, &apply);
                 let target =

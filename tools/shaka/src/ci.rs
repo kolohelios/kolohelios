@@ -9,6 +9,7 @@ mod main_workflow;
 mod mask_and_run;
 mod parse_deploy_url;
 mod push_worker_secrets;
+mod validate_workflow;
 mod worker_cleanup_workflow;
 mod worker_deploy_workflow;
 mod workflow;
