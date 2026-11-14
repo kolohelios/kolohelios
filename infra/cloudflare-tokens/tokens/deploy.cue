@@ -1,6 +1,6 @@
 package cloudflare_token
 
-// CF Worker-deploy token. Used for four flows:
+// CF Worker-deploy token. Used for five flows:
 //
 //   - `infra/cloudflare-deploy` `tofu apply` that attaches Worker
 //     custom domains (`cloudflare_workers_custom_domain` needs
@@ -22,8 +22,11 @@ package cloudflare_token
 //     and `Account Settings:Edit` for create/update/delete. Edit does not
 //     satisfy the GET permission: Terraform refresh needs Read explicitly
 //     (#1020). Both grants are scoped to the same account.
+//   - `infra/cloudflare-deploy` `tofu apply` that provisions D1 databases.
+//     The database-create endpoint requires `D1 Write`, not Workers Scripts
+//     Write. The grant remains scoped to the same account (#1020).
 //
-// Sharing one token for all four flows keeps the credential surface
+// Sharing one token for all five flows keeps the credential surface
 // tight; if rotation cadences diverge, split later.
 //
 // 90-day expiry, mirroring `dns-management`; `shaka token cloudflare renew`
@@ -31,9 +34,10 @@ package cloudflare_token
 
 #Token & {
 	name:    "deploy"
-	purpose: "Worker deploys (TF custom-domain attach + wrangler code uploads + cache rules)"
+	purpose: "Worker deploy resources (domains, code, cache, analytics, D1)"
 	permission_groups: [
 		"Account:Workers Scripts:Edit",
+		"Account:D1:Edit",
 		"Account Settings:Read",
 		"Account Settings:Edit",
 		"Zone:Cache Settings:Edit",

@@ -62,6 +62,13 @@ data "cloudflare_api_token_permission_groups_list" "cache_settings_write" {
   name = "Cache Settings Write"
 }
 
+# D1 creation requires this separate account permission; Workers Scripts
+# Write does not cover /accounts/{account_id}/d1/database (#1020).
+# https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/create/
+data "cloudflare_api_token_permission_groups_list" "d1_write" {
+  name = "D1 Write"
+}
+
 locals {
   account_id                = var.cloudflare_account_id
   dns_management_expires_on = "2027-02-10T00:00:00Z"
@@ -136,10 +143,9 @@ resource "onepassword_item" "dns_management" {
 # ── deploy ────────────────────────────────────────────────────────────
 #
 # Mirrors `tokens/deploy.cue`. Consumed by `infra/cloudflare-deploy`
-# (TF custom-domain attach + per-project cache rulesets) and by
-# `wrangler deploy` from `rust-worker` apps (code uploads). The three
-# flows share one token because all three converge on the same zones;
-# if their rotation cadences diverge, split. Zone-scoped DNS comes
+# (custom domains, cache, analytics, D1) and `wrangler deploy` from
+# `rust-worker` apps (code uploads). They share one token within this
+# account; if their rotation cadences diverge, split. Zone-scoped DNS comes
 # along because `cloudflare_workers_custom_domain` installs a
 # CF-managed routing record alongside the attach. Zone-scoped
 # Cache Settings gates the `/zones/{id}/rulesets` API used by the
@@ -153,6 +159,7 @@ resource "cloudflare_api_token" "deploy" {
       effect = "allow"
       permission_groups = [
         { id = data.cloudflare_api_token_permission_groups_list.workers_scripts_write.result[0].id },
+        { id = data.cloudflare_api_token_permission_groups_list.d1_write.result[0].id },
         # RUM `site_info` GET/list requires Read explicitly; Write only
         # covers create/update/delete. Terraform refresh fails without
         # both grants for `cloudflare_web_analytics_site` (#1020).

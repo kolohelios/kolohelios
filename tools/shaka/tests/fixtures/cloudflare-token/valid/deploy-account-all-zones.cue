@@ -5,6 +5,7 @@ package cloudflare_token
 	purpose: "Worker deploys (TF custom-domain attach + wrangler code uploads)"
 	permission_groups: [
 		"Account:Workers Scripts:Edit",
+		"Account:D1:Edit",
 		"Zone:Cache Settings:Edit",
 		"Zone:DNS:Edit",
 	]
