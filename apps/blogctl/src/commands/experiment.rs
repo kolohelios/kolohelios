@@ -8,7 +8,7 @@ use clap::{Args, Subcommand};
 use snafu::ResultExt;
 
 use crate::error::{Result, WritingSnafu};
-use crate::writing::{self, Store};
+use crate::writing::{self, ArtifactReference, CandidateContext, Store};
 
 /// Explicit workdir avoids silently writing private experiments into cwd.
 #[derive(Debug, Args)]
@@ -62,6 +62,12 @@ pub enum CandidateAction {
         metadata_file: PathBuf,
         #[arg(long)]
         body_file: PathBuf,
+        /// Pass or artifact kind recorded separately from prompt prose.
+        #[arg(long, value_name = "KIND")]
+        artifact_kind: Option<String>,
+        /// Explicit parent as EXPERIMENT/CANDIDATE.
+        #[arg(long, value_name = "EXPERIMENT/CANDIDATE")]
+        parent: Option<ArtifactReference>,
     },
     /// Record a human decision in a separate immutable review (terminal required).
     Review {
@@ -183,11 +189,20 @@ fn run_candidate(args: CandidateArgs) -> writing::Result<()> {
             variant,
             metadata_file,
             body_file,
+            artifact_kind,
+            parent,
         } => {
             let prepared = store.experiment(&experiment)?.prepare(&variant)?;
             let metadata = writing::read_json(&metadata_file)?;
             let body = writing::read_text(&body_file)?;
-            println!("{}", store.record_candidate(&prepared, &metadata, &body)?);
+            let context = CandidateContext {
+                artifact_kind,
+                parent,
+            };
+            println!(
+                "{}",
+                store.record_candidate_with_context(&prepared, &metadata, &body, &context)?
+            );
         }
         CandidateAction::Review {
             experiment,

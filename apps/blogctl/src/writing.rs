@@ -9,6 +9,7 @@ use std::fs::{self, DirBuilder, File, OpenOptions, Permissions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -115,6 +116,45 @@ pub struct CandidateProvenance {
     pub fiction: bool,
     pub ai_provenance: String,
     pub parameters: BTreeMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<ArtifactReference>,
+}
+
+/// Explicit candidate ancestry, independent of experiment prompt prose.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactReference {
+    pub experiment_id: String,
+    pub candidate_id: String,
+}
+
+impl FromStr for ArtifactReference {
+    type Err = Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        let (experiment_id, candidate_id) = value
+            .split_once('/')
+            .filter(|(experiment, candidate)| !experiment.is_empty() && !candidate.is_empty())
+            .ok_or_else(|| invalid("candidate reference must be EXPERIMENT/CANDIDATE"))?;
+        if candidate_id.contains('/') {
+            return Err(invalid("candidate reference must be EXPERIMENT/CANDIDATE"));
+        }
+        identifier(experiment_id)?;
+        artifact_identifier(candidate_id)?;
+        Ok(Self {
+            experiment_id: experiment_id.into(),
+            candidate_id: candidate_id.into(),
+        })
+    }
+}
+
+/// Optional structured context attached when a candidate is recorded.
+#[derive(Debug, Clone, Default)]
+pub struct CandidateContext {
+    pub artifact_kind: Option<String>,
+    pub parent: Option<ArtifactReference>,
 }
 
 /// Typed view of an immutable candidate document.
@@ -372,6 +412,13 @@ impl Store {
         {
             return Err(invalid("candidate experiment disagrees with its path"));
         }
+        if let Some(kind) = &document.provenance.artifact_kind {
+            identifier(kind)?;
+        }
+        if let Some(parent) = &document.provenance.parent {
+            identifier(&parent.experiment_id)?;
+            artifact_identifier(&parent.candidate_id)?;
+        }
         if document.provenance.variant != document.request_snapshot.variant {
             return Err(invalid(
                 "candidate variant disagrees with its request snapshot",
@@ -468,6 +515,16 @@ impl Store {
         Ok(())
     }
 
+    pub fn validate_candidate_context(&self, context: &CandidateContext) -> Result<()> {
+        if let Some(kind) = &context.artifact_kind {
+            identifier(kind)?;
+        }
+        if let Some(parent) = &context.parent {
+            self.candidate(&parent.experiment_id, &parent.candidate_id)?;
+        }
+        Ok(())
+    }
+
     /// Store one candidate from an already-prepared snapshot. No network, stage
     /// transition, review decision, draft write, or implicit VCS operation.
     pub fn record_candidate(
@@ -476,6 +533,17 @@ impl Store {
         generation: &GenerationMetadata,
         body: &str,
     ) -> Result<String> {
+        self.record_candidate_with_context(prepared, generation, body, &CandidateContext::default())
+    }
+
+    pub fn record_candidate_with_context(
+        &self,
+        prepared: &PreparedExperiment,
+        generation: &GenerationMetadata,
+        body: &str,
+        context: &CandidateContext,
+    ) -> Result<String> {
+        self.validate_candidate_context(context)?;
         nonempty(body)?;
         for value in [
             &generation.provider,
@@ -510,6 +578,8 @@ impl Store {
             fiction: prepared.experiment.fiction,
             ai_provenance: generation.ai_provenance.clone(),
             parameters: generation.parameters.clone(),
+            artifact_kind: context.artifact_kind.clone(),
+            parent: context.parent.clone(),
         };
         let yaml = serde_yaml_ng::to_string(&meta).context(YamlSnafu)?;
         let snapshot = serde_json::to_string_pretty(prepared).context(JsonSnafu { path: &dir })?;
