@@ -126,14 +126,12 @@ The helper's errors are captured and suppressed by the adapter. The executable
 path is trusted configuration, never a tool argument. The helper is not a general
 shell-command MCP tool.
 
-**Release ordering:** the module is opt-in and disabled in the normal desktop
-profile until a published FlakeHub `blogctl` includes these MCP commands. Update
-`infra/home`'s `blogctl` lock after that publication, then enable
-`programs.writing-lab.enable = true` in the desktop module and activate normally.
-Do not enable against the older generation-only package. The enabled module can
-be built before publication with the explicit local-package test expression in
-`infra/home/tests/writing-desktop.nix`; see the home guide. This avoids a broken
-default activation or a permanent local flake input.
+**Release ordering:** the desktop enables the module using a published FlakeHub
+`blogctl` pin with these MCP commands. For future engine updates, publish first,
+then update `infra/home`'s `blogctl` lock and activate normally. Test changes before
+publication with the explicit local-package expression in
+`infra/home/tests/writing-desktop.nix`; see the home guide. Do not commit a local
+flake input or pin a package missing commands used by the integration.
 
 The Python prototype is not installed by the new module. There is no
 `novelai-lab` compatibility alias; use `blogctl` and `blogctl-novelai` instead.
