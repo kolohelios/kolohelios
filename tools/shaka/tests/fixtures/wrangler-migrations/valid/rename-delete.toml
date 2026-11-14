@@ -1,0 +1,10 @@
+name = "worker"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Original", "Obsolete"]
+
+[[migrations]]
+tag = "v2"
+renamed_classes = [{ from = "Original", to = "Renamed" }]
+deleted_classes = ["Obsolete"]

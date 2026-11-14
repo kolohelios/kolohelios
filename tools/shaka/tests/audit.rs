@@ -82,6 +82,85 @@ fn clean_projects_pass() {
     assert!(stdout.contains("audit passed"), "stdout: {stdout}");
 }
 
+fn migration_fixture_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wrangler-migrations")
+}
+
+fn worker_with_migration(path: Option<&Path>) -> Staged {
+    let staged = Staged::new(&["clean-rust"]);
+    let project = staged.root.path().join("apps/clean-rust");
+    std::fs::copy(
+        migration_fixture_root().join("project.cue.fixture"),
+        project.join("project.cue"),
+    )
+    .unwrap();
+    if let Some(path) = path {
+        std::fs::copy(path, project.join("wrangler.toml")).unwrap();
+    }
+    staged
+}
+
+#[test]
+fn durable_object_migration_fixtures() {
+    for (directory, should_pass) in [("valid", true), ("invalid", false)] {
+        let mut paths: Vec<_> = std::fs::read_dir(migration_fixture_root().join(directory))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        paths.sort();
+        assert!(!paths.is_empty());
+        for path in paths {
+            let staged = worker_with_migration(Some(&path));
+            let out = staged.run_audit();
+            let stdout = stdout_of(&out);
+            assert_eq!(
+                out.status.success(),
+                should_pass,
+                "{}: {stdout}",
+                path.display()
+            );
+            if !should_pass {
+                assert!(
+                    stdout.contains("rust-worker-durable-objects-sqlite"),
+                    "{stdout}"
+                );
+                assert!(stdout.contains("new_sqlite_classes"), "{stdout}");
+                assert!(stdout.contains("wrangler.toml"), "{stdout}");
+            }
+        }
+    }
+}
+
+#[test]
+fn malformed_wrangler_is_not_reported_as_verified() {
+    let staged = worker_with_migration(Some(
+        &migration_fixture_root().join("malformed/unclosed.toml"),
+    ));
+    let out = staged.run_audit();
+    let stdout = stdout_of(&out);
+    assert!(!out.status.success());
+    assert!(
+        stdout.contains("could not parse wrangler.toml migrations"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn durable_object_rule_skips_non_workers_and_absent_wrangler() {
+    let worker = worker_with_migration(None);
+    let out = worker.run_audit();
+    assert!(out.status.success(), "{}", stdout_of(&out));
+
+    let cli = Staged::new(&["clean-rust"]);
+    std::fs::copy(
+        migration_fixture_root().join("invalid/classic.toml"),
+        cli.root.path().join("apps/clean-rust/wrangler.toml"),
+    )
+    .unwrap();
+    let out = cli.run_audit();
+    assert!(out.status.success(), "{}", stdout_of(&out));
+}
+
 #[test]
 fn missing_cue_is_top_level_failure() {
     let staged = Staged::new(&["missing-cue"]);

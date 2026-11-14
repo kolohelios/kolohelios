@@ -1,0 +1,5 @@
+name = "worker"
+
+[[env.preview.migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameState"]

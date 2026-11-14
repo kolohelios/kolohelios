@@ -1,0 +1,7 @@
+package project
+
+#Project & {
+	name: "clean-rust"
+	kind: "rust-worker"
+	coverage: line: fail: 30
+}

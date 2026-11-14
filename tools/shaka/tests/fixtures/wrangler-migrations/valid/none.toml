@@ -1,0 +1,4 @@
+name = "worker"
+
+[vars]
+new_classes = "Not a migration"

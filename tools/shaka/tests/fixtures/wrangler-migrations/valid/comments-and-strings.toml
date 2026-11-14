@@ -1,0 +1,12 @@
+name = "worker"
+# [[migrations]] and new_classes = ["NotADeclaration"] are just comments.
+
+[vars]
+EXAMPLE = '''
+[[migrations]]
+new_classes = ["NotADeclaration"]
+'''
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameState"]
