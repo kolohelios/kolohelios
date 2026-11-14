@@ -58,6 +58,8 @@ struct ProjectMeta {
 #[derive(Deserialize)]
 struct Ci {
     #[serde(default)]
+    validate: Option<super::validate_workflow::CiValidate>,
+    #[serde(default)]
     apply: Option<serde_json::Value>,
     #[serde(default)]
     build: Option<serde_json::Value>,
@@ -165,6 +167,9 @@ fn generated_filenames() -> Vec<String> {
     for project_dir in schema_check::discover(Path::new(".")) {
         if let Ok(meta) = read_meta(&project_dir) {
             if let Some(ci) = meta.ci {
+                if ci.validate.is_some() {
+                    out.push(format!("{}-validate.yml", meta.name));
+                }
                 if ci.apply.is_some() {
                     out.push(format!("{}-apply.yml", meta.name));
                 }

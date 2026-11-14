@@ -76,6 +76,42 @@ don't need a devshell. Pass `--repo owner/name` if `jj git remote list`
 can't auto-detect the GitHub repo (for example, plain-git checkouts
 without a colocated `.jj`).
 
+## Generated validation CI for standalone consumers
+
+A project at `<slot>/<name>/project.cue` can opt into validation without
+publishing a package or checking out the monorepo:
+
+```cue
+ci: validate: {}
+```
+
+Run `shaka ci generate-workflows` from the consumer repository root. It emits
+`.github/workflows/<name>-validate.yml`, whose required-check name is
+`<name> validate`. Declare that name in `.shaka/repo.cue` when enabling branch
+protection. This is independent of `ci.build` and `ci.deploy`; existing
+workflows are unchanged unless a project opts in.
+
+The generated workflow uses `nix develop ./<slot>/<name>` to initialize
+colocated `jj`, lint PR commits, and run **repo-wide** `shaka preflight` from the
+repository root. Choose one project as the repository's CI tooling entry point;
+its devshell must supply the packaged FlakeHub `shaka` (ahead of the monorepo-only
+`workflowPackages` shim) and tools for all applicable repo-level checks, such as
+`actionlint` and `taplo`. Preflight enters each project's own devshell for
+`just validate`, so project-specific build tools stay project-local.
+
+Every PR, push to main, and manual dispatch runs the workflow without path
+filters. Required checks therefore report even on policy- or workflow-only
+changes. Only read access to repository contents and OIDC access for FlakeHub
+are granted; no App token, application secrets, or publishing is required.
+
+Preflight enforces `shaka ci generate-workflows --check` and
+`shaka ci audit-workflows`: manual edits to generated YAML or unaccounted
+workflow files fail the gate. Hand-authored reusable workflows and event-driven
+automation remain explicit exceptions via `.shaka/repo.cue`'s
+`handAuthoredWorkflows` (or Shaka's built-in allowlist). When migrating a
+handwritten validation workflow, remove its exception and old YAML, and retain
+its checks in the project's local validation recipes.
+
 ## Development
 
 ```

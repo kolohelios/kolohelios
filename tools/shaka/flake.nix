@@ -70,6 +70,7 @@
               pkgs.jujutsu
               pkgs.git
               pkgs.opentofu
+              pkgs.actionlint
             ];
             preCheck = ''
               export HOME="$(mktemp -d)"

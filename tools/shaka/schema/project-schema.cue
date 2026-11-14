@@ -346,6 +346,11 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	hostnames: [domain.#KnownHostnames, ...domain.#KnownHostnames]
 }
 
+// Opt-in standalone validation, using this project's devshell to run the
+// repo-wide `shaka preflight` gate. No publishing or monorepo checkout needed.
+// The devshell must provide packaged shaka and all applicable repo-check tools.
+#CiValidate: {}
+
 #Project: {
 	name: string & =~"^[a-z][a-z0-9-]*$"
 	objectStorage?: {
@@ -355,6 +360,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		overrides: [...#AuditOverride]
 	}
 	generate?: #GenerateConfig
+	ci?: validate?: #CiValidate
 	serving?: [#Serving, ...#Serving]
 } & ({
 	// Rust binary crate that ships a CLI. `cli:` carries the
