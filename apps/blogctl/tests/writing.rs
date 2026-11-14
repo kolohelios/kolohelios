@@ -163,6 +163,11 @@ fn immutable_candidates_have_exact_provenance_and_frozen_snapshot() {
         time::UtcOffset::UTC
     );
     assert!(text.contains(&body));
+    let candidate = store.candidate("synthetic-chapter", &first).unwrap();
+    assert_eq!(candidate.provenance.candidate_id, first);
+    assert_eq!(candidate.provenance.experiment_id, "synthetic-chapter");
+    assert_eq!(candidate.body, body);
+    assert_eq!(candidate.request_snapshot, prepared);
     let snapshot = text
         .split("```json\n")
         .nth(1)
@@ -193,6 +198,21 @@ fn immutable_candidates_have_exact_provenance_and_frozen_snapshot() {
     );
     assert!(!tmp.path().join("concepts").exists());
     assert!(!tmp.path().join(".blog-os.toml").exists());
+}
+
+#[test]
+fn candidate_inspection_rejects_snapshot_tampering() {
+    let (tmp, store) = setup();
+    let id = record(&store);
+    let path = candidate_dir(tmp.path()).join(format!("{id}.md"));
+    let mut permissions = path.metadata().unwrap().permissions();
+    permissions.set_mode(0o600);
+    fs::set_permissions(&path, permissions).unwrap();
+    let document = fs::read_to_string(&path)
+        .unwrap()
+        .replace("A potter pauses", "A tampered potter pauses");
+    fs::write(&path, document).unwrap();
+    assert!(store.candidate("synthetic-chapter", &id).is_err());
 }
 
 #[test]
@@ -355,6 +375,18 @@ fn cli_local_workflow_works_without_credentials_sync_or_post_stages() {
         &["read", "synthetic-chapter", id]
     ))
     .contains("review_status: unreviewed"));
+    let inspected: serde_json::Value = serde_json::from_str(&ok(cli(
+        tmp.path(),
+        "candidate",
+        &["inspect", "synthetic-chapter", id],
+    )))
+    .unwrap();
+    assert_eq!(inspected["provenance"]["candidate_id"], id);
+    assert_eq!(inspected["body"], fs::read_to_string(body).unwrap());
+    assert_eq!(
+        inspected["request_snapshot"]["experiment"]["id"],
+        "synthetic-chapter"
+    );
     assert!(!cli(
         tmp.path(),
         "experiment",
