@@ -96,6 +96,10 @@ to decide:
 
 ## Conventions
 
+- When delegating to a worker required to return `StructuredOutput`, brief
+  it as implementation-only and keep validation/shipping with the top-level
+  owner. Follow [Structured-output workflow workers](../../AGENTS.md#structured-output-workflow-workers);
+  do not combine both roles in one bounded workflow phase.
 - One issue per bookmark — don't mix work from multiple issues.
 - One workspace per issue — keeps primary clean for sync, audit, and
   cross-cutting reads.
