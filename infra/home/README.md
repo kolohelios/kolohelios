@@ -146,6 +146,13 @@ those backups after activation. Start a new terminal for the managed shell
 configuration. This does not change `/etc/nixos/configuration.nix` or
 install system device permissions.
 
+## Writing tools (opt-in)
+
+`modules/writing-lab.nix` provides the private `blogctl` workflow, 1Password
+invocation boundary, and additive Pi/Codex MCP registration. It remains off by
+default until the FlakeHub package pin includes the new MCP commands. See
+[WRITING.md](WRITING.md) for release ordering, local validation, and activation.
+
 ## MSI Vector keyboard backlight (opt-in)
 
 The Vector GP66HX 12UGS has a SteelSeries KLC controller (`1038:113a`).
