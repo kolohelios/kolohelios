@@ -37,15 +37,16 @@ changed) and exec's the debug binary.
 - `project generate-justfiles [--check]` — regenerates per-project
   `justfile`s from each `project.cue`. `--check` fails on drift.
 - `project audit` — structural audit (README/.gitignore presence, rust test
-  presence, coverage threshold sanity).
+  presence, coverage threshold sanity). Rust worker migrations reject
+  `new_classes` in favor of `new_sqlite_classes` for free-plan compatibility.
 - `commit lint -r <revset>` — enforces conventional commit format, title
   length, body wrap, and atomicity.
 - `repo sync|send|pr|audit|status` — `jj`/PR workflow helpers.
-- `workspace new|list|forget|status|cleanup` — `jj` workspace management.
+- `workspace new|list|forget|status|cleanup` — `jj` workspace management
+  for parallel work.
   `new` recovers a stale invoking workspace using native safeguards;
   conflicts or divergent recovery revisions stop creation for inspection.
   `jj` retains local edits, including in recovery revisions.
-  for parallel work.
 
 See `shaka <subcommand> --help` for full options.
 

@@ -140,6 +140,7 @@ struct KoloheliosHomeViaFlakehub;
 struct ValidateRecipeMeaningful;
 struct RustCliPackageTrueRequiresCiBuild;
 struct RustCliPackageFalseRequiresOverride;
+struct RustWorkerDurableObjectsSqlite;
 
 const REQUIRED_CARGO_FIELDS: [&str; 3] = ["name", "version", "edition"];
 // In a virtual workspace the shared package fields live in
@@ -878,6 +879,75 @@ impl Rule for RustCliPackageFalseRequiresOverride {
     }
 }
 
+/// Wrangler permits environment-specific migration tables as well as the
+/// top-level list. Unknown fields are irrelevant to this one audit rule.
+#[derive(Default, Deserialize)]
+struct WranglerMigrationScope {
+    #[serde(default)]
+    migrations: Vec<HashMap<String, toml::Value>>,
+    #[serde(default)]
+    env: HashMap<String, WranglerMigrationScope>,
+}
+
+impl WranglerMigrationScope {
+    fn inspect(&self, scope: &str, classic: &mut Vec<String>) -> usize {
+        for (index, migration) in self.migrations.iter().enumerate() {
+            if migration.contains_key("new_classes") {
+                classic.push(format!("{scope}migrations[{index}].new_classes"));
+            }
+        }
+        self.migrations.len()
+            + self
+                .env
+                .iter()
+                .map(|(name, environment)| {
+                    environment.inspect(&format!("{scope}env.{name}."), classic)
+                })
+                .sum::<usize>()
+    }
+}
+
+impl Rule for RustWorkerDurableObjectsSqlite {
+    fn name(&self) -> &'static str {
+        "rust-worker-durable-objects-sqlite"
+    }
+    fn applies(&self, meta: &ProjectMeta) -> bool {
+        meta.kind == ProjectKind::RustWorker
+    }
+    fn check(&self, project_dir: &Path, _meta: &ProjectMeta) -> RuleResult {
+        let contents = match std::fs::read_to_string(project_dir.join("wrangler.toml")) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return RuleResult::NotApplicable
+            }
+            Err(error) => {
+                return RuleResult::Fail(format!("could not read wrangler.toml: {error}"))
+            }
+        };
+        let config: WranglerMigrationScope = match toml::from_str(&contents) {
+            Ok(config) => config,
+            Err(error) => {
+                return RuleResult::Fail(format!(
+                    "could not parse wrangler.toml migrations: {error}"
+                ))
+            }
+        };
+        let mut classic = Vec::new();
+        let migrations = config.inspect("", &mut classic);
+        if !classic.is_empty() {
+            classic.sort();
+            RuleResult::Fail(format!(
+                "wrangler.toml {}: use new_sqlite_classes instead of new_classes for free-plan Durable Objects (Cloudflare error 10097)",
+                classic.join(", "),
+            ))
+        } else if migrations == 0 {
+            RuleResult::NotApplicable
+        } else {
+            RuleResult::Pass
+        }
+    }
+}
+
 fn rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(ReadmePresent),
@@ -895,6 +965,7 @@ fn rules() -> Vec<Box<dyn Rule>> {
         Box::new(ValidateRecipeMeaningful),
         Box::new(RustCliPackageTrueRequiresCiBuild),
         Box::new(RustCliPackageFalseRequiresOverride),
+        Box::new(RustWorkerDurableObjectsSqlite),
     ]
 }
 
@@ -1217,6 +1288,26 @@ mod tests {
             cli: None,
             ci: None,
         }
+    }
+
+    #[test]
+    fn sqlite_durable_objects_are_worker_scoped_and_input_gated() {
+        let rule = RustWorkerDurableObjectsSqlite;
+        assert!(rule.applies(&rust_worker_meta()));
+        assert!(!rule.applies(&rust_meta()));
+        assert!(!rule.applies(&infra_meta()));
+        let project = TempDir::new().unwrap();
+        assert_eq!(
+            rule.check(project.path(), &rust_worker_meta()),
+            RuleResult::NotApplicable
+        );
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/wrangler-migrations/valid/none.toml");
+        fs::copy(fixture, project.path().join("wrangler.toml")).unwrap();
+        assert_eq!(
+            rule.check(project.path(), &rust_worker_meta()),
+            RuleResult::NotApplicable
+        );
     }
 
     fn rust_cli_meta(package: bool, has_build: bool) -> ProjectMeta {

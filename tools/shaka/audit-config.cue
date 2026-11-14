@@ -17,5 +17,6 @@ package audit
 		{name: "validate-recipe-meaningful", severity: "fail"},
 		{name: "rust-cli-package-true-requires-ci-build", severity: "fail"},
 		{name: "rust-cli-package-false-requires-override", severity: "fail"},
+		{name: "rust-worker-durable-objects-sqlite", severity: "fail"},
 	]
 }

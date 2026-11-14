@@ -1,0 +1,9 @@
+name = "worker"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameState"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["AuthFlow"]
