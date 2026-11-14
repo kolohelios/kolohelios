@@ -81,6 +81,58 @@ fn request_preview_needs_no_valid_credentials_and_writes_nothing() {
 }
 
 #[test]
+fn bounded_parameters_preview_exactly_and_invalid_values_fail_locally() {
+    let (dir, _) = setup();
+    let output = command()
+        .args([
+            "generate",
+            "synthetic-chapter",
+            "--variant",
+            "workshop",
+            "--model",
+            "model-a",
+            "--max-tokens",
+            "1200",
+            "--temperature",
+            "0.25",
+            "--dry-run",
+            "--workdir",
+        ])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let preview: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(preview["max_tokens"], 1200);
+    assert_eq!(preview["temperature"], 0.25);
+
+    for flags in [
+        ["--max-tokens", "0"],
+        ["--max-tokens", "8193"],
+        ["--temperature", "-0.1"],
+        ["--temperature", "2.1"],
+        ["--temperature", "NaN"],
+    ] {
+        let output = command()
+            .args([
+                "generate",
+                "synthetic-chapter",
+                "--variant",
+                "workshop",
+                "--model",
+                "model-a",
+                "--workdir",
+            ])
+            .arg(dir.path())
+            .args(flags)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!dir.path().join(".writing/candidates").exists());
+    }
+}
+
+#[test]
 fn missing_credentials_fail_without_network_or_sensitive_output() {
     let output = command().arg("models").output().unwrap();
     assert!(!output.status.success());

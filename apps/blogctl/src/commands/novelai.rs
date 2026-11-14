@@ -34,6 +34,12 @@ pub enum NovelaiAction {
         /// Explicit model ID from `novelai models`; no fallback or substitution.
         #[arg(long)]
         model: String,
+        /// Bound completion length for this one request (default 600, maximum 8192).
+        #[arg(long)]
+        max_tokens: Option<u32>,
+        /// Sampling temperature for this one request (default 0.8, range 0–2).
+        #[arg(long)]
+        temperature: Option<f64>,
         /// Preview the request without credentials, network access, or writes.
         #[arg(long)]
         dry_run: bool,
@@ -65,6 +71,8 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
             workdir,
             variant,
             model,
+            max_tokens,
+            temperature,
             dry_run,
         } => {
             let store = Store::open(&workdir).context(WritingSnafu)?;
@@ -73,7 +81,8 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
                 .context(WritingSnafu)?
                 .prepare(&variant)
                 .context(WritingSnafu)?;
-            let generation = PreparedGeneration::new(snapshot, model).context(NovelaiSnafu)?;
+            let generation = PreparedGeneration::new(snapshot, model, max_tokens, temperature)
+                .context(NovelaiSnafu)?;
             if dry_run {
                 println!("{}", generation.preview().context(NovelaiSnafu)?);
                 return Ok(());

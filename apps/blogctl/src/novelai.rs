@@ -14,6 +14,10 @@ use crate::writing::{GenerationMetadata, PreparedExperiment};
 
 const BASE: &str = "https://text.novelai.net/oa/v1";
 const RESPONSE_LIMIT: u64 = 4 * 1024 * 1024;
+const DEFAULT_MAX_TOKENS: u32 = 600;
+const MAX_TOKENS_LIMIT: u32 = 8192;
+const DEFAULT_TEMPERATURE: f64 = 0.8;
+const MAX_TEMPERATURE: f64 = 2.0;
 
 /// Errors intentionally contain neither API bodies, credentials, nor raw
 /// transport errors. Debug formatting is safe for the same reason.
@@ -31,6 +35,10 @@ pub enum Error {
     UnresolvedReference,
     #[snafu(display("specify a nonempty model ID from `blogctl novelai models` (maximum 200 bytes, no control characters)"))]
     InvalidModel,
+    #[snafu(display("max tokens must be between 1 and {MAX_TOKENS_LIMIT}"))]
+    InvalidMaxTokens,
+    #[snafu(display("temperature must be a finite number between 0 and {MAX_TEMPERATURE}"))]
+    InvalidTemperature,
     #[snafu(display("could not construct the NovelAI request"))]
     InvalidRequest,
     #[snafu(display("NovelAI authentication failed (HTTP 401); check the persistent API token. No retry was made"))]
@@ -72,15 +80,28 @@ pub struct PreparedGeneration {
 }
 
 impl PreparedGeneration {
-    pub fn new(snapshot: PreparedExperiment, model: String) -> Result<Self> {
+    pub fn new(
+        snapshot: PreparedExperiment,
+        model: String,
+        max_tokens: Option<u32>,
+        temperature: Option<f64>,
+    ) -> Result<Self> {
         if model.trim().is_empty() || model.len() > 200 || model.chars().any(char::is_control) {
             return Err(Error::InvalidModel);
+        }
+        let max_tokens = max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
+        if !(1..=MAX_TOKENS_LIMIT).contains(&max_tokens) {
+            return Err(Error::InvalidMaxTokens);
+        }
+        let temperature = temperature.unwrap_or(DEFAULT_TEMPERATURE);
+        if !temperature.is_finite() || !(0.0..=MAX_TEMPERATURE).contains(&temperature) {
+            return Err(Error::InvalidTemperature);
         }
         let request = CompletionRequest {
             model,
             prompt: snapshot.prompt().into(),
-            max_tokens: 600,
-            temperature: 0.8,
+            max_tokens,
+            temperature,
             n: 1,
             best_of: 1,
             stream: false,

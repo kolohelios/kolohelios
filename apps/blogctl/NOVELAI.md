@@ -47,11 +47,23 @@ the older preview-by-default behavior has intentionally changed.
 `experiment prepare` remains local-only.
 
 Each invocation sends one POST with streaming turned off, requesting one candidate:
-`n=1`, `best_of=1`, `max_tokens=600`, `temperature=0.8`, `stream=false`, and
-`echo=false`. These deliberately small initial settings are not configurable in
-this slice. The request has a 60-second timeout. No redirects, automatic retries,
-schedules, autonomous loops, or chained generations are implemented. Connection
-pooling is disabled to avoid hidden stale-connection retries by the HTTP client.
+`n=1`, `best_of=1`, `stream=false`, and `echo=false`. Output defaults to
+`max_tokens=600` and `temperature=0.8`. A deliberate invocation may override
+those two bounded fields:
+
+```sh
+blogctl novelai generate EXPERIMENT_ID --workdir /private/writing-lab \
+  --variant workshop --model MODEL --max-tokens 1200 --temperature 0.25
+```
+
+`max_tokens` must be 1–8192 and temperature must be a finite value from 0–2.
+Invalid values fail before credential lookup, network access, or candidate writes.
+The exact effective values appear in both `--dry-run` output and immutable
+candidate provenance. Candidate count, retries, streaming, fallback, and request
+chaining remain non-configurable. The request has a 60-second timeout. No
+redirects, automatic retries, schedules, autonomous loops, or chained generations
+are implemented. Connection pooling is disabled to avoid hidden stale-connection
+retries by the HTTP client.
 
 The MCP surface remains read-only; this change does not expose generation or
 manuscript mutation through MCP. There are no automatic batches or follow-up
