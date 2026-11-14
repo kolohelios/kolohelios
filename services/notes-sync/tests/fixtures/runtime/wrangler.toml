@@ -1,0 +1,22 @@
+compatibility_date = "2026-05-14"
+main               = "__SHIM__"
+name               = "notes-runtime-smoke"
+[durable_objects]
+bindings = [
+  { name = "NOTE", class_name = "NoteDurableObject" },
+  { name = "AUTH_FLOW", class_name = "AuthFlow" },
+  { name = "VAULT", class_name = "VaultDurableObject" },
+]
+[[migrations]]
+new_sqlite_classes = ["NoteDurableObject", "AuthFlow", "VaultDurableObject"]
+tag                = "test-v1"
+[vars]
+GITHUB_BRANCH      = "main"
+GITHUB_OWNER       = "example"
+GITHUB_REPO        = "notes"
+GITHUB_TOKEN       = "test-only-github-token"
+OAUTH_APP_URL      = "https://notes.example"
+OAUTH_BASE_URL     = "https://backend.example"
+OPENROUTER_API_KEY = "test-only-embedding-key"
+OWNER_DID          = "did:plc:test-owner"
+SESSION_SECRET     = "test-only-session-secret"

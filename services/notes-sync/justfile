@@ -6,6 +6,7 @@ wasm-check:
 
 worker-build-check:
     worker-build --release
+    node tests/runtime-smoke.mjs
 
 test:
     cargo test

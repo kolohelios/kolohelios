@@ -798,18 +798,27 @@ fn template_for(kind: &str, project_dir: &Path) -> Option<String> {
 /// metadata` can't be read or the layout isn't the expected one-cdylib shape —
 /// generation stays best-effort rather than failing the whole run.
 fn rust_worker_body(project_dir: &Path) -> String {
-    if let Some(layout) = workspace_layout(project_dir) {
-        return rust_worker_workspace(&layout);
+    let body = if let Some(layout) = workspace_layout(project_dir) {
+        rust_worker_workspace(&layout)
+    } else if project_dir.join("src/bin/build-site.rs").is_file() {
+        rust_worker_with_build_site()
+    } else {
+        RUST_WORKER_TEMPLATE.to_string()
+    };
+    // An offline runtime smoke test must run against the just-built artifact,
+    // not the previous build. Presence opts in without a new CI job.
+    if project_dir.join("tests/runtime-smoke.mjs").is_file() {
+        return body.replacen(
+            "worker-build --release\n",
+            "worker-build --release\n    node tests/runtime-smoke.mjs\n",
+            1,
+        );
     }
     // `src/bin/build-site.rs` signals a static-site build pipeline (templates +
     // tailwind → committed `dist/`). Add a `build-check` recipe that re-runs the
     // pipeline and diffs against committed output, folded into `validate` so CI
     // catches drift.
-    if project_dir.join("src/bin/build-site.rs").is_file() {
-        rust_worker_with_build_site()
-    } else {
-        RUST_WORKER_TEMPLATE.to_string()
-    }
+    body
 }
 
 /// A `rust-worker` virtual-workspace layout: the wasm-consumable library members
@@ -1175,6 +1184,15 @@ mod tests {
             template_for("nix-lib", dir.path()).as_deref(),
             Some(NIX_LIB_TEMPLATE)
         );
+    }
+
+    #[test]
+    fn runtime_smoke_runs_after_the_worker_build() {
+        let dir = tmp_project("runtime-smoke");
+        std::fs::create_dir_all(dir.path().join("tests")).unwrap();
+        std::fs::File::create(dir.path().join("tests/runtime-smoke.mjs")).unwrap();
+        let body = rust_worker_body(dir.path());
+        assert!(body.contains("worker-build --release\n    node tests/runtime-smoke.mjs\n"));
     }
 
     #[test]

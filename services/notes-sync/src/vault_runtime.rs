@@ -10,6 +10,10 @@ use worker::{
     Request, RequestInit, Response, Result, State,
 };
 
+#[path = "vault_api.rs"]
+mod api;
+pub use api::handle_webhook;
+
 const PREFIX: &str = "entry:";
 const PENDING: &str = "pending:";
 const RETRY: Duration = Duration::from_secs(30);
@@ -18,6 +22,8 @@ const RETRY: Duration = Duration::from_secs(30);
 struct Job {
     ticket: u64,
     attempts: u8,
+    #[serde(default)]
+    git: bool,
 }
 #[derive(Serialize, Deserialize)]
 struct Cached {
@@ -51,9 +57,17 @@ fn embedding_client(env: &Env) -> Option<WorkerEmbeddingClient> {
     ))
 }
 
-pub async fn forward(env: &Env, path: &str, id: Option<&str>) -> Result<Response> {
+pub async fn forward(
+    env: &Env,
+    path: &str,
+    id: Option<&str>,
+    body: Option<String>,
+) -> Result<Response> {
     let mut init = RequestInit::new();
     init.with_method(Method::Post);
+    if let Some(body) = body {
+        init.with_body(Some(body.into()));
+    }
     let suffix = id.map(|id| format!("?id={id}")).unwrap_or_default();
     let request = Request::new_with_init(&format!("https://vault{path}{suffix}"), &init)?;
     env.durable_object("VAULT")?
@@ -64,15 +78,49 @@ pub async fn forward(env: &Env, path: &str, id: Option<&str>) -> Result<Response
 }
 
 pub async fn notify(env: &Env, id: &str) -> Result<()> {
-    let response = forward(env, "/refresh", Some(id)).await?;
+    let response = forward(env, "/refresh", Some(id), None).await?;
     if response.status_code() != 200 {
         return Err(Error::RustError("vault notification failed".into()));
     }
     Ok(())
 }
 
-pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
-    if !crate::runtime::session_authorized(req, env) {
+pub async fn handle(req: Request, env: &Env) -> Result<Response> {
+    let mut response = if req.method() == Method::Options {
+        if req.headers().get("Origin")?
+            != env.var("OAUTH_APP_URL").ok().map(|value| value.to_string())
+        {
+            return Response::error("origin not allowed", 403);
+        }
+        let mut response = Response::ok("")?;
+        response
+            .headers_mut()
+            .set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")?;
+        response
+            .headers_mut()
+            .set("Access-Control-Allow-Headers", "Content-Type")?;
+        response
+    } else {
+        handle_inner(req, env).await?
+    };
+    // Stub fetches return immutable network headers. Copy before applying
+    // the public API's CORS/cache policy.
+    let headers = response.headers().clone();
+    response = response.with_headers(headers);
+    response.headers_mut().set(
+        "Access-Control-Allow-Origin",
+        &env.var("OAUTH_APP_URL")?.to_string(),
+    )?;
+    response
+        .headers_mut()
+        .set("Access-Control-Allow-Credentials", "true")?;
+    response.headers_mut().set("Vary", "Origin")?;
+    response.headers_mut().set("Cache-Control", "no-store")?;
+    Ok(response)
+}
+
+async fn handle_inner(mut req: Request, env: &Env) -> Result<Response> {
+    if !crate::runtime::session_authorized(&req, env) {
         return Response::error("unauthorized", 401);
     }
     if req.method() == Method::Post {
@@ -90,7 +138,10 @@ pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
     let path = match (req.method(), req.path().as_str()) {
         (Method::Get, "/vault/index") => "/index",
         (Method::Get, "/vault/connections") => "/connections",
-        (Method::Post, "/vault/rebuild") => "/rebuild",
+        (Method::Post, "/vault/rebuild") => "/request-reindex",
+        (Method::Post, "/vault/verify") => "/verify",
+        (Method::Post, "/vault/search") => "/search",
+        (Method::Get, "/vault/status") => "/status",
         _ => return Response::error("method not allowed", 405),
     };
     let id = req
@@ -101,16 +152,18 @@ pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
     if path == "/connections" && !id.as_deref().is_some_and(crate::route::is_valid_note_id) {
         return Response::error("valid note id required", 400);
     }
-    let mut response = forward(env, path, id.as_deref()).await?;
-    response.headers_mut().set(
-        "Access-Control-Allow-Origin",
-        &env.var("OAUTH_APP_URL")?.to_string(),
-    )?;
-    response
-        .headers_mut()
-        .set("Access-Control-Allow-Credentials", "true")?;
-    response.headers_mut().set("Vary", "Origin")?;
-    Ok(response)
+    let body = if req.method() == Method::Post {
+        let Some(bytes) = api::read_body(&mut req, 16_384).await? else {
+            return Response::error("request too large", 413);
+        };
+        Some(
+            String::from_utf8(bytes)
+                .map_err(|_| Error::RustError("invalid UTF-8 request".into()))?,
+        )
+    } else {
+        None
+    };
+    forward(env, path, id.as_deref(), body).await
 }
 
 #[durable_object]
@@ -163,9 +216,10 @@ impl VaultDurableObject {
         }
         Ok(jobs)
     }
-    async fn enqueue(&self, id: &str, force: bool) -> Result<()> {
+    async fn enqueue(&self, id: &str, force: bool, git: bool) -> Result<()> {
         let key = format!("{PENDING}{id}");
-        if !force && self.state.storage().get::<Job>(&key).await?.is_some() {
+        let old: Option<Job> = self.state.storage().get(&key).await?;
+        if !force && old.as_ref().is_some_and(|old| !git || old.git) {
             // Recover a persisted job even if an earlier alarm exhausted
             // the platform's retries before it could re-arm itself.
             if self.state.storage().get_alarm().await?.is_none() {
@@ -185,6 +239,7 @@ impl VaultDurableObject {
                 Job {
                     ticket: ticket + 1,
                     attempts: 0,
+                    git: git || old.is_some_and(|old| old.git),
                 },
             )
             .await?;
@@ -208,51 +263,23 @@ impl VaultDurableObject {
             .await?
             .is_some_and(|current| current.ticket == job.ticket))
     }
-    async fn source(&self, id: &str) -> Result<Option<String>> {
-        let stub = self
-            .env
-            .durable_object("NOTE")?
-            .id_from_name(id)?
-            .get_stub()?;
-        let mut response = stub
-            .fetch_with_str(&format!("https://note{}", crate::runtime::EXPORT_PATH))
-            .await?;
-        if response.status_code() != 200 {
-            return Err(Error::RustError("note snapshot unavailable".into()));
-        }
-        #[derive(Deserialize)]
-        struct Snapshot {
-            seq: u64,
-            text: String,
-        }
-        let snapshot: Snapshot = response.json().await?;
-        if snapshot.seq > 0 {
-            return Ok(Some(snapshot.text));
-        }
-        // An existing cold note may predate this index. Git is the portable
-        // rebuild source, never written back into the note's edit log here.
-        crate::git::WorkerGitHubClient::new(self.env.secret("GITHUB_TOKEN")?.to_string())
-            .get_file_content(&crate::runtime::note_git_target(&self.env, id)?)
-            .await
-            .map_err(|error| Error::RustError(error.to_string()))
-    }
     async fn process(&self, id: &str, job: &Job) -> Result<()> {
-        let source = self.source(id).await?;
+        let (source, conflict) = self.source(id, job.git).await?;
         if !self.current(id, job).await? {
             return Ok(());
         }
         let key = format!("{PREFIX}{id}");
         let Some(source) = source else {
-            self.state.storage().delete(&key).await?;
-            self.state
-                .storage()
-                .delete(&format!("connections:{id}"))
-                .await?;
-            self.changed().await?;
+            self.remove_entry(id).await?;
             return Ok(());
         };
         let old: Option<Entry> = self.state.storage().get(&key).await?;
         let mut entry = Entry::from_note(id, &source, &model(&self.env), old.as_ref());
+        if job.git {
+            entry.git_conflict = conflict;
+        }
+        self.store_text(id, &source, old.as_ref(), &mut entry)
+            .await?;
         self.state.storage().put(&key, &entry).await?;
         self.changed().await?;
         if entry.needs_embedding() {
@@ -283,43 +310,57 @@ impl DurableObject for VaultDurableObject {
     fn new(state: State, env: Env) -> Self {
         Self { state, env }
     }
-    async fn fetch(&self, req: Request) -> Result<Response> {
+    async fn fetch(&self, mut req: Request) -> Result<Response> {
         let id = req
             .url()?
             .query_pairs()
             .find(|(key, _)| key == "id")
             .map(|(_, value)| value.into_owned());
         match req.path().as_str() {
+            "/verify" => self.verify(&mut req).await,
+            "/search" => self.search(&mut req).await,
+            "/status" => {
+                let discovery = self
+                    .state
+                    .storage()
+                    .get::<u64>("rebuild_requested")
+                    .await?
+                    .is_some();
+                Response::from_json(
+                    &serde_json::json!({"pending": self.pending().await?.len() + usize::from(discovery),
+                    "discovery_pending":discovery, "last_discovery":self.state.storage().get::<serde_json::Value>("last_discovery").await?}),
+                )
+            }
+            "/git-refresh" => {
+                let ids: BTreeSet<String> = req.json().await?;
+                for id in ids.iter().filter(|id| crate::route::is_valid_note_id(id)) {
+                    self.enqueue(id, true, true).await?;
+                }
+                Response::ok("queued")
+            }
             "/refresh" => {
                 let Some(id) = id.filter(|id| crate::route::is_valid_note_id(id)) else {
                     return Response::error("invalid id", 400);
                 };
-                self.enqueue(&id, true).await?;
+                self.enqueue(&id, true, false).await?;
                 Response::ok("queued")
             }
-            "/rebuild" => {
-                let client = crate::git::WorkerGitHubClient::new(
-                    self.env.secret("GITHUB_TOKEN")?.to_string(),
-                );
-                let paths = client
-                    .list_note_paths(
-                        &self.env.var("GITHUB_OWNER")?.to_string(),
-                        &self.env.var("GITHUB_REPO")?.to_string(),
-                        &self.env.var("GITHUB_BRANCH")?.to_string(),
-                    )
-                    .await
-                    .map_err(|error| Error::RustError(error.to_string()))?;
-                let mut ids: BTreeSet<_> = paths.into_iter().collect();
-                ids.extend(self.entries().await?.into_keys());
-                let discovered = ids.len();
-                ids.retain(|id| crate::route::is_valid_note_id(id));
-                let skipped_invalid_ids = discovered - ids.len();
-                for id in &ids {
-                    self.enqueue(id, true).await?;
-                }
-                Response::from_json(
-                    &serde_json::json!({"queued": ids.len(), "skipped_invalid_ids": skipped_invalid_ids}),
-                )
+            "/request-reindex" => {
+                let epoch: u64 = self
+                    .state
+                    .storage()
+                    .get("rebuild_requested")
+                    .await?
+                    .unwrap_or(0);
+                self.state
+                    .storage()
+                    .put("rebuild_requested", epoch + 1)
+                    .await?;
+                self.state
+                    .storage()
+                    .set_alarm(Duration::from_secs(1))
+                    .await?;
+                Response::from_json(&serde_json::json!({"discovery_pending":true}))
             }
             "/index" | "/connections" => {
                 let generation = self.generation().await?;
@@ -334,7 +375,7 @@ impl DurableObject for VaultDurableObject {
                             && entry.has_body
                             && (entry.key.model_id != desired || entry.needs_embedding()))
                     {
-                        self.enqueue(&entry.id, false).await?;
+                        self.enqueue(&entry.id, false, false).await?;
                     }
                 }
                 let pending: BTreeSet<_> = self
@@ -356,7 +397,7 @@ impl DurableObject for VaultDurableObject {
                 if req.path() == "/index" {
                     return Response::from_json(&entries.values().map(|entry| serde_json::json!({
                         "id":entry.id, "title":entry.title, "tags":entry.tags, "aliases":entry.aliases, "key":entry.key,
-                        "source_stale":entry.stale,
+                        "source_stale":entry.stale, "git_conflict":entry.git_conflict,
                         "embedding_fresh": entry.vector.as_deref().is_some_and(crate::embeddings::valid_vector)
                             && entry.key.model_id == desired,
                     })).collect::<Vec<_>>());
@@ -390,6 +431,13 @@ impl DurableObject for VaultDurableObject {
         }
     }
     async fn alarm(&self) -> Result<Response> {
+        if let Some(epoch) = self.state.storage().get::<u64>("rebuild_requested").await? {
+            self.state.storage().set_alarm(RETRY).await?;
+            self.discover().await?;
+            if self.state.storage().get::<u64>("rebuild_requested").await? == Some(epoch) {
+                self.state.storage().delete("rebuild_requested").await?;
+            }
+        }
         let jobs = self.pending().await?;
         // A crash/eviction during a remote read must not strand durable
         // work after the platform's finite automatic retry sequence.

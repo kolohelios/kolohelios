@@ -1,0 +1,5 @@
+[vars]
+GITHUB_OWNER   = "example"
+GITHUB_REPO    = "notes"
+OAUTH_BASE_URL = "https://notes.example"
+OWNER_DID      = "did:plc:test-owner"

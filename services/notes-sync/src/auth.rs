@@ -172,7 +172,7 @@ pub fn authorized_did(
         return None;
     };
     let owner = owner.trim();
-    if owner.is_empty() {
+    if secret.is_empty() || owner.is_empty() {
         return None;
     }
     cookie_value(header, "session")

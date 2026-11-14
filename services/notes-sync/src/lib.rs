@@ -35,13 +35,16 @@
 
 pub mod auth;
 pub mod dpop;
+pub mod drift;
 pub mod embeddings;
 pub mod git;
 pub mod llm;
 pub mod oauth;
 pub mod route;
+pub mod search;
 pub mod state;
 pub mod vault;
+pub mod webhook;
 
 #[cfg(target_arch = "wasm32")]
 mod runtime;

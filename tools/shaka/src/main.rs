@@ -15,6 +15,7 @@ mod domain;
 mod gh;
 mod issue;
 mod jj;
+mod notes;
 mod object_store;
 mod output;
 mod preflight;
@@ -78,6 +79,11 @@ enum Commands {
     ObjectStore {
         #[command(subcommand)]
         command: object_store::ObjectStoreCommand,
+    },
+    /// Verify/repair the notes vault and configure push-driven indexing
+    Notes {
+        #[command(subcommand)]
+        command: notes::NotesCommand,
     },
     /// Run every validation check CI runs (nix flake check, tofu validate, tofu plan)
     Preflight {
@@ -155,6 +161,7 @@ fn main() {
         Commands::Domain { command } => domain::run(command),
         Commands::Issue { command } => issue::run(command),
         Commands::ObjectStore { command } => object_store::run(command),
+        Commands::Notes { command } => notes::run(command),
         Commands::Preflight {
             keep_going,
             since,

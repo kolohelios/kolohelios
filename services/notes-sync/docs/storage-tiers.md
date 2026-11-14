@@ -59,12 +59,21 @@ Read the two roles together and the subtle part falls out — **authority is
 split between the tiers**:
 
 - **Content** truth lives in the **DO**. On wake, `load_state` reads
-  `(seq, text)` straight from DO storage; **git is never read back**.
+  `(seq, text)` straight from DO storage. Git reconciliation can append
+  opaque text through that same writer only when the note is clean and
+  idle; it never resets the log or overwrites uncommitted edits.
 - **Existence / the listing** truth lives in **git** (the `/vault` tree
   walk).
 
 So the DO is the source of truth for *what a note says*, and git is the
 source of truth for *which notes exist*.
+
+Phase G adds guarded read-back on first open and signed Git push delivery.
+Cold notes can hydrate before their first `Sync`; background imports require
+no live sockets and `seq == committed_seq`. Concurrent edits reject the
+import, and verification reports a conflict instead of silently replacing
+the hot body. See [drift control](drift-and-search.md) for deletion and repair
+semantics. The Git tree still drives the existing drawer listing.
 
 ## Consequence: the vault freshness gap
 
