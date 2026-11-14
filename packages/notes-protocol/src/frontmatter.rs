@@ -190,9 +190,14 @@ pub fn set_title(note: &str, title: &str) -> Result<String, Error> {
 ///   Front-matter authors keep the opening block tight, so the trigger is
 ///   narrow.
 pub fn content_hash(note: &str) -> String {
-    let body = body_without_frontmatter(note);
-    let normalized = normalize_body(body);
-    to_hex(&Sha256::digest(normalized.as_bytes()))
+    to_hex(&Sha256::digest(canonical_body(note).as_bytes()))
+}
+
+/// The exact normalized prose used by [`content_hash`]. Derived services
+/// must use the same input, so cosmetic edits cannot change an artifact
+/// while leaving its cache key unchanged.
+pub fn canonical_body(note: &str) -> String {
+    normalize_body(body_without_frontmatter(note))
 }
 
 /// Normalize a body for hashing: LF line endings, no trailing per-line

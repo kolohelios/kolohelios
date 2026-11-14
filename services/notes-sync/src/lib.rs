@@ -35,11 +35,15 @@
 
 pub mod auth;
 pub mod dpop;
+pub mod embeddings;
 pub mod git;
 pub mod llm;
 pub mod oauth;
 pub mod route;
 pub mod state;
+pub mod vault;
 
 #[cfg(target_arch = "wasm32")]
 mod runtime;
+#[cfg(target_arch = "wasm32")]
+mod vault_runtime;

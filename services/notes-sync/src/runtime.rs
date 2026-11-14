@@ -40,7 +40,7 @@ const PURGE_PATH: &str = "/__purge";
 /// here to the *source* note's Durable Object to read its materialized body
 /// (returned as `{"seq":…,"text":…}`) before the move. Read-only — it never
 /// mutates the source, so a later failure leaves the source recoverable.
-const EXPORT_PATH: &str = "/__export";
+pub(crate) const EXPORT_PATH: &str = "/__export";
 
 /// Internal DO control path: the `/rename` orchestrator forwards a `POST`
 /// here to the *destination* note's Durable Object with the migrated body in
@@ -124,6 +124,9 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         "/oauth/callback" => return crate::oauth::handle_callback(req, env).await,
         "/me" => return handle_me(&req, &env),
         "/vault" => return handle_vault(&req, &env).await,
+        "/vault/index" | "/vault/connections" | "/vault/rebuild" => {
+            return crate::vault_runtime::handle(&req, &env).await;
+        }
         "/suggest-path" => return handle_suggest_path(req, &env).await,
         "/delete" => return handle_delete(&req, &env).await,
         "/rename" => return handle_rename(&req, &env).await,
@@ -155,7 +158,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 /// cookie, denies. (Earlier phases ran with the gate open while the OAuth
 /// flow was being built; that fail-open default is gone now that the
 /// secret and owner are configured.)
-fn session_authorized(req: &Request, env: &Env) -> bool {
+pub(crate) fn session_authorized(req: &Request, env: &Env) -> bool {
     let secret = env.secret("SESSION_SECRET").ok().map(|s| s.to_string());
     let owner = env.var("OWNER_DID").ok().map(|v| v.to_string());
     let header = req.headers().get("Cookie").ok().flatten();
@@ -572,7 +575,7 @@ async fn perform_rename(
 /// Resolve a note's GitHub target from env config plus its (already
 /// validated) id. The env config is shared across notes; only the path
 /// differs, at `notes/<note_id>.md`.
-fn note_git_target(env: &Env, note_id: &str) -> Result<GitTarget> {
+pub(crate) fn note_git_target(env: &Env, note_id: &str) -> Result<GitTarget> {
     Ok(GitTarget {
         owner: env.var("GITHUB_OWNER")?.to_string(),
         repo: env.var("GITHUB_REPO")?.to_string(),
@@ -748,13 +751,14 @@ impl NoteDurableObject {
     }
 
     /// Append `delta` to the log under `seq` and update the materialized
-    /// `(seq, text)` snapshot. All three writes land in one message
-    /// handler, so workerd's output gate applies them atomically before
+    /// `(seq, text)` snapshot plus the index-delivery flag. All writes land
+    /// in one message handler, so workerd's output gate applies them before
     /// the `Ack` is observed.
     async fn commit_edit(&self, seq: Seq, delta: &Delta, text: &str) -> Result<()> {
         self.state.storage().put(&log_key(seq), delta).await?;
         self.state.storage().put("seq", seq).await?;
         self.state.storage().put("text", text).await?;
+        self.state.storage().put("index_dirty", true).await?;
         Ok(())
     }
 
@@ -828,6 +832,9 @@ impl NoteDurableObject {
             .map_err(|e| Error::RustError(e.to_string()))?;
         self.state.storage().delete_all().await?;
         let _ = self.state.storage().delete_alarm().await;
+        self.state.storage().put("note_id", note_id).await?;
+        self.state.storage().put("index_dirty", true).await?;
+        self.notify_index().await?;
         Response::ok("purged")
     }
 
@@ -848,12 +855,20 @@ impl NoteDurableObject {
         self.state.storage().put("text", text).await?;
         self.state.storage().put("committed_seq", seq).await?;
         self.state.storage().put("note_id", note_id).await?;
+        self.state.storage().put("index_dirty", true).await?;
+        self.notify_index().await?;
         Response::ok("seeded")
     }
 
     /// Commit the current body to git with optimistic stale-ref retry.
     /// Returns the new commit sha.
     async fn commit_now(&self, seq: Seq, text: &str) -> std::result::Result<String, CommitError> {
+        // Share the lazy cadence, not the git dependency: the authoritative
+        // DO can still refresh its derived index while GitHub is unavailable.
+        if let Err(error) = self.notify_index().await {
+            console_log!("vault notification storage failure: {error}");
+            let _ = self.state.storage().set_alarm(COMMIT_RETRY_BACKOFF).await;
+        }
         let target = self
             .git_target()
             .await
@@ -866,6 +881,38 @@ impl NoteDurableObject {
         let client = WorkerGitHubClient::new(token);
         let message = format!("note: update {} (seq {seq})", target.path);
         commit_with_retry(&client, &target, text, &message, MAX_COMMIT_RETRIES).await
+    }
+
+    async fn notify_index(&self) -> Result<()> {
+        if !self
+            .state
+            .storage()
+            .get::<bool>("index_dirty")
+            .await?
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        let id: String = self
+            .state
+            .storage()
+            .get("note_id")
+            .await?
+            .unwrap_or_default();
+        let snapshot = self.load_state().await?;
+        match crate::vault_runtime::notify(&self.env, &id).await {
+            Ok(()) => {
+                // Compare text too: purge/seed can reset the sequence.
+                if self.load_state().await? == snapshot {
+                    self.state.storage().delete("index_dirty").await?;
+                }
+            }
+            Err(error) => {
+                console_log!("vault notification failed: {error}; retry scheduled");
+                self.state.storage().set_alarm(COMMIT_RETRY_BACKOFF).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Send `msg` to every connected editor (e.g. a `BackedUp` after a
@@ -1156,6 +1203,7 @@ impl DurableObject for NoteDurableObject {
         self.clear_commit_deadlines().await;
 
         if seq <= committed {
+            self.notify_index().await?;
             return Response::ok("nothing to commit");
         }
 
