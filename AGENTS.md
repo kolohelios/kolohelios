@@ -515,6 +515,37 @@ restate two rules that `/start` and `/ship` would otherwise enforce:
   and forget to re-run; the resulting CI failure cycle is far more
   expensive than the local validate.
 
+### Structured-output workflow workers
+
+A harness-managed worker that must return a schema-checked result (for
+example, a `Workflow` agent using `StructuredOutput`) is **implementation
+only**, not the shipping owner. Declare that role in its brief and choose
+a result schema that can represent a handoff with checks pending or not
+run. This changes who validates, never whether validation happens (#1019).
+
+- The worker implements and describes its change, with `Closes #<N>` when
+  appropriate. It may run focused checks known to fit its execution budget,
+  but must not start full `shaka preflight`, `just validate`, `/ship`, or
+  `shaka repo ship|send`, push commits, or open a PR.
+- Finish through the harness's required result tool/schema. Return the
+  workspace path, change ID, summary, check results, and blockers; explicitly
+  identify checks not run or still pending. Keep the response concise and
+  reference files or issue comments for long plans.
+- If a check unexpectedly moves to the background, hand its task handle,
+  command, and pending status to the parent in that result. Do not wait for
+  it through repeated stop-hook nudges or claim that pending work passed.
+- The top-level shipping owner, outside the bounded worker phase, waits for
+  any pending checks, reviews the final diff, runs each affected project's
+  `nix develop . --command just validate` and
+  `shaka preflight --since main@origin`, then pushes only after success.
+  Any later source edit requires validation again. PR CI is not a substitute
+  for this local gate.
+
+Ordinary sub-agents that own shipping still follow the validation-before-push
+rules above. Auto-background thresholds, required-result enforcement, and
+inactivity timeouts belong to the external harness; do not try to fix them
+with repository stop hooks, artificial activity loops, or skipped validation.
+
 ## Periodic maintenance
 
 A few tasks pay off when run on a cadence rather than per-PR:

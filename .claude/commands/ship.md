@@ -12,6 +12,15 @@ If the invocation includes `--then <N>`, after the PR is open continue
 into issue `#<N>` in the same session via the `/start` flow — see
 [Step 6: Continue the train](#6-continue-the-train).
 
+## Execution owner
+
+This command belongs to the top-level shipping owner, not a bounded worker
+required to return `StructuredOutput`. Such workers must return their
+implementation handoff before long validation or shipping; follow
+[Structured-output workflow workers](../../AGENTS.md#structured-output-workflow-workers).
+The shipping owner then runs every validation step below. A pending or
+missing worker check never authorizes a push.
+
 ## Workflow
 
 ### 0. Snapshot state
