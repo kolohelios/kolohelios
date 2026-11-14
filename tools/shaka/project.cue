@@ -19,6 +19,8 @@ package project
 			"opentofu",
 			// Lint generated standalone validation workflows in integration tests.
 			"actionlint",
+			// Exercise configured Vale failures in external preflight tests.
+			"vale",
 		]
 		// Bake shaka's everyday runtime deps onto the wrapped
 		// binary's PATH so `nix run ./tools/shaka -- <subcmd>` works

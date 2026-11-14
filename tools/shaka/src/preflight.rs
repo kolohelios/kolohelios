@@ -237,7 +237,8 @@ const CHECKS: &[Check] = &[
             "tools/resume/resume.md",
             "apps/kolohelios-portfolio/data/profile.json",
         ],
-        required_paths: &[],
+        // Gate on owners, not artifacts: missing generated files must fail.
+        required_paths: &["tools/resume", "apps/kolohelios-portfolio"],
         run: shaka_profile_generate_check,
     },
     Check {
@@ -258,7 +259,7 @@ const CHECKS: &[Check] = &[
             "apps/kolohelios-portfolio/dist/resume.pdf",
             "apps/kolohelios-portfolio/dist/resume.docx",
         ],
-        required_paths: &[],
+        required_paths: &["tools/resume", "apps/kolohelios-portfolio"],
         run: resume_synced_to_portfolio,
     },
     Check {
@@ -281,10 +282,11 @@ const CHECKS: &[Check] = &[
         // Whole-repo scan like `typos`: vale is fast enough that
         // scoping by changed paths isn't worth the complexity, and a
         // change to `.vale.ini` or vendored styles needs to re-lint
-        // every markdown file.
+        // every markdown file. Opt in via repo config; an existing but
+        // broken config still runs Vale and fails normally.
         name: "vale",
         paths: &[],
-        required_paths: &[],
+        required_paths: &[".vale.ini"],
         run: vale_check,
     },
     Check {
@@ -1124,6 +1126,36 @@ mod tests {
             &dir
         ));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn profile_and_resume_checks_require_owners_not_artifacts() {
+        for name in [
+            "shaka profile generate --check",
+            "resume synced to portfolio dist",
+        ] {
+            let check = CHECKS.iter().find(|c| c.name == name).unwrap();
+            let empty = tempfile::tempdir().unwrap();
+            assert!(!check_applies(check, empty.path()), "{name}");
+
+            // Either owner alone keeps the drift gate active, even with
+            // no schema, source, or generated artifacts on either side.
+            for owner in ["tools/resume", "apps/kolohelios-portfolio"] {
+                let repo = tempfile::tempdir().unwrap();
+                std::fs::create_dir_all(repo.path().join(owner)).unwrap();
+                assert!(check_applies(check, repo.path()), "{name}: {owner}");
+            }
+        }
+    }
+
+    #[test]
+    fn vale_requires_repo_config() {
+        let check = CHECKS.iter().find(|c| c.name == "vale").unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        assert!(!check_applies(check, repo.path()));
+        // Even an empty (invalid) config opts in; don't validate it here.
+        std::fs::write(repo.path().join(".vale.ini"), b"").unwrap();
+        assert!(check_applies(check, repo.path()));
     }
 
     #[test]
