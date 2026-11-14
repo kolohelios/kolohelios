@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::writing::{self, ArtifactReference, Experiment, Store};
 
@@ -22,16 +22,88 @@ pub struct WorkflowDefinition {
     #[serde(default)]
     context_sets: BTreeMap<String, Vec<ContextSource>>,
     passes: Vec<WorkflowPass>,
+    #[serde(skip)]
+    fingerprint: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PassMode {
+    #[default]
+    Generate,
+    ImportOnly,
+}
+
+impl PassMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Generate => "generate",
+            Self::ImportOnly => "import-only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WorkflowPass {
+pub struct WorkflowPass {
     name: String,
+    #[serde(default)]
+    mode: PassMode,
     requires_input: bool,
     approach: String,
     #[serde(default)]
     context: Vec<String>,
+    artifact_kind: Option<String>,
+    max_tokens: Option<u32>,
+    temperature: Option<f64>,
+    min_words: Option<usize>,
+    max_words: Option<usize>,
+    #[serde(default)]
+    forbid_workflow_metadata: bool,
+    #[serde(default)]
+    require_complete_ending: bool,
+}
+
+impl WorkflowPass {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn mode(&self) -> PassMode {
+        self.mode
+    }
+
+    pub fn requires_input(&self) -> bool {
+        self.requires_input
+    }
+
+    pub fn artifact_kind(&self) -> &str {
+        self.artifact_kind.as_deref().unwrap_or(&self.name)
+    }
+
+    pub fn max_tokens(&self) -> Option<u32> {
+        self.max_tokens
+    }
+
+    pub fn temperature(&self) -> Option<f64> {
+        self.temperature
+    }
+
+    pub fn min_words(&self) -> Option<usize> {
+        self.min_words
+    }
+
+    pub fn max_words(&self) -> Option<usize> {
+        self.max_words
+    }
+
+    pub fn forbid_workflow_metadata(&self) -> bool {
+        self.forbid_workflow_metadata
+    }
+
+    pub fn require_complete_ending(&self) -> bool {
+        self.require_complete_ending
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,8 +239,69 @@ fn validate(definition: &WorkflowDefinition) -> writing::Result<()> {
                 ));
             }
         }
+        if let Some(kind) = &pass.artifact_kind {
+            writing::validate_identifier(kind)?;
+        }
+        if let (Some(min), Some(max)) = (pass.min_words, pass.max_words) {
+            if min > max {
+                return Err(invalid("pass minimum words must not exceed maximum words"));
+            }
+        }
+        if pass
+            .max_tokens
+            .is_some_and(|tokens| !(1..=8192).contains(&tokens))
+        {
+            return Err(invalid("pass max tokens must be between 1 and 8192"));
+        }
+        if pass
+            .temperature
+            .is_some_and(|value| !value.is_finite() || !(0.0..=2.0).contains(&value))
+        {
+            return Err(invalid("pass temperature must be between 0 and 2"));
+        }
     }
     Ok(())
+}
+
+pub fn validate_store_boundary(store: &Store, config_root: &Path) -> writing::Result<()> {
+    let root = ConfigRoot::open(config_root)?;
+    if store.root().starts_with(&root.path) {
+        return Err(writing::Error::UnsafePath {
+            path: store.root().into(),
+        });
+    }
+    Ok(())
+}
+
+pub fn definition(config_root: &Path, config: &Path) -> writing::Result<WorkflowDefinition> {
+    let root = ConfigRoot::open(config_root)?;
+    let (config_path, config_text) = root.read(config)?;
+    let mut definition: WorkflowDefinition =
+        serde_json::from_str(&config_text).map_err(|source| writing::Error::Json {
+            path: config_path,
+            source,
+        })?;
+    validate(&definition)?;
+    definition.fingerprint = writing::hash(&config_text);
+    Ok(definition)
+}
+
+impl WorkflowDefinition {
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
+    pub fn passes(&self) -> &[WorkflowPass] {
+        &self.passes
+    }
+
+    pub fn pass(&self, name: &str) -> writing::Result<&WorkflowPass> {
+        writing::validate_identifier(name)?;
+        self.passes
+            .iter()
+            .find(|pass| pass.name == name)
+            .ok_or_else(|| invalid("unknown writing workflow pass"))
+    }
 }
 
 pub fn prepare(
@@ -178,12 +311,8 @@ pub fn prepare(
     pass_name: &str,
     input: Option<&ArtifactReference>,
 ) -> writing::Result<String> {
+    validate_store_boundary(store, config_root)?;
     let root = ConfigRoot::open(config_root)?;
-    if store.root().starts_with(&root.path) {
-        return Err(writing::Error::UnsafePath {
-            path: store.root().into(),
-        });
-    }
     let (config_path, config_text) = root.read(config)?;
     let definition: WorkflowDefinition =
         serde_json::from_str(&config_text).map_err(|source| writing::Error::Json {
@@ -191,12 +320,7 @@ pub fn prepare(
             source,
         })?;
     validate(&definition)?;
-    writing::validate_identifier(pass_name)?;
-    let pass = definition
-        .passes
-        .iter()
-        .find(|pass| pass.name == pass_name)
-        .ok_or_else(|| invalid("unknown writing workflow pass"))?;
+    let pass = definition.pass(pass_name)?.clone();
     if pass.requires_input && input.is_none() {
         return Err(invalid(
             "writing workflow pass requires an explicit input candidate",

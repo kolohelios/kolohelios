@@ -103,14 +103,29 @@ profile or selected samples without duplicating paths:
   "passes": [
     {
       "name": "shape",
+      "mode": "generate",
       "requires_input": false,
-      "approach": "Return only a compact outline."
+      "approach": "Return only a compact outline.",
+      "artifact_kind": "outline",
+      "max_tokens": 400,
+      "temperature": 0.5,
+      "max_words": 200,
+      "require_complete_ending": true
     },
     {
       "name": "draft",
       "requires_input": true,
       "approach": "Draft from the selected outline.",
-      "context": ["profile", "samples"]
+      "context": ["profile", "samples"],
+      "min_words": 800,
+      "max_words": 1200,
+      "forbid_workflow_metadata": true
+    },
+    {
+      "name": "investigation",
+      "mode": "import-only",
+      "requires_input": true,
+      "approach": "Import an inspectable evidence pack."
     }
   ]
 }
@@ -138,6 +153,44 @@ candidate is inferred. Candidate bodies are obtained through typed integrity
 inspection rather than Markdown parsing. Preparation prints the deterministic
 experiment ID. Repeating the same preparation confirms the existing definition;
 a differing definition at the same ID is never overwritten.
+
+Pass mode defaults to `generate`; `import-only` refuses previews and model
+requests. `artifact_kind` defaults to the pass name and records structured
+lineage separately from prompt prose. Optional `max_tokens` and `temperature`
+values use the same hard provider bounds as direct generation. The optional word bounds,
+`forbid_workflow_metadata`, and `require_complete_ending` fields drive advisory
+checks only. They never alter, reject, or select candidate text.
+
+## Conduct a resumable session
+
+The conductor composes preparation, one-request generation, external import,
+selection, review, and navigation without turning the workflow into an
+unattended pipeline:
+
+```sh
+op run -- blogctl workflow \
+  --workdir "$HOME/.local/share/writing-lab" \
+  conduct example-chapter \
+  --config-root /private/consumer-repo \
+  --config books/example/workflow.json \
+  --model exact-model-id
+```
+
+Session files live under `.writing/sessions/` with mode `0600`. The numbered
+loop can read the selected candidate, preview a request, make exactly one
+request, import a file, select an existing candidate, record a hash-bound
+review, advance, move to another pass, or stop. Import and generation leave new
+candidates unselected. Advancing requires an explicit selection, clears it,
+and carries that exact candidate as the next pass input. Moving to another pass
+requires an explicit input when its policy says so; the conductor never infers
+the latest candidate.
+
+Preview doesn't resolve credentials or contact NovelAI. `import-only` passes
+refuse preview and generation, leaving evidence acquisition to a human or
+research assistant. Advisory findings report word bounds, leaked think
+markup, likely instruction braces, workflow metadata, and incomplete endings.
+They don't mutate immutable candidates. Reaching the final pass doesn't approve
+`polished` text or promote a manuscript; those remain separate human actions.
 
 ## Record an externally obtained candidate
 

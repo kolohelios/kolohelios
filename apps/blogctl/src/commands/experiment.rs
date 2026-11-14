@@ -90,7 +90,7 @@ pub enum CandidateAction {
     Inspect { experiment: String, id: String },
 }
 
-fn authorize_review(
+pub(crate) fn authorize_review(
     decision: writing::ReviewDecision,
     candidate_hash: &str,
 ) -> writing::Result<()> {

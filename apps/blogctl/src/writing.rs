@@ -330,6 +330,10 @@ impl Store {
         &self.root
     }
 
+    pub(crate) fn session_directory(&self, create: bool) -> Result<Option<PathBuf>> {
+        self.directory(&["sessions"], create)
+    }
+
     // Check every managed directory, not just the leaf. Symlinked workdir roots
     // are resolved by open; symlinks beneath that root are never followed.
     fn directory(&self, components: &[&str], create: bool) -> Result<Option<PathBuf>> {
