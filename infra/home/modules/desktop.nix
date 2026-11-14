@@ -10,4 +10,5 @@
   home.homeDirectory = "/home/jone";
 
   programs.home-manager.enable = true;
+  programs.writing-lab.enable = true;
 }
