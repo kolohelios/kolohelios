@@ -120,7 +120,7 @@ fn conduct(
         show_status(session, definition, &mut output)?;
         line(
             &mut output,
-            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  e evidence  9 stop",
+            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  e evidence  p polished  x export  9 stop",
         )?;
         let choice = ask(&mut input, &mut output, "> ")?;
         if choice.is_empty() || choice == "9" {
@@ -168,6 +168,8 @@ fn conduct(
             "7" => session.advance(definition).context(WritingSnafu),
             "8" => choose_pass(store, session, definition, &mut input, &mut output),
             "e" => choose_evidence(store, session, &mut input, &mut output),
+            "p" => polished_decision(store, session, &mut input, &mut output),
+            "x" => export_polished(store, session, &mut input, &mut output),
             _ => {
                 line(&mut output, "Unknown choice")?;
                 continue;
@@ -617,6 +619,111 @@ fn choose_evidence(
         .map(str::to_owned)
         .collect();
     session.set_evidence(store, ids).context(WritingSnafu)
+}
+
+fn polished_decision(
+    store: &Store,
+    session: &Session,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+) -> Result<()> {
+    let selected = session
+        .selected()
+        .ok_or_else(|| crate::error::Error::Writing {
+            source: writing::Error::Invalid {
+                reason: "select a final-draft candidate before polished review".into(),
+            },
+        })?;
+    let raw = ask(input, output, "Polished decision (approve/reject): ")?;
+    let decision = match raw.as_str() {
+        "approve" => crate::writing_polished::PolishedDecision::Approve,
+        "reject" => crate::writing_polished::PolishedDecision::Reject,
+        _ => {
+            return Err(crate::error::Error::Writing {
+                source: writing::Error::Invalid {
+                    reason: "polished decision must be approve or reject".into(),
+                },
+            });
+        }
+    };
+    let approver = ask(input, output, "Approver: ")?;
+    let notes_path = ask(input, output, "Notes file (blank for none): ")?;
+    let notes = if notes_path.is_empty() {
+        String::new()
+    } else {
+        writing::read_text(Path::new(&notes_path)).context(WritingSnafu)?
+    };
+    let candidate_hash = writing::hash(
+        &store
+            .read_candidate(&selected.experiment_id, &selected.candidate_id)
+            .context(WritingSnafu)?,
+    );
+    crate::commands::experiment::authorize_polished(decision, &candidate_hash)
+        .context(WritingSnafu)?;
+    let id = store
+        .record_polished_decision(
+            &selected.experiment_id,
+            &selected.candidate_id,
+            &candidate_hash,
+            decision,
+            approver,
+            notes,
+        )
+        .context(WritingSnafu)?;
+    line(output, &format!("Polished decision: {id}"))
+}
+
+fn export_polished(
+    store: &Store,
+    session: &Session,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+) -> Result<()> {
+    let selected = session
+        .selected()
+        .ok_or_else(|| crate::error::Error::Writing {
+            source: writing::Error::Invalid {
+                reason: "select a final-draft candidate before export".into(),
+            },
+        })?;
+    let decisions = store
+        .polished_decisions(&selected.experiment_id, &selected.candidate_id)
+        .context(WritingSnafu)?;
+    if decisions.is_empty() {
+        return Err(crate::error::Error::Writing {
+            source: writing::Error::Invalid {
+                reason: "record a polished approval before export".into(),
+            },
+        });
+    }
+    line(output, "Polished decisions:")?;
+    for decision in decisions {
+        line(
+            output,
+            &format!(
+                "- {} {:?} by {} at {}",
+                decision.polished_id, decision.decision, decision.approver, decision.timestamp
+            ),
+        )?;
+    }
+    let approval = ask(input, output, "Polished approval ID: ")?;
+    let destination = PathBuf::from(ask(input, output, "Export destination: ")?);
+    let outcome = store
+        .export_polished(
+            &selected.experiment_id,
+            &selected.candidate_id,
+            &approval,
+            &destination,
+        )
+        .context(WritingSnafu)?;
+    let json =
+        serde_json::to_string_pretty(&outcome).map_err(|source| crate::error::Error::Writing {
+            source: writing::Error::Json {
+                path: destination,
+                source,
+            },
+        })?;
+    line(output, &json)
 }
 
 fn reference(reference: &ArtifactReference) -> String {
