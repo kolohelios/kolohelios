@@ -129,6 +129,48 @@ fn cli_review_cannot_use_piped_input_as_human_authorization() {
 }
 
 #[test]
+fn cli_polished_decision_cannot_use_piped_input_as_human_authorization() {
+    let (root, store, id) = setup();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_blogctl"));
+    command
+        .args(["candidate", "--workdir"])
+        .arg(root.path())
+        .args([
+            "polished",
+            "synthetic-chapter",
+            &id,
+            "--decision",
+            "approve",
+            "--approver",
+            "Test approver",
+        ])
+        .env_remove("NOVELAI_API_TOKEN")
+        .env_remove("OPENROUTER_API_KEY")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // SAFETY: setsid is an async-signal-safe syscall, removing the controlling terminal.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    let mut child = command.spawn().unwrap();
+    let _ = child.stdin.take().unwrap().write_all(b"APPROVE POLISHED\n");
+    let output = child.wait_with_output().unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("controlling terminal"));
+    assert!(store
+        .polished_decisions("synthetic-chapter", &id)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn mcp_tools_are_read_only_strict_and_use_engine_functions() {
     let (root, store, id) = setup();
     let input = fs::read_to_string(fixture("mcp.jsonl"))

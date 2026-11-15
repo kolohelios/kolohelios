@@ -80,6 +80,28 @@ pub enum CandidateAction {
         #[arg(long)]
         notes_file: Option<PathBuf>,
     },
+    /// Record a human polished decision against exact final-draft bytes.
+    Polished {
+        experiment: String,
+        id: String,
+        #[arg(long, value_enum)]
+        decision: crate::writing_polished::PolishedDecision,
+        #[arg(long)]
+        approver: String,
+        #[arg(long)]
+        notes_file: Option<PathBuf>,
+    },
+    /// Inspect polished decisions, failing if any decision is stale or altered.
+    PolishedDecisions { experiment: String, id: String },
+    /// Export exact approved prose to an explicit, no-clobber destination.
+    Export {
+        experiment: String,
+        id: String,
+        #[arg(long, value_name = "POLISHED_ID")]
+        approval: String,
+        #[arg(long, value_name = "PATH")]
+        destination: PathBuf,
+    },
     /// Read review history, checking every decision against current candidate bytes.
     Reviews { experiment: String, id: String },
     /// List candidate IDs for an experiment.
@@ -107,6 +129,55 @@ pub(crate) fn authorize_review(
     }
     let input = tty.try_clone().map_err(|_| denied())?;
     confirm_review(decision, candidate_hash, BufReader::new(input), &mut tty)
+}
+
+pub(crate) fn authorize_polished(
+    decision: crate::writing_polished::PolishedDecision,
+    candidate_hash: &str,
+) -> writing::Result<()> {
+    let denied = || writing::Error::Invalid {
+        reason: "polished decision requires fresh confirmation at a controlling terminal".into(),
+    };
+    let mut tty = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")
+        .map_err(|_| denied())?;
+    if !tty.is_terminal() {
+        return Err(denied());
+    }
+    let input = tty.try_clone().map_err(|_| denied())?;
+    confirm_polished(decision, candidate_hash, BufReader::new(input), &mut tty)
+}
+
+fn confirm_polished(
+    decision: crate::writing_polished::PolishedDecision,
+    candidate_hash: &str,
+    input: impl BufRead,
+    output: &mut impl Write,
+) -> writing::Result<()> {
+    let denied = || writing::Error::Invalid {
+        reason: "polished decision was not confirmed".into(),
+    };
+    let phrase = match decision {
+        crate::writing_polished::PolishedDecision::Approve => "APPROVE POLISHED",
+        crate::writing_polished::PolishedDecision::Reject => "REJECT POLISHED",
+    };
+    writeln!(
+        output,
+        "Polished decision for candidate_sha256={candidate_hash}. Type {phrase}:"
+    )
+    .map_err(|_| denied())?;
+    output.flush().map_err(|_| denied())?;
+    let mut answer = String::new();
+    input
+        .take(256)
+        .read_line(&mut answer)
+        .map_err(|_| denied())?;
+    if answer.trim_end_matches(['\r', '\n']) != phrase {
+        return Err(denied());
+    }
+    Ok(())
 }
 
 fn confirm_review(
@@ -220,6 +291,60 @@ fn run_candidate(args: CandidateArgs) -> writing::Result<()> {
             println!(
                 "{}",
                 store.record_review(&experiment, &id, &expected_hash, decision, reviewer, notes)?
+            );
+        }
+        CandidateAction::Polished {
+            experiment,
+            id,
+            decision,
+            approver,
+            notes_file,
+        } => {
+            let expected_hash = writing::hash(&store.read_candidate(&experiment, &id)?);
+            let notes = match notes_file {
+                Some(path) => writing::read_text(&path)?,
+                None => String::new(),
+            };
+            authorize_polished(decision, &expected_hash)?;
+            println!(
+                "{}",
+                store.record_polished_decision(
+                    &experiment,
+                    &id,
+                    &expected_hash,
+                    decision,
+                    approver,
+                    notes,
+                )?
+            );
+        }
+        CandidateAction::PolishedDecisions { experiment, id } => {
+            let records = store.polished_decisions(&experiment, &id)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&records).map_err(|source| {
+                    writing::Error::Json {
+                        path: args.workdir,
+                        source,
+                    }
+                })?
+            );
+        }
+        CandidateAction::Export {
+            experiment,
+            id,
+            approval,
+            destination,
+        } => {
+            let outcome = store.export_polished(&experiment, &id, &approval, &destination)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&outcome).map_err(|source| {
+                    writing::Error::Json {
+                        path: args.workdir,
+                        source,
+                    }
+                })?
             );
         }
         CandidateAction::Reviews { experiment, id } => {

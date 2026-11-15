@@ -202,7 +202,7 @@ fn nonempty(value: &str) -> Result<()> {
 }
 
 /// Identifiers are single short path components, never paths or extensions.
-fn artifact_identifier(value: &str) -> Result<()> {
+pub(crate) fn artifact_identifier(value: &str) -> Result<()> {
     if let Some((stamp, random)) = value.split_once('-') {
         if stamp.len() == 22
             && stamp.as_bytes()[8] == b'T'
@@ -720,7 +720,7 @@ fn artifact_id(pending: &NamedTempFile) -> Result<String> {
     Ok(id)
 }
 
-fn list(directory: Option<PathBuf>, extension: &str) -> Result<Vec<String>> {
+pub(crate) fn list(directory: Option<PathBuf>, extension: &str) -> Result<Vec<String>> {
     let Some(dir) = directory else {
         return Ok(Vec::new());
     };

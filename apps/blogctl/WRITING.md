@@ -231,8 +231,9 @@ op run -- blogctl workflow \
 Session files live under `.writing/sessions/` with mode `0600`. The numbered
 loop can read the selected candidate, preview a request, make exactly one
 request, import a file, select an existing candidate, record a hash-bound
-review, advance, move to another pass, select evidence packs, or stop. Import
-and generation leave new candidates unselected. Advancing requires an explicit selection, clears it,
+review, advance, move to another pass, select evidence packs, record a polished
+final-draft decision, explicitly export approved prose, or stop. Import and
+generation leave new candidates unselected. Advancing requires an explicit selection, clears it,
 and carries that exact candidate as the next pass input. Moving to another pass
 requires an explicit input when its policy says so; the conductor never infers
 the latest candidate.
@@ -302,6 +303,52 @@ atomically without replacing any existing filename. Partial files are not listed
 as candidates. An interrupted operation or filesystem error can leave a completed
 artifact; inspect the list before importing again.
 
+## Approve polished text and export it explicitly
+
+A generated or imported candidate is never polished by default. First inspect the
+complete candidate and ensure its `artifact_kind` is `final-draft`. Then record a
+human decision from a controlling terminal:
+
+```sh
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" polished \
+  EXPERIMENT_ID CANDIDATE_ID \
+  --decision approve \
+  --approver "Author name" \
+  --notes-file /private/polished-notes.txt
+
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" \
+  polished-decisions EXPERIMENT_ID CANDIDATE_ID
+```
+
+Approval requires typing `APPROVE POLISHED` at `/dev/tty`; rejection requires
+`REJECT POLISHED`. Piped input, a model process, or an unattended script cannot
+supply that confirmation. Decisions are immutable, content-addressed sidecars
+bound to the exact candidate file hash and exact manuscript-body hash. Repeating
+the same decision, approver, and notes returns the same ID. Altered candidate
+bytes make every prior decision stale and fail inspection. Export accepts only
+the latest polished decision, so a later rejection revokes an earlier approval.
+
+The conductor exposes these operations as actions `p` (polished decision) and
+`x` (export) for its explicitly selected final-draft candidate. The standalone
+commands below provide the same boundary for other callers.
+
+An approved decision ID authorizes a separate explicit export:
+
+```sh
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" export \
+  EXPERIMENT_ID CANDIDATE_ID \
+  --approval POLISHED_ID \
+  --destination /private/manuscript/chapter.md
+```
+
+Export writes only the exact candidate body. It performs no generation,
+rewriting, source selection, stage transition, commit, push, or destination
+layout inference. The destination parent must already exist. Parent traversal,
+symlinks, Nix-store paths, managed `.writing` paths, and an existing file with
+different bytes are refused. Repeating the export to an existing file with the
+same bytes succeeds without replacing it. Destination and
+manuscript layout policy remain consumer-owned.
+
 ## Relationship to drafts and stages
 
 - Experiments/candidates do not require `blogctl init`, post stage directories,
@@ -316,8 +363,10 @@ artifact; inspect the list before importing again.
   even if the surrounding blog working directory enables sync. A later explicit
   VCS action can include `.writing`; keep the whole working directory private.
 - Review outside the canonical manuscript. `candidate review` appends a separate
-  hash-bound decision; incorporation remains manual. Do not mistake a candidate's
-  existence or acceptance for manuscript promotion, or rewrite its provenance.
+  hash-bound editorial decision. `candidate polished` is the stronger,
+  terminal-authorized final-draft decision required by `candidate export`. Do not
+  mistake candidate existence, ordinary acceptance, or model output for polished
+  approval.
 
 ## Validation
 
@@ -330,6 +379,7 @@ just validate
 
 Real fixture files use only synthetic ideas and fake provider metadata. Tests
 cover deterministic variants, exact provenance/snapshot hashes, no overwrite,
-private permissions, path safety, candidate uniqueness, CLI behavior without
-credentials, and byte-for-byte compatibility of existing post/config files.
+private permissions, path safety, candidate uniqueness, polished approval,
+stale hashes, idempotent no-clobber export, CLI behavior without credentials,
+and byte-for-byte compatibility of existing post/config files.
 No new live API tests or generation behavior are introduced by this issue.
