@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "importer": "Synthetic Researcher",
+  "provenance": "Invalid relationship fixture.",
+  "entries": [
+    {
+      "reference": "Synthetic source",
+      "accessed_on": "2026-11-15",
+      "note": "A note.",
+      "claim": "A claim.",
+      "relationship": "proves",
+      "classification": "primary"
+    }
+  ]
+}

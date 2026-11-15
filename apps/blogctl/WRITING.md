@@ -115,7 +115,8 @@ profile or selected samples without duplicating paths:
     {
       "name": "draft",
       "requires_input": true,
-      "approach": "Draft from the selected outline.",
+      "requires_evidence": true,
+      "approach": "Draft from the selected outline and evidence.",
       "context": ["profile", "samples"],
       "min_words": 800,
       "max_words": 1200,
@@ -155,11 +156,62 @@ experiment ID. Repeating the same preparation confirms the existing definition;
 a differing definition at the same ID is never overwritten.
 
 Pass mode defaults to `generate`; `import-only` refuses previews and model
-requests. `artifact_kind` defaults to the pass name and records structured
-lineage separately from prompt prose. Optional `max_tokens` and `temperature`
+requests. `requires_evidence` refuses preparation until the caller selects at
+least one immutable evidence pack. `artifact_kind` defaults to the pass name and
+records structured lineage separately from prompt prose. Optional `max_tokens` and `temperature`
 values use the same hard provider bounds as direct generation. The optional word bounds,
 `forbid_workflow_metadata`, and `require_complete_ending` fields drive advisory
 checks only. They never alter, reject, or select candidate text.
+
+## Import immutable evidence packs
+
+Evidence collection remains a manual or research assistant action. `blogctl` stores
+only the structured material supplied in an explicit local JSON file; it never
+browses, searches the working directory, or infers permission to read other
+files.
+
+```json
+{
+  "version": 1,
+  "importer": "Author name",
+  "provenance": "Collected manually from public sources.",
+  "entries": [
+    {
+      "reference": "https://example.com/source",
+      "accessed_on": "2026-11-15",
+      "note": "Relevant quotation or concise source note.",
+      "claim": "The claim this source bears on.",
+      "relationship": "supports",
+      "classification": "primary"
+    }
+  ]
+}
+```
+
+`relationship` is `supports`, `complicates`, or `contradicts`;
+`classification` is `primary` or `secondary`. Import validates every required
+field and ISO date, calculates a SHA-256 content hash, derives a content-addressed
+ID, and publishes the pack read-only. Reimporting identical content returns the
+same ID. Inspection verifies the filename, identity, hash algorithm, content
+hash, timestamp, and entries.
+
+```sh
+blogctl evidence --workdir "$HOME/.local/share/writing-lab" import /private/evidence.json
+blogctl evidence --workdir "$HOME/.local/share/writing-lab" list
+blogctl evidence --workdir "$HOME/.local/share/writing-lab" inspect EVIDENCE_PACK_ID
+
+blogctl workflow --workdir "$HOME/.local/share/writing-lab" prepare synthesis \
+  --config-root /private/consumer-repo \
+  --config books/example/workflow.json \
+  --input PRIOR_EXPERIMENT/PRIOR_CANDIDATE \
+  --evidence EVIDENCE_PACK_ID
+```
+
+Repeat `--evidence` to include more than one pack. Selection order is explicit
+and contributes to the deterministic experiment identity. The exact verified
+pack JSON, including its content hash and provenance, enters the prepared
+experiment and therefore its later candidate request snapshot. No pack is
+selected implicitly.
 
 ## Conduct a resumable session
 
@@ -179,8 +231,8 @@ op run -- blogctl workflow \
 Session files live under `.writing/sessions/` with mode `0600`. The numbered
 loop can read the selected candidate, preview a request, make exactly one
 request, import a file, select an existing candidate, record a hash-bound
-review, advance, move to another pass, or stop. Import and generation leave new
-candidates unselected. Advancing requires an explicit selection, clears it,
+review, advance, move to another pass, select evidence packs, or stop. Import
+and generation leave new candidates unselected. Advancing requires an explicit selection, clears it,
 and carries that exact candidate as the next pass input. Moving to another pass
 requires an explicit input when its policy says so; the conductor never infers
 the latest candidate.

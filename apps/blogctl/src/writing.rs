@@ -64,6 +64,8 @@ pub struct Experiment {
     pub seed: String,
     pub instructions: String,
     pub fiction: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_pack_ids: Vec<String>,
     pub variants: BTreeMap<String, String>,
 }
 
@@ -336,7 +338,7 @@ impl Store {
 
     // Check every managed directory, not just the leaf. Symlinked workdir roots
     // are resolved by open; symlinks beneath that root are never followed.
-    fn directory(&self, components: &[&str], create: bool) -> Result<Option<PathBuf>> {
+    pub(crate) fn directory(&self, components: &[&str], create: bool) -> Result<Option<PathBuf>> {
         let mut path = self.root.clone();
         for name in std::iter::once(&".writing").chain(components.iter()) {
             path.push(name);
@@ -751,7 +753,7 @@ fn list(directory: Option<PathBuf>, extension: &str) -> Result<Vec<String>> {
 
 /// Hard-link publication refuses existing destinations (including symlinks).
 /// Contents and mode are finalized before the public name becomes visible.
-fn publish(pending: NamedTempFile, path: &Path, mode: u32) -> Result<()> {
+pub(crate) fn publish(pending: NamedTempFile, path: &Path, mode: u32) -> Result<()> {
     pending
         .as_file()
         .set_permissions(Permissions::from_mode(mode))

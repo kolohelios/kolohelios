@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "importer": "Synthetic Researcher",
+  "provenance": "Manually collected from public synthetic sources for a test fixture.",
+  "entries": [
+    {
+      "reference": "https://example.invalid/review-study",
+      "accessed_on": "2026-11-15",
+      "note": "The synthetic study says understanding is part of careful review.",
+      "claim": "Review includes change understanding.",
+      "relationship": "supports",
+      "classification": "primary"
+    },
+    {
+      "reference": "Example, A. (2025). Synthetic Review Notes.",
+      "accessed_on": "2026-11-14",
+      "note": "The commentary cautions that review cost varies with context.",
+      "claim": "Review burden is uniform across changes.",
+      "relationship": "contradicts",
+      "classification": "secondary"
+    }
+  ]
+}
