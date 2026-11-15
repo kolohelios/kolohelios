@@ -89,7 +89,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 // `target` discriminator as an additional disjunction branch when they
 // have a consumer.
 #Deploy: {
-	target:       "cloudflare-worker"
+	target:        "cloudflare-worker"
 	customDomain?: domain.#KnownHostnames
 	zone?:         domain.#KnownHostnames
 	cache?:        #CacheRules
@@ -633,7 +633,7 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	}
 } | {
 	// Pandoc-rendered document project. Source `*.md` files are
-	// rendered to same-named `*.pdf` (via tectonic) and `*.docx` (via
+	// rendered to same-named `*.pdf` (via XeLaTeX) and `*.docx` (via
 	// pandoc's native writer). The generated artifacts are committed,
 	// and `just validate` re-renders to a temp dir and byte-compares
 	// against the committed outputs — drift fails CI. Builds are made
@@ -643,12 +643,10 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 	document?: {
 		// Top-level flake `description`. Defaults to the project
 		// name; override when a longer phrase reads better.
-		// pandoc + tectonic are baked into the generator's
-		// document template (matching the justfile DOCUMENT_TEMPLATE
-		// hardcode of `--pdf-engine=tectonic`); if a future document
-		// project wants different renderers, this block grows a
-		// `packages` knob.
 		description?: string & !=""
+		// Extra nixpkgs.texlive packages required by document headers.
+		// Base LaTeX/XeTeX support is always supplied by the flake.
+		texPackages?: [...string & =~"^[a-zA-Z][a-zA-Z0-9_-]*$"]
 	}
 } | {
 	// Native mobile app shell — a SwiftUI/iOS or Jetpack Compose/Android

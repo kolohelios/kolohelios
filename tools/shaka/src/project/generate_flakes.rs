@@ -74,6 +74,8 @@ struct CueInclude {
 struct DocumentMeta {
     #[serde(default)]
     description: Option<String>,
+    #[serde(default)]
+    tex_packages: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -870,7 +872,7 @@ fn render_worker_devshell(extra_dev_shell_packages: &[String], consumes_shaka: b
     out
 }
 
-/// Compose a pandoc-document flake. Devshell carries pandoc + tectonic
+/// Compose a pandoc-document flake. Devshell carries pandoc + XeLaTeX
 /// (the renderer + PDF engine the justfile DOCUMENT_TEMPLATE
 /// hardcodes), no rust toolchain, no rust-overlay input. Uses the
 /// shared `kolohelios-nix.lib.forEachSupportedSystem` helper directly
@@ -886,7 +888,24 @@ fn render_document_flake(name: &str, doc: &DocumentMeta) -> String {
     out.push_str("\n  outputs =\n");
     out.push_str(DOCUMENT_OUTPUT_HEADER);
     out.push_str("    in\n    {\n");
-    out.push_str(DOCUMENT_DEVSHELL);
+    let mut packages =
+        std::collections::BTreeSet::from(["scheme-small", "xetex", "fontspec", "unicode-math"]);
+    packages.extend(doc.tex_packages.iter().map(String::as_str));
+    let packages = packages
+        .into_iter()
+        .map(|name| format!("                  {name}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let filter = include_str!("../../data/document/reproducible-pdf.lua")
+        .lines()
+        .map(|line| format!("              {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    out.push_str(
+        &DOCUMENT_DEVSHELL
+            .replace("{TEX_PACKAGES}", &packages)
+            .replace("{PDF_FILTER}", &filter),
+    );
     out.push_str("\n      formatter = kolohelios-nix.formatter;\n    };\n");
     out.push_str("}\n");
     out
@@ -912,9 +931,16 @@ const DOCUMENT_DEVSHELL: &str = r#"      devShells = forEachSupportedSystem (
         { pkgs, ... }:
         {
           default = pkgs.mkShell {
+            KOLOHELIOS_PDF_FILTER = pkgs.writeText "reproducible-pdf.lua" ''
+{PDF_FILTER}
+            '';
             packages = (workflowPackages pkgs) ++ [
               pkgs.pandoc
-              pkgs.tectonic
+              (pkgs.texlive.combine {
+                inherit (pkgs.texlive)
+{TEX_PACKAGES}
+                  ;
+              })
             ];
           };
         }
@@ -1484,6 +1510,7 @@ mod tests {
     fn document_description_override_takes_precedence() {
         let doc = DocumentMeta {
             description: Some("kolohelios resume".into()),
+            ..DocumentMeta::default()
         };
         let out = render_document_flake("resume", &doc);
         assert!(out.contains(r#"description = "kolohelios resume""#));
@@ -1500,10 +1527,45 @@ mod tests {
     }
 
     #[test]
-    fn document_devshell_includes_pandoc_and_tectonic() {
+    fn document_devshell_includes_offline_xelatex() {
         let out = render_document_flake("resume", &DocumentMeta::default());
         assert!(out.contains("pkgs.pandoc"));
-        assert!(out.contains("pkgs.tectonic"));
+        assert!(out.contains("pkgs.texlive.combine"));
+        for package in ["fontspec", "scheme-small", "unicode-math", "xetex"] {
+            assert!(out.contains(&format!("                  {package}\n")));
+        }
+        assert!(!out.contains("pkgs.tectonic"));
+        assert!(out.contains("KOLOHELIOS_PDF_FILTER"));
+        assert!(out.contains("pdf:trailerid"));
+    }
+
+    #[test]
+    fn document_tex_packages_are_sorted_and_deduplicated() {
+        let doc = DocumentMeta {
+            tex_packages: vec![
+                "sourceserifpro".into(),
+                "sourcesanspro".into(),
+                "fontspec".into(),
+            ],
+            ..DocumentMeta::default()
+        };
+        let out = render_document_flake("resume", &doc);
+        let positions: Vec<_> = [
+            "fontspec",
+            "scheme-small",
+            "sourcesanspro",
+            "sourceserifpro",
+            "unicode-math",
+            "xetex",
+        ]
+        .iter()
+        .map(|name| {
+            out.find(&format!("                  {name}\n"))
+                .expect("package")
+        })
+        .collect();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(out.matches("fontspec").count(), 1);
     }
 
     #[test]

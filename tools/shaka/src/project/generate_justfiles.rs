@@ -532,11 +532,11 @@ validate: nix-fmt-check flake-check whitespace-check
 "#;
 
 // Pandoc-rendered document project. Each `*.md` at the project root
-// produces a same-named `*.pdf` (tectonic engine) and `*.docx` (pandoc
+// produces a same-named `*.pdf` (XeLaTeX engine) and `*.docx` (pandoc
 // native writer). Generated artifacts are committed; `drift-check`
 // re-renders to a temp dir and byte-compares, so a stale commit fails
 // CI cleanly. Reproducibility is via `SOURCE_DATE_EPOCH=0` (pandoc and
-// tectonic both honor it for PDF metadata and docx zip timestamps).
+// XeLaTeX both honor it for PDF metadata and docx zip timestamps).
 const DOCUMENT_TEMPLATE: &str = r#"# `README.md` is project documentation (required by the `readme-present`
 # audit rule), not a deliverable; the build glob skips it.
 build-pdf:
@@ -547,7 +547,7 @@ build-pdf:
         [ "$md" = "README.md" ] && continue
         out="${md%.md}.pdf"
         echo "  building $out"
-        SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=tectonic -o "$out"
+        TZ=UTC SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=xelatex --lua-filter="$KOLOHELIOS_PDF_FILTER" -o "$out"
     done
 
 build-docx:
@@ -587,7 +587,7 @@ drift-check:
                 continue
             fi
             if [ "$ext" = "pdf" ]; then
-                SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=tectonic -o "$tmpdir/$out"
+                TZ=UTC SOURCE_DATE_EPOCH=0 pandoc "$md" --pdf-engine=xelatex --lua-filter="$KOLOHELIOS_PDF_FILTER" -o "$tmpdir/$out"
             else
                 SOURCE_DATE_EPOCH=0 pandoc "$md" "${ref_arg[@]}" -o "$tmpdir/$out"
             fi
@@ -1731,9 +1731,22 @@ mod tests {
     }
 
     #[test]
-    fn document_template_renders_pdf_via_tectonic() {
+    fn document_template_renders_pdf_via_xelatex() {
         assert!(DOCUMENT_TEMPLATE.contains("build-pdf:"));
-        assert!(DOCUMENT_TEMPLATE.contains("--pdf-engine=tectonic"));
+        assert_eq!(DOCUMENT_TEMPLATE.matches("--pdf-engine=xelatex").count(), 2);
+        assert!(!DOCUMENT_TEMPLATE.contains("tectonic"));
+        assert_eq!(
+            DOCUMENT_TEMPLATE
+                .matches("--lua-filter=\"$KOLOHELIOS_PDF_FILTER\"")
+                .count(),
+            2
+        );
+        assert_eq!(
+            DOCUMENT_TEMPLATE
+                .matches("TZ=UTC SOURCE_DATE_EPOCH=0 pandoc")
+                .count(),
+            2
+        );
     }
 
     #[test]
@@ -1744,7 +1757,7 @@ mod tests {
     #[test]
     fn document_template_pins_source_date_epoch_for_reproducibility() {
         // SOURCE_DATE_EPOCH=0 is what makes drift detection work — both
-        // pandoc and tectonic honor it for PDF metadata / docx zip
+        // pandoc and XeLaTeX honor it for PDF metadata / docx zip
         // timestamps, so identical .md input → byte-identical output.
         assert!(DOCUMENT_TEMPLATE.contains("SOURCE_DATE_EPOCH=0 pandoc"));
     }

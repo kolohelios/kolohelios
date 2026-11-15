@@ -27,7 +27,7 @@ richer work history, so those stay curated per medium (#785).
 
 ```
 just build       # produces resume.pdf and resume.docx
-just build-pdf   # PDF only (tectonic engine)
+just build-pdf   # PDF only (XeLaTeX engine)
 just build-docx  # DOCX only (pandoc native)
 ```
 
@@ -35,4 +35,13 @@ Both outputs are committed to the repo so the latest rendered copy is always a
 `git pull` away. `just validate` (and CI) re-renders each `*.md` to a temp
 directory and byte-compares against the committed artifact — a stale commit
 fails CI. Reproducibility comes from `SOURCE_DATE_EPOCH=0`, which both `pandoc`
-and tectonic honor for output timestamps.
+and `XeLaTeX` honor for output timestamps. PDF builds also pin `TZ=UTC` and
+use a `Lua` filter to derive the PDF identifier from the document rather than
+temporary build paths, while preserving the source's header settings.
+
+The flake provides TeX Live packages through Nix, including the fonts and
+styles declared in `project.cue`'s `document.texPackages`. Rendering needs no
+runtime TeX downloads or pre-existing user cache. This avoids rate limits
+from the remote `Tectonic` bundle service on fresh CI runners. After changing renderer or
+font packages, regenerate the PDF and check its text and page layout before
+committing; `drift-check` still compares the exact output bytes.
