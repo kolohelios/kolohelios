@@ -122,6 +122,8 @@ pub struct CandidateProvenance {
     pub artifact_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<ArtifactReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editorial_revision: Option<crate::writing_revision::EditorialRevision>,
 }
 
 /// Explicit candidate ancestry, independent of experiment prompt prose.
@@ -157,6 +159,7 @@ impl FromStr for ArtifactReference {
 pub struct CandidateContext {
     pub artifact_kind: Option<String>,
     pub parent: Option<ArtifactReference>,
+    pub editorial_revision: Option<crate::writing_revision::EditorialRevision>,
 }
 
 /// Typed view of an immutable candidate document.
@@ -482,6 +485,12 @@ impl Store {
             identifier(&parent.experiment_id)?;
             artifact_identifier(&parent.candidate_id)?;
         }
+        if let Some(revision) = &document.provenance.editorial_revision {
+            revision.validate()?;
+            if document.provenance.parent.is_none() {
+                return Err(invalid("editorial revision is missing its parent"));
+            }
+        }
         if document.provenance.variant != document.request_snapshot.variant {
             return Err(invalid(
                 "candidate variant disagrees with its request snapshot",
@@ -585,6 +594,12 @@ impl Store {
         if let Some(parent) = &context.parent {
             self.candidate(&parent.experiment_id, &parent.candidate_id)?;
         }
+        if let Some(revision) = &context.editorial_revision {
+            revision.validate()?;
+            if context.parent.is_none() {
+                return Err(invalid("editorial revisions require an explicit parent"));
+            }
+        }
         Ok(())
     }
 
@@ -643,6 +658,7 @@ impl Store {
             parameters: generation.parameters.clone(),
             artifact_kind: context.artifact_kind.clone(),
             parent: context.parent.clone(),
+            editorial_revision: context.editorial_revision.clone(),
         };
         let yaml = serde_yaml_ng::to_string(&meta).context(YamlSnafu)?;
         let snapshot = serde_json::to_string_pretty(prepared).context(JsonSnafu { path: &dir })?;

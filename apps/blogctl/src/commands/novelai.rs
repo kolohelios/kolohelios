@@ -94,6 +94,7 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
             let context = CandidateContext {
                 artifact_kind,
                 parent,
+                editorial_revision: None,
             };
             store
                 .validate_candidate_context(&context)

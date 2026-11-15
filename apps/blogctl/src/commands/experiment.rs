@@ -69,6 +69,33 @@ pub enum CandidateAction {
         #[arg(long, value_name = "EXPERIMENT/CANDIDATE")]
         parent: Option<ArtifactReference>,
     },
+    /// Copy exact candidate prose to a private mode-0600 working file.
+    RevisePrepare {
+        experiment: String,
+        id: String,
+        #[arg(long, value_name = "PATH")]
+        output: PathBuf,
+    },
+    /// Import an explicit editorial checkpoint without selecting or advancing it.
+    ReviseImport {
+        #[arg(value_name = "WORKING_FILE")]
+        file: PathBuf,
+        #[arg(long, value_enum)]
+        origin_kind: crate::writing_revision::OriginKind,
+        #[arg(long, value_enum)]
+        revision_kind: crate::writing_revision::RevisionKind,
+        #[arg(long, required = true)]
+        contributor: Vec<String>,
+        #[arg(long)]
+        notes_file: Option<PathBuf>,
+    },
+    /// Compare exact candidate bodies without writing or selecting anything.
+    Diff {
+        from: ArtifactReference,
+        to: ArtifactReference,
+        #[arg(long)]
+        json: bool,
+    },
     /// Record a human decision in a separate immutable review (terminal required).
     Review {
         experiment: String,
@@ -269,11 +296,63 @@ fn run_candidate(args: CandidateArgs) -> writing::Result<()> {
             let context = CandidateContext {
                 artifact_kind,
                 parent,
+                editorial_revision: None,
             };
             println!(
                 "{}",
                 store.record_candidate_with_context(&prepared, &metadata, &body, &context)?
             );
+        }
+        CandidateAction::RevisePrepare {
+            experiment,
+            id,
+            output,
+        } => {
+            let preparation = store.prepare_revision(&experiment, &id, &output)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&preparation).map_err(|source| {
+                    writing::Error::Json {
+                        path: args.workdir.clone(),
+                        source,
+                    }
+                })?
+            );
+        }
+        CandidateAction::ReviseImport {
+            file,
+            origin_kind,
+            revision_kind,
+            contributor,
+            notes_file,
+        } => {
+            let notes = match notes_file {
+                Some(path) => writing::read_text(&path)?,
+                None => String::new(),
+            };
+            let revision = crate::writing_revision::EditorialRevision {
+                origin_kind,
+                revision_kind,
+                contributors: contributor,
+                notes,
+            };
+            println!("{}", store.import_revision(&file, revision)?);
+        }
+        CandidateAction::Diff { from, to, json } => {
+            let diff = store.revision_diff(&from, &to)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&diff).map_err(|source| {
+                        writing::Error::Json {
+                            path: args.workdir.clone(),
+                            source,
+                        }
+                    })?
+                );
+            } else {
+                print!("{}", diff.unified_diff);
+            }
         }
         CandidateAction::Review {
             experiment,
