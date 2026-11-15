@@ -23,9 +23,43 @@
         { pkgs, ... }:
         {
           default = pkgs.mkShell {
+            KOLOHELIOS_PDF_FILTER = pkgs.writeText "reproducible-pdf.lua" ''
+              -- XeLaTeX's default PDF identifier includes temporary paths. Derive it
+              -- from the document instead, preserving all author-provided header data.
+              -- This is a document identifier, not a security signature.
+              function Pandoc(doc)
+                if FORMAT ~= "latex" then
+                  return doc
+                end
+                local id = pandoc.utils.sha1(pandoc.write(doc, "json")):sub(1, 32)
+                local header = string.format(
+                  "\\AtBeginDocument{\\special{pdf:trailerid [<%s> <%s>]}}", id, id)
+                local headers = doc.meta["header-includes"]
+                if not headers then
+                  headers = pandoc.MetaList({})
+                elseif pandoc.utils.type(headers) ~= "List" then
+                  headers = pandoc.MetaList({headers})
+                end
+                headers:insert(pandoc.MetaBlocks({pandoc.RawBlock("latex", header)}))
+                doc.meta["header-includes"] = headers
+                return doc
+              end
+            '';
             packages = (workflowPackages pkgs) ++ [
               pkgs.pandoc
-              pkgs.tectonic
+              (pkgs.texlive.combine {
+                inherit (pkgs.texlive)
+                  fontspec
+                  footmisc
+                  ragged2e
+                  scheme-small
+                  sectsty
+                  sourcesanspro
+                  sourceserifpro
+                  unicode-math
+                  xetex
+                  ;
+              })
             ];
           };
         }
