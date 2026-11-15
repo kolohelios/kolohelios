@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "importer": "Synthetic Researcher",
+  "provenance": "A valid pack that must remain unselected.",
+  "entries": [
+    {
+      "reference": "https://example.invalid/unselected",
+      "accessed_on": "2026-11-15",
+      "note": "This unrelated note must not enter the prepared experiment.",
+      "claim": "An unrelated claim.",
+      "relationship": "complicates",
+      "classification": "secondary"
+    }
+  ]
+}

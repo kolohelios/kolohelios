@@ -28,6 +28,8 @@ pub struct Session {
     workflow_hash: String,
     pass: String,
     input: Option<ArtifactReference>,
+    #[serde(default)]
+    evidence: Vec<String>,
     experiment: Option<String>,
     selected: Option<ArtifactReference>,
     history: Vec<HistoryEntry>,
@@ -72,6 +74,7 @@ impl Session {
                     .name()
                     .into(),
                 input: None,
+                evidence: Vec::new(),
                 experiment: None,
                 selected: None,
                 history: Vec::new(),
@@ -92,6 +95,9 @@ impl Session {
         {
             store.candidate(&reference.experiment_id, &reference.candidate_id)?;
         }
+        for id in &session.evidence {
+            store.evidence_pack(id)?;
+        }
         session.save()?;
         Ok(session)
     }
@@ -111,6 +117,10 @@ impl Session {
         self.input.as_ref()
     }
 
+    pub fn evidence(&self) -> &[String] {
+        &self.evidence
+    }
+
     pub fn experiment(&self) -> Option<&str> {
         self.experiment.as_deref()
     }
@@ -125,11 +135,33 @@ impl Session {
         config_root: &Path,
         config: &Path,
     ) -> writing::Result<String> {
-        let experiment =
-            writing_workflow::prepare(store, config_root, config, &self.pass, self.input.as_ref())?;
+        let experiment = writing_workflow::prepare_with_evidence(
+            store,
+            config_root,
+            config,
+            &self.pass,
+            self.input.as_ref(),
+            &self.evidence,
+        )?;
         self.experiment = Some(experiment.clone());
         self.save()?;
         Ok(experiment)
+    }
+
+    pub fn set_evidence(&mut self, store: &Store, ids: Vec<String>) -> writing::Result<()> {
+        let mut unique = std::collections::BTreeSet::new();
+        for id in &ids {
+            if !unique.insert(id) {
+                return Err(invalid(
+                    "evidence-pack selections must not contain duplicates",
+                ));
+            }
+            store.evidence_pack(id)?;
+        }
+        self.evidence = ids;
+        self.experiment = None;
+        self.selected = None;
+        self.save()
     }
 
     pub fn select(&mut self, store: &Store, candidate_id: &str) -> writing::Result<()> {
@@ -185,6 +217,7 @@ impl Session {
         });
         self.pass = next.name().into();
         self.input = Some(selected);
+        self.evidence.clear();
         self.experiment = None;
         self.selected = None;
         self.save()
@@ -208,6 +241,7 @@ impl Session {
         }
         self.pass = pass.into();
         self.input = input;
+        self.evidence.clear();
         self.experiment = None;
         self.selected = None;
         self.save()

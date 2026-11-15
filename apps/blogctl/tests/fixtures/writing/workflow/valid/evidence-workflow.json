@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Use only explicitly selected synthetic evidence.",
+  "fiction": true,
+  "passes": [
+    {
+      "name": "shape",
+      "requires_input": false,
+      "approach": "Return a compact structural outline."
+    },
+    {
+      "name": "synthesis",
+      "requires_input": true,
+      "requires_evidence": true,
+      "approach": "Synthesize the selected outline and evidence."
+    }
+  ]
+}

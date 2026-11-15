@@ -39,6 +39,9 @@ pub enum WorkflowAction {
         /// Explicit prior candidate as EXPERIMENT/CANDIDATE.
         #[arg(long, value_name = "EXPERIMENT/CANDIDATE")]
         input: Option<ArtifactReference>,
+        /// Explicit evidence-pack ID; repeat to include more than one.
+        #[arg(long = "evidence", value_name = "EVIDENCE_PACK_ID")]
+        evidence: Vec<String>,
     },
     /// Conduct one resumable session; every mutation remains an explicit action.
     Conduct {
@@ -61,10 +64,18 @@ pub fn run(args: WorkflowArgs) -> Result<()> {
             config_root,
             config,
             input,
+            evidence,
         } => println!(
             "{}",
-            writing_workflow::prepare(&store, &config_root, &config, &pass, input.as_ref())
-                .context(WritingSnafu)?
+            writing_workflow::prepare_with_evidence(
+                &store,
+                &config_root,
+                &config,
+                &pass,
+                input.as_ref(),
+                &evidence,
+            )
+            .context(WritingSnafu)?
         ),
         WorkflowAction::Conduct {
             session,
@@ -109,7 +120,7 @@ fn conduct(
         show_status(session, definition, &mut output)?;
         line(
             &mut output,
-            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  9 stop",
+            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  e evidence  9 stop",
         )?;
         let choice = ask(&mut input, &mut output, "> ")?;
         if choice.is_empty() || choice == "9" {
@@ -156,6 +167,7 @@ fn conduct(
             "6" => review(store, session, &mut input, &mut output),
             "7" => session.advance(definition).context(WritingSnafu),
             "8" => choose_pass(store, session, definition, &mut input, &mut output),
+            "e" => choose_evidence(store, session, &mut input, &mut output),
             _ => {
                 line(&mut output, "Unknown choice")?;
                 continue;
@@ -186,6 +198,17 @@ fn show_status(
                 .input()
                 .map(reference)
                 .unwrap_or_else(|| "none".into())
+        ),
+    )?;
+    line(
+        output,
+        &format!(
+            "Evidence packs: {}",
+            if session.evidence().is_empty() {
+                "none".into()
+            } else {
+                session.evidence().join(", ")
+            }
         ),
     )?;
     line(
@@ -565,6 +588,35 @@ fn choose_pass(
     session
         .choose_pass(definition, pass.name(), candidate, store)
         .context(WritingSnafu)
+}
+
+fn choose_evidence(
+    store: &Store,
+    session: &mut Session,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+) -> Result<()> {
+    let available = store.evidence_packs().context(WritingSnafu)?;
+    if available.is_empty() {
+        line(output, "No evidence packs are available")?;
+    } else {
+        line(output, "Available evidence packs:")?;
+        for id in available {
+            line(output, &format!("- {id}"))?;
+        }
+    }
+    let raw = ask(
+        input,
+        output,
+        "Evidence pack IDs (comma-separated; blank clears): ",
+    )?;
+    let ids = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect();
+    session.set_evidence(store, ids).context(WritingSnafu)
 }
 
 fn reference(reference: &ArtifactReference) -> String {
