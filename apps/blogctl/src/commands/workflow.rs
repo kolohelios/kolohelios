@@ -120,7 +120,7 @@ fn conduct(
         show_status(session, definition, &mut output)?;
         line(
             &mut output,
-            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  e evidence  p polished  x export  9 stop",
+            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  e evidence  r revision  d diff  p polished  x export  9 stop",
         )?;
         let choice = ask(&mut input, &mut output, "> ")?;
         if choice.is_empty() || choice == "9" {
@@ -168,6 +168,8 @@ fn conduct(
             "7" => session.advance(definition).context(WritingSnafu),
             "8" => choose_pass(store, session, definition, &mut input, &mut output),
             "e" => choose_evidence(store, session, &mut input, &mut output),
+            "r" => revision_checkpoint(store, session, &mut input, &mut output),
+            "d" => revision_diff(store, &mut input, &mut output),
             "p" => polished_decision(store, session, &mut input, &mut output),
             "x" => export_polished(store, session, &mut input, &mut output),
             _ => {
@@ -268,6 +270,7 @@ fn generate(
     let context = CandidateContext {
         artifact_kind: Some(pass.artifact_kind().into()),
         parent: session.input().cloned(),
+        editorial_revision: None,
     };
     store
         .validate_candidate_context(&context)
@@ -353,6 +356,7 @@ fn import_artifact(
     let context = CandidateContext {
         artifact_kind: Some(pass.artifact_kind().into()),
         parent: session.input().cloned(),
+        editorial_revision: None,
     };
     let candidate = store
         .record_candidate_with_context(&prepared, &metadata, &body, &context)
@@ -619,6 +623,117 @@ fn choose_evidence(
         .map(str::to_owned)
         .collect();
     session.set_evidence(store, ids).context(WritingSnafu)
+}
+
+fn revision_checkpoint(
+    store: &Store,
+    session: &Session,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+) -> Result<()> {
+    let action = ask(input, output, "Revision action (prepare/import): ")?;
+    match action.as_str() {
+        "prepare" => {
+            let selected = session
+                .selected()
+                .ok_or_else(|| crate::error::Error::Writing {
+                    source: writing::Error::Invalid {
+                        reason: "select a candidate before preparing a revision".into(),
+                    },
+                })?;
+            let destination = PathBuf::from(ask(input, output, "Working file: ")?);
+            let prepared = store
+                .prepare_revision(
+                    &selected.experiment_id,
+                    &selected.candidate_id,
+                    &destination,
+                )
+                .context(WritingSnafu)?;
+            line(
+                output,
+                &format!(
+                    "Revision working file: {} (sidecar: {})",
+                    prepared.working_file.display(),
+                    prepared.sidecar.display()
+                ),
+            )
+        }
+        "import" => {
+            let file = PathBuf::from(ask(input, output, "Working file: ")?);
+            let origin = ask(
+                input,
+                output,
+                "Origin (human-revision/assisted-revision/mechanical-cleanup/imported): ",
+            )?;
+            let origin_kind = match origin.as_str() {
+                "human-revision" => crate::writing_revision::OriginKind::HumanRevision,
+                "assisted-revision" => crate::writing_revision::OriginKind::AssistedRevision,
+                "mechanical-cleanup" => crate::writing_revision::OriginKind::MechanicalCleanup,
+                "imported" => crate::writing_revision::OriginKind::Imported,
+                _ => {
+                    return Err(crate::error::Error::Writing {
+                        source: writing::Error::Invalid {
+                            reason: "invalid editorial origin kind".into(),
+                        },
+                    });
+                }
+            };
+            let kind = ask(
+                input,
+                output,
+                "Revision kind (substantive/mechanical/transcription/other): ",
+            )?;
+            let revision_kind = match kind.as_str() {
+                "substantive" => crate::writing_revision::RevisionKind::Substantive,
+                "mechanical" => crate::writing_revision::RevisionKind::Mechanical,
+                "transcription" => crate::writing_revision::RevisionKind::Transcription,
+                "other" => crate::writing_revision::RevisionKind::Other,
+                _ => {
+                    return Err(crate::error::Error::Writing {
+                        source: writing::Error::Invalid {
+                            reason: "invalid editorial revision kind".into(),
+                        },
+                    });
+                }
+            };
+            let contributors = ask(input, output, "Contributors (comma-separated): ")?
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect();
+            let notes_path = ask(input, output, "Notes file (blank for none): ")?;
+            let notes = if notes_path.is_empty() {
+                String::new()
+            } else {
+                writing::read_text(Path::new(&notes_path)).context(WritingSnafu)?
+            };
+            let revision = crate::writing_revision::EditorialRevision {
+                origin_kind,
+                revision_kind,
+                contributors,
+                notes,
+            };
+            let id = store
+                .import_revision(&file, revision)
+                .context(WritingSnafu)?;
+            line(output, &format!("Revision checkpoint: {id}"))
+        }
+        _ => Err(crate::error::Error::Writing {
+            source: writing::Error::Invalid {
+                reason: "revision action must be prepare or import".into(),
+            },
+        }),
+    }
+}
+
+fn revision_diff(store: &Store, input: &mut impl BufRead, output: &mut impl Write) -> Result<()> {
+    let from = ArtifactReference::from_str(&ask(input, output, "From EXPERIMENT/CANDIDATE: ")?)
+        .context(WritingSnafu)?;
+    let to = ArtifactReference::from_str(&ask(input, output, "To EXPERIMENT/CANDIDATE: ")?)
+        .context(WritingSnafu)?;
+    let diff = store.revision_diff(&from, &to).context(WritingSnafu)?;
+    line(output, &diff.unified_diff)
 }
 
 fn polished_decision(

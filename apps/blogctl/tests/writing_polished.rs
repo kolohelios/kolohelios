@@ -37,6 +37,7 @@ fn setup_candidate(
             &CandidateContext {
                 artifact_kind: artifact_kind.map(str::to_owned),
                 parent: None,
+                editorial_revision: None,
             },
         )
         .unwrap();

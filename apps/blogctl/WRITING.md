@@ -303,6 +303,58 @@ atomically without replacing any existing filename. Partial files are not listed
 as candidates. An interrupted operation or filesystem error can leave a completed
 artifact; inspect the list before importing again.
 
+## Preserve explicit editorial revision checkpoints
+
+Do not rely on one mutable Markdown file to preserve assistant, author, and
+mechanical-edit handoffs. Prepare a private working copy from an exact candidate:
+
+```sh
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" revise-prepare \
+  EXPERIMENT_ID CANDIDATE_ID \
+  --output /private/working/chapter.md
+```
+
+Preparation copies only the candidate body and creates a sibling
+`chapter.md.blogctl-revision.json` sidecar. Both files use mode `0600`. The
+sidecar binds the working path to the exact parent candidate file and body hashes.
+Preparation requires no credentials or network, launches no editor, mutates no
+session, and refuses overwrite, symlinks, parent traversal, Nix-store paths, and
+managed `.writing` destinations.
+
+After an explicit editing handoff, import a checkpoint:
+
+```sh
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" revise-import \
+  /private/working/chapter.md \
+  --origin-kind human-revision \
+  --revision-kind substantive \
+  --contributor "Author name" \
+  --notes-file /private/working/revision-notes.txt
+```
+
+Origin kinds are `generated`, `imported`, `human-revision`,
+`assisted-revision`, and `mechanical-cleanup`. Revision kinds are `substantive`,
+`mechanical`, `transcription`, and `other`. Contributors and notes are
+caller-asserted provenance, not verified identity. The imported candidate keeps
+the parent's request snapshot and artifact kind, records automatic parent
+lineage and typed editorial provenance, and remains without a review or selection.
+Repeating the same parent, exact body, and provenance returns the existing
+candidate ID.
+
+A mechanical cleanup is another checkpoint, not an overwrite of the substantive
+revision. Compare any two exact candidate bodies without writing files:
+
+```sh
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" diff \
+  EXPERIMENT/OLDER_CANDIDATE EXPERIMENT/NEWER_CANDIDATE
+blogctl candidate --workdir "$HOME/.local/share/writing-lab" diff \
+  EXPERIMENT/OLDER_CANDIDATE EXPERIMENT/NEWER_CANDIDATE --json
+```
+
+The conductor exposes revision preparation/import as action `r` and comparison
+as action `d`. It never imports when an editor exits, infers the latest
+candidate, selects a checkpoint, or advances the pass automatically.
+
 ## Approve polished text and export it explicitly
 
 A generated or imported candidate is never polished by default. First inspect the

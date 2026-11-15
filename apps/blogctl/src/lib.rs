@@ -26,6 +26,7 @@ pub mod writing;
 pub mod writing_evidence;
 pub mod writing_mcp;
 pub mod writing_polished;
+pub mod writing_revision;
 pub mod writing_session;
 pub mod writing_workflow;
 

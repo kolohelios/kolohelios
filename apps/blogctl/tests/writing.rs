@@ -228,6 +228,7 @@ fn candidate_lineage_is_explicit_validated_and_branchable() {
             experiment_id: "synthetic-chapter".into(),
             candidate_id: parent.clone(),
         }),
+        editorial_revision: None,
     };
     let first = store
         .record_candidate_with_context(&prepared, &metadata, "First branch", &context)
@@ -249,6 +250,7 @@ fn candidate_lineage_is_explicit_validated_and_branchable() {
             experiment_id: "synthetic-chapter".into(),
             candidate_id: "1794692328968498272-geo88i6fcmera5uopiju".into(),
         }),
+        editorial_revision: None,
     };
     assert!(store
         .record_candidate_with_context(&prepared, &metadata, "Missing parent", &missing)
@@ -256,6 +258,7 @@ fn candidate_lineage_is_explicit_validated_and_branchable() {
     let invalid_kind = CandidateContext {
         artifact_kind: Some("not a kind".into()),
         parent: None,
+        editorial_revision: None,
     };
     assert!(store
         .record_candidate_with_context(&prepared, &metadata, "Invalid kind", &invalid_kind)
