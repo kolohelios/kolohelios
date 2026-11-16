@@ -34,6 +34,9 @@ pub enum NovelaiAction {
         /// Explicit model ID from `novelai models`; no fallback or substitution.
         #[arg(long)]
         model: String,
+        /// Chat executes editorial instructions; completion is legacy raw continuation.
+        #[arg(long, value_enum, default_value = "chat")]
+        transport: novelai::Transport,
         /// Bound completion length for this one request (default 600, maximum 8192).
         #[arg(long)]
         max_tokens: Option<u32>,
@@ -77,6 +80,7 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
             workdir,
             variant,
             model,
+            transport,
             max_tokens,
             temperature,
             artifact_kind,
@@ -89,8 +93,14 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
                 .context(WritingSnafu)?
                 .prepare(&variant)
                 .context(WritingSnafu)?;
-            let generation = PreparedGeneration::new(snapshot, model, max_tokens, temperature)
-                .context(NovelaiSnafu)?;
+            let generation = PreparedGeneration::with_transport(
+                snapshot,
+                model,
+                max_tokens,
+                temperature,
+                transport,
+            )
+            .context(NovelaiSnafu)?;
             let context = CandidateContext {
                 artifact_kind,
                 parent,
@@ -126,13 +136,17 @@ pub(crate) fn generate_candidate(
     store
         .check_candidate_storage(generation.snapshot())
         .context(WritingSnafu)?;
-    let body = client.generate(&generation).context(NovelaiSnafu)?;
-    store
+    let completion = client.generate(&generation).context(NovelaiSnafu)?;
+    let id = store
         .record_candidate_with_context(
             generation.snapshot(),
-            &generation.metadata(),
-            &body,
+            &completion.metadata(&generation),
+            &completion.body,
             context,
         )
-        .context(NovelaiCandidateNotSavedSnafu)
+        .context(NovelaiCandidateNotSavedSnafu)?;
+    for warning in completion.warnings() {
+        eprintln!("Warning: {warning}. Saved unselected candidate {id}; no retry was made.");
+    }
+    Ok(id)
 }

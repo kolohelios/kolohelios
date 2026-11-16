@@ -1,5 +1,5 @@
-//! NovelAI's documented OpenAI-compatible text endpoints, not its token-based
-//! legacy API and not OpenRouter chat. No retries, redirects, or credential
+//! NovelAI's documented OpenAI-compatible chat and text endpoints, not its
+//! token-based legacy API and not OpenRouter chat. No retries, redirects, or credential
 //! discovery. The caller supplies NOVELAI_API_TOKEN in the process environment.
 
 use std::collections::BTreeMap;
@@ -57,12 +57,41 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Exact one-candidate, bounded-output request. Fields are private so neither a
-/// caller nor a future adapter can turn a single request into a batch.
+/// Explicit endpoint contract; never inferred from model names or retried with
+/// another transport after a provider failure.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Transport {
+    #[default]
+    Chat,
+    Completion,
+}
+
+impl Transport {
+    pub fn endpoint(self) -> &'static str {
+        match self {
+            Self::Chat => "chat/completions",
+            Self::Completion => "completions",
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct Message {
+    role: &'static str,
+    content: String,
+}
+
+/// Private fields keep candidate count, streaming, and thinking non-configurable.
 #[derive(Debug, Serialize)]
 struct CompletionRequest {
     model: String,
-    prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    messages: Option<Vec<Message>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enable_thinking: Option<bool>,
     max_tokens: u32,
     temperature: f64,
     n: u8,
@@ -77,6 +106,7 @@ struct CompletionRequest {
 pub struct PreparedGeneration {
     snapshot: PreparedExperiment,
     request: CompletionRequest,
+    transport: Transport,
 }
 
 impl PreparedGeneration {
@@ -85,6 +115,16 @@ impl PreparedGeneration {
         model: String,
         max_tokens: Option<u32>,
         temperature: Option<f64>,
+    ) -> Result<Self> {
+        Self::with_transport(snapshot, model, max_tokens, temperature, Transport::Chat)
+    }
+
+    pub fn with_transport(
+        snapshot: PreparedExperiment,
+        model: String,
+        max_tokens: Option<u32>,
+        temperature: Option<f64>,
+        transport: Transport,
     ) -> Result<Self> {
         if model.trim().is_empty() || model.len() > 200 || model.chars().any(char::is_control) {
             return Err(Error::InvalidModel);
@@ -97,9 +137,23 @@ impl PreparedGeneration {
         if !temperature.is_finite() || !(0.0..=MAX_TEMPERATURE).contains(&temperature) {
             return Err(Error::InvalidTemperature);
         }
+        let (system, user) = snapshot.editorial_messages();
         let request = CompletionRequest {
             model,
-            prompt: snapshot.prompt().into(),
+            prompt: (transport == Transport::Completion).then(|| snapshot.prompt().into()),
+            messages: (transport == Transport::Chat).then(|| {
+                vec![
+                    Message {
+                        role: "system",
+                        content: system,
+                    },
+                    Message {
+                        role: "user",
+                        content: user,
+                    },
+                ]
+            }),
+            enable_thinking: (transport == Transport::Chat).then_some(false),
             max_tokens,
             temperature,
             n: 1,
@@ -107,7 +161,11 @@ impl PreparedGeneration {
             stream: false,
             echo: false,
         };
-        Ok(Self { snapshot, request })
+        Ok(Self {
+            snapshot,
+            request,
+            transport,
+        })
     }
 
     /// Preview includes no authentication header or credential lookup.
@@ -124,7 +182,7 @@ impl PreparedGeneration {
         GenerationMetadata {
             provider: "novelai".into(),
             model: self.request.model.clone(),
-            ai_provenance: "NovelAI text completion; human review required.".into(),
+            ai_provenance: "NovelAI generation; human review required. Inspect endpoint, exact request, and response status in parameters.".into(),
             parameters: BTreeMap::from([
                 ("max_tokens".into(), self.request.max_tokens.into()),
                 ("temperature".into(), self.request.temperature.into()),
@@ -132,6 +190,9 @@ impl PreparedGeneration {
                 ("best_of".into(), self.request.best_of.into()),
                 ("stream".into(), self.request.stream.into()),
                 ("echo".into(), self.request.echo.into()),
+                ("endpoint".into(), self.transport.endpoint().into()),
+                ("request_format_version".into(), 2.into()),
+                ("request".into(), serde_json::to_value(&self.request).expect("request serializes")),
             ]),
         }
     }
@@ -194,10 +255,14 @@ impl Client {
 
     /// Exactly one POST per explicit call, with no model lookup, redirect,
     /// automatic retry, or subsequent request on malformed output.
-    pub fn generate(&self, generation: &PreparedGeneration) -> Result<String> {
+    pub fn generate(&self, generation: &PreparedGeneration) -> Result<GeneratedCompletion> {
         let request = self
             .agent
-            .post(&format!("{}/completions", self.base))
+            .post(&format!(
+                "{}/{}",
+                self.base,
+                generation.transport.endpoint()
+            ))
             .set("Authorization", &format!("Bearer {}", self.token));
         let body = serde_json::to_string(&generation.request).map_err(|_| Error::InvalidRequest)?;
         let response: CompletionResponse = decode(checked(
@@ -208,16 +273,33 @@ impl Client {
         if response.choices.len() != 1 {
             return Err(Error::Response);
         }
-        let text = response
-            .choices
-            .into_iter()
-            .next()
-            .ok_or(Error::Response)?
-            .text;
-        if text.trim().is_empty() {
+        let choice = response.choices.into_iter().next().ok_or(Error::Response)?;
+        let (body, reasoning) = match generation.transport {
+            Transport::Completion => (choice.text.ok_or(Error::Response)?, None),
+            Transport::Chat => {
+                let message = choice.message.ok_or(Error::Response)?;
+                if message.role != "assistant" {
+                    return Err(Error::Response);
+                }
+                (message.content, message.reasoning_content)
+            }
+        };
+        if body.trim().is_empty() {
             return Err(Error::Response);
         }
-        Ok(text)
+        if choice
+            .finish_reason
+            .as_ref()
+            .is_some_and(|reason| reason.len() > 128 || reason.chars().any(char::is_control))
+        {
+            return Err(Error::Response);
+        }
+        Ok(GeneratedCompletion {
+            body,
+            finish_reason: choice.finish_reason,
+            usage: response.usage,
+            reasoning_content: reasoning,
+        })
     }
 }
 
@@ -260,14 +342,91 @@ struct Model {
     id: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+}
+
+#[derive(Debug)]
+pub struct GeneratedCompletion {
+    pub body: String,
+    pub finish_reason: Option<String>,
+    pub usage: Option<Usage>,
+    pub reasoning_content: Option<String>,
+}
+
+impl GeneratedCompletion {
+    pub fn metadata(&self, generation: &PreparedGeneration) -> GenerationMetadata {
+        let mut metadata = generation.metadata();
+        metadata
+            .parameters
+            .insert("finish_reason".into(), self.finish_reason.clone().into());
+        if let Some(usage) = &self.usage {
+            metadata.parameters.insert(
+                "usage".into(),
+                serde_json::to_value(usage).expect("usage serializes"),
+            );
+        }
+        if let Some(reasoning) = &self.reasoning_content {
+            metadata
+                .parameters
+                .insert("reasoning_content".into(), reasoning.clone().into());
+        }
+        metadata
+    }
+
+    pub fn warnings(&self) -> Vec<&'static str> {
+        let mut warnings = Vec::new();
+        match self.finish_reason.as_deref() {
+            Some("stop") => {}
+            Some("length") => {
+                warnings.push("provider hit the output token limit; candidate may be incomplete")
+            }
+            _ => warnings
+                .push("provider did not report a normal stop; completion is not established"),
+        }
+        if self
+            .reasoning_content
+            .as_ref()
+            .is_some_and(|text| !text.is_empty())
+        {
+            warnings.push("provider returned reasoning despite disabled thinking; preserved separately from prose");
+        }
+        if self.body.contains("<think>")
+            || self.body.contains("</think>")
+            || self
+                .body
+                .lines()
+                .any(|line| line.starts_with("Approach (") || line == "Candidate:")
+        {
+            warnings.push(
+                "candidate contains reasoning or editorial scaffolding; inspect before selection",
+            );
+        }
+        warnings
+    }
+}
+
 #[derive(Deserialize)]
 struct CompletionResponse {
     choices: Vec<Choice>,
+    usage: Option<Usage>,
 }
 
 #[derive(Deserialize)]
 struct Choice {
-    text: String,
+    text: Option<String>,
+    message: Option<ResponseMessage>,
+    finish_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ResponseMessage {
+    role: String,
+    content: String,
+    reasoning_content: Option<String>,
 }
 
 #[cfg(test)]

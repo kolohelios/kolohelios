@@ -1,0 +1,3 @@
+{
+  "choices": [{"message": {"role": "assistant", "reasoning_content": "Synthetic reasoning with no deliverable.", "content": ""}, "finish_reason": "length"}]
+}

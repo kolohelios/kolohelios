@@ -238,6 +238,16 @@ and carries that exact candidate as the next pass input. Moving to another pass
 requires an explicit input when its policy says so; the conductor never infers
 the latest candidate.
 
+For instruction-following editorial passes, declare `"transport": "chat"` in
+consumer workflow policy. This uses NovelAI's role-separated chat endpoint with
+thinking disabled, not raw prose continuation. Prior candidates, voice context,
+and selected evidence enter explicit `source_material`, separate from system
+instructions. Omitted transport preserves legacy behavior and warns; changing
+transport or output bounds requires a new session. Choose an output token cap
+large enough for the requested deliverable: a 900-token cap is not adequate for
+a full 1,000-word chapter rewrite. See [NOVELAI.md](NOVELAI.md) for request and
+response contracts, truncation warnings, and exact request provenance.
+
 Preview doesn't resolve credentials or contact NovelAI. `import-only` passes
 refuse preview and generation, leaving evidence acquisition to a human or
 research assistant. Advisory findings report word bounds, leaked think

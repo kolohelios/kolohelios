@@ -1,0 +1,3 @@
+{
+  "choices": [{"message": {"role": "user", "content": "Not an assistant response."}, "finish_reason": "stop"}]
+}

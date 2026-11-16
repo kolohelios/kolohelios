@@ -1,0 +1,4 @@
+{
+  "choices": [{"index": 0, "message": {"role": "assistant", "content": "The agents can"}, "finish_reason": "length"}],
+  "usage": {"prompt_tokens": 2100, "completion_tokens": 900, "total_tokens": 3000}
+}
