@@ -159,7 +159,8 @@ an HTTP 200 alone is not proof of a complete deliverable. Any separate
 Unexpected reasoning and leaked think/Approach/Candidate scaffolding warn without
 silent stripping, retries, selection, or advancement. Neither transport guarantees
 editorial quality; live behavior still needs an explicitly authorized canary.
-Malformed chat shapes or empty output fail without fallback.
+Malformed chat shapes or empty output fail without fallback; the bounded
+response evidence remains available privately even when no candidate is saved.
 
 No headers or credentials enter provenance. No post body, canonical manuscript,
 stage, or VCS state is modified.
@@ -168,6 +169,52 @@ stage, or VCS state is modified.
 blogctl candidate --workdir /private/writing-lab list EXPERIMENT_ID
 blogctl candidate --workdir /private/writing-lab read EXPERIMENT_ID CANDIDATE_ID
 ```
+
+### Private response records
+
+Every generation call prepares private response storage before sending a request.
+It publishes a response record before JSON or schema validation under
+`.writing/provider-responses/response-*.json` in the explicitly selected private
+working directory. Final records use mode `0400`, their temporary files use `0600`, and
+managed directories use `0700`. Publication never overwrites an existing record.
+Known unsafe paths or inability to prepare storage abort before the request.
+No response records are created by previews, imports, or read-only MCP tools.
+Model discovery retains its existing sanitized behavior without response capture.
+
+Each record contains the exact structured request, endpoint, model, HTTP status
+when available, a SHA-256 digest, retained byte count, and response bytes encoded
+as base64. It never copies request or response headers. Response capture retains
+at most 4 MiB; an additional byte detects overflow. A truncated body is explicitly
+marked as a prefix, not a complete response. Read failures retain any partial
+bytes, and transport failures record that no response was available. If the raw
+body contains the exact API token, it is withheld entirely and the record marks
+credential echo rather than persisting that credential.
+
+Validation errors identify safe stages: invalid JSON with line/column, missing
+or wrong-shaped choices/message/content, wrong assistant role, empty output,
+reasoning-only output, invalid finish reason, or invalid usage counters. Errors
+include the private record ID, not provider text or raw parser/transport errors.
+Successful candidates also reference their response record in provenance, so a
+later candidate-save failure does not erase the provider evidence.
+
+Inspect metadata locally before decoding any private response bytes:
+
+```sh
+record="/private/writing-lab/.writing/provider-responses/RESPONSE_ID.json"
+jq '{status, retained_bytes, truncated, read_failed, credential_echo_detected}' "$record"
+```
+
+Decode `body_base64` only into a private terminal or mode-0600 file outside Git,
+the Nix store, and synced folders. Records can contain author source material,
+model output, and reasoning. Do not paste or commit them as public fixtures;
+reproduce the response shape with synthetic data instead. A partial or
+credential-withheld record is not a complete replay artifact.
+
+Post-request disk errors can still prevent capture. Such errors explicitly say
+the request was already attempted and identify the planned record ID; inspect
+the private directory before deciding what happened. No capture or validation
+failure triggers a retry, fallback, selection, or pass advancement. The earlier
+failed canary's discarded response cannot be recovered by this change.
 
 Known directory, symlink, and permission problems are checked before sending a
 request. Disk errors or concurrent changes can still prevent saving after a
@@ -181,8 +228,9 @@ candidates and account usage before deciding on any further action.
 - HTTP 429: wait before a new explicit invocation; no retry occurs.
 - Redirect, transport, timeout, malformed/oversized response, or server error:
   generation outcome may be unknown even if no candidate was saved. Do not
-  assume nothing happened and repeat blindly. API bodies and raw transport errors are
-  suppressed to avoid leaking credentials or private request material.
+  assume nothing happened and repeat blindly. Generation errors identify a
+  private response record when capture succeeded. Provider bodies remain out of
+  CLI errors; model-discovery bodies and raw transport errors remain suppressed.
 
 Use only your own token within subscription limits and the
 [NovelAI terms](https://novelai.net/terms). Review and manuscript incorporation

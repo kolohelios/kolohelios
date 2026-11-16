@@ -76,6 +76,7 @@ fn request_preview_needs_no_valid_credentials_and_writes_nothing() {
         assert!(preview.get("prompt").is_none());
     }
     assert!(!dir.path().join(".writing/candidates").exists());
+    assert!(!dir.path().join(".writing/provider-responses").exists());
 }
 
 #[test]

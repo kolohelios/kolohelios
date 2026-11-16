@@ -1,8 +1,9 @@
 //! All responses come from local mocks and real synthetic fixture files.
 use super::*;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use std::fs;
 use std::net::TcpListener;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use crate::commands::novelai::generate_candidate;
@@ -32,6 +33,12 @@ fn generation(model: &str) -> PreparedGeneration {
 
 fn client(server: &mockito::ServerGuard) -> Client {
     Client::new(TOKEN.into(), server.url(), Duration::from_secs(5)).unwrap()
+}
+
+fn captured(client: &Client, generation: &PreparedGeneration) -> Result<GeneratedCompletion> {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path()).unwrap();
+    client.generate(generation, &store)
 }
 
 fn setup() -> (tempfile::TempDir, Store) {
@@ -80,7 +87,7 @@ fn chat_uses_roles_disables_thinking_and_freezes_the_exact_request() {
         .create();
     let legacy = server.mock("POST", "/completions").expect(0).create();
     let discovery = server.mock("GET", "/models").expect(0).create();
-    let completion = client(&server).generate(&generation).unwrap();
+    let completion = client(&server).generate(&generation, &store).unwrap();
     assert_eq!(
         completion.body,
         "  The potter waited. Café clocks were less patient.\n"
@@ -161,16 +168,8 @@ fn response_warnings_distinguish_normal_stops_from_incomplete_or_leaked_output()
         ("scaffolding.json", 2),
         ("missing-finish.json", 1),
     ] {
-        let response: CompletionResponse =
-            writing::read_json(&fixture(&format!("novelai/chat/valid/{name}"))).unwrap();
-        let choice = response.choices.into_iter().next().unwrap();
-        let message = choice.message.unwrap();
-        let completion = GeneratedCompletion {
-            body: message.content,
-            finish_reason: choice.finish_reason,
-            usage: response.usage,
-            reasoning_content: message.reasoning_content,
-        };
+        let bytes = fs::read(fixture(&format!("novelai/chat/valid/{name}"))).unwrap();
+        let completion = parse_completion(&bytes, Transport::Chat).unwrap();
         let original = completion.body.clone();
         assert_eq!(completion.warnings().len(), warning_count, "{name}");
         assert_eq!(completion.body, original);
@@ -208,6 +207,289 @@ fn malformed_chat_responses_fail_without_fallback_or_retry() {
         mock.assert();
         fallback.assert();
     }
+}
+
+fn response_record(directory: &Path, id: &str) -> serde_json::Value {
+    let path = directory
+        .join(".writing/provider-responses")
+        .join(format!("{id}.json"));
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o400
+    );
+    assert_eq!(
+        fs::metadata(path.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    writing::read_json(&path).unwrap()
+}
+
+#[test]
+fn diagnostic_fixtures_report_safe_stages_without_losing_response_evidence() {
+    let cases: Vec<serde_json::Value> =
+        writing::read_json(&fixture("novelai/diagnostics/cases.json")).unwrap();
+    for case in cases {
+        let (directory, store) = setup();
+        let path = fixture(&format!(
+            "novelai/diagnostics/{}",
+            case["file"].as_str().unwrap()
+        ));
+        let bytes = fs::read(&path).unwrap();
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_body_from_file(path)
+            .expect(1)
+            .create();
+        let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+        let request = PreparedGeneration::new(
+            exp.prepare("workshop").unwrap(),
+            "model-a".into(),
+            None,
+            None,
+        )
+        .unwrap();
+        let error = client(&server).generate(&request, &store).unwrap_err();
+        let rendered = format!("{error:?} {error}");
+        assert!(
+            rendered.contains(case["diagnostic"].as_str().unwrap()),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("response-body-must-not-appear-in-errors"));
+        assert!(!rendered.contains(TOKEN));
+        let Error::CapturedResponse { capture_id, .. } = error else {
+            panic!("missing record")
+        };
+        let record = response_record(directory.path(), &capture_id);
+        assert_eq!(
+            STANDARD
+                .decode(record["body_base64"].as_str().unwrap())
+                .unwrap(),
+            bytes
+        );
+        assert!(store.candidates("synthetic-chapter").unwrap().is_empty());
+        mock.assert();
+    }
+}
+
+#[test]
+fn failed_generation_retains_exact_response_and_precise_private_diagnostics() {
+    let (directory, store) = setup();
+    let path = fixture("novelai/chat/invalid/reasoning-only.json");
+    let bytes = fs::read(&path).unwrap();
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/chat/completions")
+        .with_body_from_file(path)
+        .expect(1)
+        .create();
+    let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+    let request = PreparedGeneration::new(
+        exp.prepare("workshop").unwrap(),
+        "model-a".into(),
+        None,
+        None,
+    )
+    .unwrap();
+    let expected_request: serde_json::Value =
+        serde_json::from_str(&request.preview().unwrap()).unwrap();
+    let error = client(&server).generate(&request, &store).unwrap_err();
+    let rendered = format!("{error:?} {error}");
+    let Error::CapturedResponse {
+        capture_id,
+        problem: ResponseProblem::ReasoningOnly,
+    } = error
+    else {
+        panic!("{rendered}")
+    };
+    let record = response_record(directory.path(), &capture_id);
+    assert_eq!(
+        STANDARD
+            .decode(record["body_base64"].as_str().unwrap())
+            .unwrap(),
+        bytes
+    );
+    assert_eq!(record["body_sha256"], writing::hash_bytes(&bytes));
+    assert_eq!(record["status"], 200);
+    assert_eq!(record["request"], expected_request);
+    assert_eq!(record["truncated"], false);
+    assert!(!rendered.contains("Synthetic reasoning"));
+    assert!(!rendered.contains(TOKEN));
+    assert!(store.candidates("synthetic-chapter").unwrap().is_empty());
+    mock.assert();
+}
+
+#[test]
+fn captures_http_status_but_withholds_credentials_reflected_by_provider() {
+    let (directory, store) = setup();
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/completions")
+        .with_status(401)
+        .with_body_from_file(fixture("novelai/error.json"))
+        .expect(1)
+        .create();
+    let error = client(&server)
+        .generate(&generation("model-a"), &store)
+        .unwrap_err();
+    let Error::CapturedResponse {
+        capture_id,
+        problem: ResponseProblem::CredentialEcho,
+    } = error
+    else {
+        panic!("unexpected error")
+    };
+    let record = response_record(directory.path(), &capture_id);
+    assert_eq!(record["status"], 401);
+    assert_eq!(record["credential_echo_detected"], true);
+    assert_eq!(record["retained_bytes"], 0);
+    assert_eq!(record["body_base64"], "");
+    assert!(!serde_json::to_string(&record).unwrap().contains(TOKEN));
+    mock.assert();
+
+    let mock = server
+        .mock("POST", "/completions")
+        .with_status(429)
+        .with_body_from_file(fixture("novelai/models/valid/empty.json"))
+        .expect(1)
+        .create();
+    let error = client(&server)
+        .generate(&generation("model-a"), &store)
+        .unwrap_err();
+    let Error::CapturedResponse {
+        capture_id,
+        problem: ResponseProblem::Http { status: 429 },
+    } = error
+    else {
+        panic!("unexpected error")
+    };
+    assert_eq!(
+        response_record(directory.path(), &capture_id)["status"],
+        429
+    );
+    mock.assert();
+}
+
+#[test]
+fn capture_path_failure_aborts_before_post_and_late_failure_does_not_follow_symlinks() {
+    let (directory, store) = setup();
+    let outside = tempfile::tempdir().unwrap();
+    let capture_directory = directory.path().join(".writing/provider-responses");
+    symlink(outside.path(), &capture_directory).unwrap();
+    let mut server = mockito::Server::new();
+    let no_post = server.mock("POST", "/completions").expect(0).create();
+    assert!(matches!(
+        client(&server).generate(&generation("model-a"), &store),
+        Err(Error::CapturePreparation)
+    ));
+    no_post.assert();
+    fs::remove_file(&capture_directory).unwrap();
+    let moved = directory.path().join("retired-private-captures");
+    let outside_path = outside.path().to_owned();
+    let mock = server
+        .mock("POST", "/completions")
+        .with_body_from_request(move |_| {
+            fs::rename(&capture_directory, &moved).unwrap();
+            symlink(&outside_path, &capture_directory).unwrap();
+            fs::read(fixture("novelai/completions/valid/single.json")).unwrap()
+        })
+        .expect(1)
+        .create();
+    assert!(matches!(
+        client(&server).generate(&generation("model-a"), &store),
+        Err(Error::CaptureSave { .. })
+    ));
+    assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    assert!(store.candidates("synthetic-chapter").unwrap().is_empty());
+    mock.assert();
+}
+
+#[test]
+fn response_capture_publication_never_clobbers_an_existing_artifact() {
+    let (directory, store) = setup();
+    let capture = Capture::prepare(&store).unwrap();
+    let folder = directory.path().join(".writing/provider-responses");
+    let temporary = fs::read_dir(&folder)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert_eq!(
+        fs::metadata(temporary).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let destination = folder.join(format!("{}.json", capture.id));
+    fs::copy(fixture("novelai/chat/valid/stop.json"), &destination).unwrap();
+    let original = fs::read(&destination).unwrap();
+    let body = CapturedBody::read(std::io::Cursor::new(original.clone()), TOKEN);
+    assert!(matches!(
+        capture.save(&store, &generation("model-a"), Some(200), Some(&body)),
+        Err(Error::CaptureSave { .. })
+    ));
+    assert_eq!(fs::read(destination).unwrap(), original);
+}
+
+#[test]
+fn response_capture_limits_bytes_and_preserves_partial_reads() {
+    let (directory, store) = setup();
+    let body = CapturedBody::read(
+        std::io::Cursor::new(vec![b'x'; RESPONSE_LIMIT as usize + 20]),
+        TOKEN,
+    );
+    assert!(matches!(body.problem, Some(ResponseProblem::Oversized)));
+    let id = Capture::prepare(&store)
+        .unwrap()
+        .save(&store, &generation("model-a"), Some(200), Some(&body))
+        .unwrap();
+    let record = response_record(directory.path(), &id);
+    assert_eq!(record["truncated"], true);
+    assert_eq!(record["retained_bytes"], RESPONSE_LIMIT);
+    assert_eq!(
+        STANDARD
+            .decode(record["body_base64"].as_str().unwrap())
+            .unwrap()
+            .len() as u64,
+        RESPONSE_LIMIT
+    );
+
+    struct Interrupted {
+        bytes: std::io::Cursor<Vec<u8>>,
+    }
+    impl Read for Interrupted {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            let count = self.bytes.read(buffer)?;
+            if count == 0 {
+                Err(std::io::Error::other("synthetic read failure"))
+            } else {
+                Ok(count)
+            }
+        }
+    }
+    let expected = fs::read(fixture("novelai/chat/valid/stop.json")).unwrap();
+    let body = CapturedBody::read(
+        Interrupted {
+            bytes: std::io::Cursor::new(expected.clone()),
+        },
+        TOKEN,
+    );
+    assert!(matches!(body.problem, Some(ResponseProblem::Read)));
+    let id = Capture::prepare(&store)
+        .unwrap()
+        .save(&store, &generation("model-a"), Some(200), Some(&body))
+        .unwrap();
+    let record = response_record(directory.path(), &id);
+    assert_eq!(record["read_failed"], true);
+    assert_eq!(
+        STANDARD
+            .decode(record["body_base64"].as_str().unwrap())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -310,7 +592,7 @@ fn completion_is_one_post_and_preserves_utf8_whitespace() {
     let discovery = server.mock("GET", "/models").expect(0).create();
     let generation = generation("model-a");
     assert_eq!(
-        client(&server).generate(&generation).unwrap().body,
+        captured(&client(&server), &generation).unwrap().body,
         "  The potter waited. Café clocks were less patient.\n"
     );
     mock.assert();
@@ -327,8 +609,8 @@ fn malformed_completions_never_retry_or_leak_the_body() {
             .expect(1)
             .create();
         let generation = generation("model-a");
-        let err = client(&server).generate(&generation).unwrap_err();
-        assert!(matches!(err, Error::Response));
+        let err = captured(&client(&server), &generation).unwrap_err();
+        assert!(matches!(err, Error::CapturedResponse { .. }));
         assert!(!format!("{err:?} {err}").contains(TOKEN));
         assert!(err.to_string().contains("outcome may be unknown"));
         mock.assert();
@@ -357,14 +639,24 @@ fn http_errors_are_sanitized_and_never_retried() {
             let err = if method == "GET" {
                 client.models().map(|_| ())
             } else {
-                client.generate(&generation).map(|_| ())
+                captured(&client, &generation).map(|_| ())
             }
             .unwrap_err();
-            match status {
-                401 => assert!(matches!(err, Error::Authentication)),
-                403 => assert!(matches!(err, Error::ModelAccess)),
-                429 => assert!(matches!(err, Error::RateLimited)),
-                _ => assert!(matches!(err, Error::Http { .. })),
+            if method == "POST" {
+                assert!(matches!(
+                    err,
+                    Error::CapturedResponse {
+                        problem: ResponseProblem::CredentialEcho,
+                        ..
+                    }
+                ));
+            } else {
+                match status {
+                    401 => assert!(matches!(err, Error::Authentication)),
+                    403 => assert!(matches!(err, Error::ModelAccess)),
+                    429 => assert!(matches!(err, Error::RateLimited)),
+                    _ => assert!(matches!(err, Error::Http { .. })),
+                }
             }
             let rendered = format!("{err:?} {err}");
             assert!(!rendered.contains(TOKEN));
@@ -396,8 +688,11 @@ fn redirects_never_send_a_second_request_or_forward_credentials() {
             .create();
         let generation = generation("model-a");
         assert!(matches!(
-            client(&source).generate(&generation),
-            Err(Error::Http { .. })
+            captured(&client(&source), &generation),
+            Err(Error::CapturedResponse {
+                problem: ResponseProblem::Http { .. },
+                ..
+            })
         ));
         forbidden.assert();
         forbidden_get.assert();
@@ -497,8 +792,14 @@ fn transport_disconnect_has_an_explicit_unknown_outcome() {
     });
     let client = Client::new(TOKEN.into(), base, Duration::from_secs(1)).unwrap();
     let generation = generation("model-a");
-    let err = client.generate(&generation).unwrap_err();
-    assert!(matches!(err, Error::Transport));
+    let err = captured(&client, &generation).unwrap_err();
+    assert!(matches!(
+        err,
+        Error::CapturedResponse {
+            problem: ResponseProblem::Transport,
+            ..
+        }
+    ));
     assert!(err.to_string().contains("outcome may be unknown"));
     assert!(!format!("{err:?} {err}").contains(TOKEN));
     worker.join().unwrap();
@@ -519,11 +820,17 @@ fn request_timeout_does_not_retry_or_assume_the_request_failed_remotely() {
     });
     let client = Client::new(TOKEN.into(), base, Duration::from_millis(500)).unwrap();
     let request = generation("model-a");
-    let result = client.generate(&request);
+    let result = captured(&client, &request);
     release.send(()).unwrap();
     worker.join().unwrap();
     let err = result.unwrap_err();
-    assert!(matches!(err, Error::Transport));
+    assert!(matches!(
+        err,
+        Error::CapturedResponse {
+            problem: ResponseProblem::Transport,
+            ..
+        }
+    ));
     assert!(err.to_string().contains("outcome may be unknown"));
     assert!(!format!("{err:?} {err}").contains(TOKEN));
 }

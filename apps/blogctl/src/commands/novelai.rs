@@ -136,7 +136,10 @@ pub(crate) fn generate_candidate(
     store
         .check_candidate_storage(generation.snapshot())
         .context(WritingSnafu)?;
-    let completion = client.generate(&generation).context(NovelaiSnafu)?;
+    let completion = client.generate(&generation, store).context(NovelaiSnafu)?;
+    if let Some(record) = &completion.response_record {
+        eprintln!("NovelAI response saved privately: .writing/provider-responses/{record}.json");
+    }
     let id = store
         .record_candidate_with_context(
             generation.snapshot(),

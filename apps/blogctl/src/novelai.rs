@@ -10,7 +10,11 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
-use crate::writing::{GenerationMetadata, PreparedExperiment};
+use crate::writing::{GenerationMetadata, PreparedExperiment, Store};
+
+mod response;
+pub use response::ResponseProblem;
+use response::{parse_completion, Capture, CapturedBody};
 
 const BASE: &str = "https://text.novelai.net/oa/v1";
 const RESPONSE_LIMIT: u64 = 4 * 1024 * 1024;
@@ -53,6 +57,15 @@ pub enum Error {
     Transport,
     #[snafu(display("NovelAI returned an invalid, incomplete, or oversized response. No retry was made; generation outcome may be unknown. Inspect account usage before another invocation"))]
     Response,
+    #[snafu(display("could not prepare private NovelAI response storage; no request was sent"))]
+    CapturePreparation,
+    #[snafu(display("NovelAI request was already attempted, but saving response record {capture_id} could not be confirmed. Inspect the private response directory before any new request. No retry was made; generation outcome may be unknown"))]
+    CaptureSave { capture_id: String },
+    #[snafu(display("NovelAI response validation failed: {problem}. Private response record: .writing/provider-responses/{capture_id}.json. No retry was made; generation outcome may be unknown"))]
+    CapturedResponse {
+        capture_id: String,
+        problem: ResponseProblem,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -255,7 +268,12 @@ impl Client {
 
     /// Exactly one POST per explicit call, with no model lookup, redirect,
     /// automatic retry, or subsequent request on malformed output.
-    pub fn generate(&self, generation: &PreparedGeneration) -> Result<GeneratedCompletion> {
+    pub fn generate(
+        &self,
+        generation: &PreparedGeneration,
+        store: &Store,
+    ) -> Result<GeneratedCompletion> {
+        let capture = Capture::prepare(store)?;
         let request = self
             .agent
             .post(&format!(
@@ -265,41 +283,43 @@ impl Client {
             ))
             .set("Authorization", &format!("Bearer {}", self.token));
         let body = serde_json::to_string(&generation.request).map_err(|_| Error::InvalidRequest)?;
-        let response: CompletionResponse = decode(checked(
-            request
-                .set("Content-Type", "application/json")
-                .send_string(&body),
-        )?)?;
-        if response.choices.len() != 1 {
-            return Err(Error::Response);
-        }
-        let choice = response.choices.into_iter().next().ok_or(Error::Response)?;
-        let (body, reasoning) = match generation.transport {
-            Transport::Completion => (choice.text.ok_or(Error::Response)?, None),
-            Transport::Chat => {
-                let message = choice.message.ok_or(Error::Response)?;
-                if message.role != "assistant" {
-                    return Err(Error::Response);
-                }
-                (message.content, message.reasoning_content)
+        let response = match request
+            .set("Content-Type", "application/json")
+            .send_string(&body)
+        {
+            Ok(response) | Err(ureq::Error::Status(_, response)) => response,
+            Err(ureq::Error::Transport(_)) => {
+                let capture_id = capture.save(store, generation, None, None)?;
+                return Err(Error::CapturedResponse {
+                    capture_id,
+                    problem: ResponseProblem::Transport,
+                });
             }
         };
-        if body.trim().is_empty() {
-            return Err(Error::Response);
+        let status = response.status();
+        let captured = CapturedBody::read(response.into_reader(), &self.token);
+        let capture_id = capture.save(store, generation, Some(status), Some(&captured))?;
+        if let Some(problem) = captured.problem {
+            return Err(Error::CapturedResponse {
+                capture_id,
+                problem,
+            });
         }
-        if choice
-            .finish_reason
-            .as_ref()
-            .is_some_and(|reason| reason.len() > 128 || reason.chars().any(char::is_control))
-        {
-            return Err(Error::Response);
+        if status != 200 {
+            return Err(Error::CapturedResponse {
+                capture_id,
+                problem: ResponseProblem::Http { status },
+            });
         }
-        Ok(GeneratedCompletion {
-            body,
-            finish_reason: choice.finish_reason,
-            usage: response.usage,
-            reasoning_content: reasoning,
-        })
+        parse_completion(&captured.bytes, generation.transport)
+            .map(|mut completion| {
+                completion.response_record = Some(capture_id.clone());
+                completion
+            })
+            .map_err(|problem| Error::CapturedResponse {
+                capture_id,
+                problem,
+            })
     }
 }
 
@@ -355,11 +375,17 @@ pub struct GeneratedCompletion {
     pub finish_reason: Option<String>,
     pub usage: Option<Usage>,
     pub reasoning_content: Option<String>,
+    pub response_record: Option<String>,
 }
 
 impl GeneratedCompletion {
     pub fn metadata(&self, generation: &PreparedGeneration) -> GenerationMetadata {
         let mut metadata = generation.metadata();
+        if let Some(record) = &self.response_record {
+            metadata
+                .parameters
+                .insert("response_record".into(), record.clone().into());
+        }
         metadata
             .parameters
             .insert("finish_reason".into(), self.finish_reason.clone().into());
@@ -407,26 +433,6 @@ impl GeneratedCompletion {
         }
         warnings
     }
-}
-
-#[derive(Deserialize)]
-struct CompletionResponse {
-    choices: Vec<Choice>,
-    usage: Option<Usage>,
-}
-
-#[derive(Deserialize)]
-struct Choice {
-    text: Option<String>,
-    message: Option<ResponseMessage>,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ResponseMessage {
-    role: String,
-    content: String,
-    reasoning_content: Option<String>,
 }
 
 #[cfg(test)]
