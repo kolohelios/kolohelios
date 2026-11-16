@@ -20,7 +20,14 @@ fn fixture(name: &str) -> PathBuf {
 
 fn generation(model: &str) -> PreparedGeneration {
     let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
-    PreparedGeneration::new(exp.prepare("workshop").unwrap(), model.into(), None, None).unwrap()
+    PreparedGeneration::with_transport(
+        exp.prepare("workshop").unwrap(),
+        model.into(),
+        None,
+        None,
+        Transport::Completion,
+    )
+    .unwrap()
 }
 
 fn client(server: &mockito::ServerGuard) -> Client {
@@ -34,6 +41,173 @@ fn setup() -> (tempfile::TempDir, Store) {
         .import_experiment(&fixture("writing/valid/chapter.json"))
         .unwrap();
     (dir, store)
+}
+
+#[test]
+fn chat_uses_roles_disables_thinking_and_freezes_the_exact_request() {
+    let (_dir, store) = setup();
+    let mut exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+    exp.source_material = "Synthetic prior prose and selected evidence.".into();
+    let generation = PreparedGeneration::new(
+        exp.prepare("workshop").unwrap(),
+        "model-a".into(),
+        Some(2400),
+        Some(0.2),
+    )
+    .unwrap();
+    let preview: serde_json::Value = serde_json::from_str(&generation.preview().unwrap()).unwrap();
+    let expected: serde_json::Value =
+        writing::read_json(&fixture("novelai/chat-request.json")).unwrap();
+    assert_eq!(preview, expected);
+    assert!(preview.get("prompt").is_none());
+    assert_eq!(preview["enable_thinking"], false);
+    assert_eq!(preview["messages"][0]["role"], "system");
+    assert_eq!(preview["messages"][1]["role"], "user");
+    assert!(!preview["messages"][0]["content"]
+        .as_str()
+        .unwrap()
+        .contains(&exp.source_material));
+    let user = preview["messages"][1]["content"].as_str().unwrap();
+    assert!(user.contains(&exp.source_material));
+    assert!(!user.ends_with("Candidate:\n"));
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/chat/completions")
+        .match_header("authorization", format!("Bearer {TOKEN}").as_str())
+        .match_body(mockito::Matcher::Json(preview.clone()))
+        .with_body_from_file(fixture("novelai/chat/valid/stop.json"))
+        .expect(1)
+        .create();
+    let legacy = server.mock("POST", "/completions").expect(0).create();
+    let discovery = server.mock("GET", "/models").expect(0).create();
+    let completion = client(&server).generate(&generation).unwrap();
+    assert_eq!(
+        completion.body,
+        "  The potter waited. Café clocks were less patient.\n"
+    );
+    assert!(completion.warnings().is_empty());
+    let metadata = completion.metadata(&generation);
+    assert_eq!(metadata.parameters["request"], preview);
+    assert_eq!(metadata.parameters["endpoint"], "chat/completions");
+    assert_eq!(metadata.parameters["finish_reason"], "stop");
+    assert_eq!(metadata.parameters["usage"]["completion_tokens"], 15);
+    let id = store
+        .record_candidate(generation.snapshot(), &metadata, &completion.body)
+        .unwrap();
+    let saved = store.candidate("synthetic-chapter", &id).unwrap();
+    assert_eq!(saved.provenance.parameters["request"], preview);
+    assert_eq!(saved.body, completion.body);
+    mock.assert();
+    legacy.assert();
+    discovery.assert();
+}
+
+#[test]
+fn chat_preserves_truncation_reasoning_and_scaffolding_without_retry_or_cleanup() {
+    for case in fs::read_dir(fixture("novelai/chat/valid")).unwrap() {
+        let (_dir, store) = setup();
+        let path = case.unwrap().path();
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let source: serde_json::Value = writing::read_json(&path).unwrap();
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_body_from_file(&path)
+            .expect(1)
+            .create();
+        let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+        let generation = PreparedGeneration::new(
+            exp.prepare("workshop").unwrap(),
+            "model-a".into(),
+            None,
+            None,
+        )
+        .unwrap();
+        let id = generate_candidate(
+            &client(&server),
+            &store,
+            generation,
+            &CandidateContext::default(),
+        )
+        .unwrap();
+        let candidate = store.candidate("synthetic-chapter", &id).unwrap();
+        assert_eq!(
+            candidate.body,
+            source["choices"][0]["message"]["content"].as_str().unwrap()
+        );
+        assert_eq!(
+            candidate.provenance.parameters["finish_reason"],
+            source["choices"][0]["finish_reason"]
+        );
+        assert_eq!(candidate.provenance.review_status, ReviewStatus::Unreviewed);
+        if name == "reasoning.json" {
+            assert_eq!(
+                candidate.provenance.parameters["reasoning_content"],
+                source["choices"][0]["message"]["reasoning_content"]
+            );
+            assert!(!candidate.body.contains("Synthetic planning"));
+        }
+        assert_eq!(store.candidates("synthetic-chapter").unwrap().len(), 1);
+        mock.assert();
+    }
+}
+
+#[test]
+fn response_warnings_distinguish_normal_stops_from_incomplete_or_leaked_output() {
+    for (name, warning_count) in [
+        ("stop.json", 0),
+        ("length.json", 1),
+        ("reasoning.json", 1),
+        ("scaffolding.json", 2),
+        ("missing-finish.json", 1),
+    ] {
+        let response: CompletionResponse =
+            writing::read_json(&fixture(&format!("novelai/chat/valid/{name}"))).unwrap();
+        let choice = response.choices.into_iter().next().unwrap();
+        let message = choice.message.unwrap();
+        let completion = GeneratedCompletion {
+            body: message.content,
+            finish_reason: choice.finish_reason,
+            usage: response.usage,
+            reasoning_content: message.reasoning_content,
+        };
+        let original = completion.body.clone();
+        assert_eq!(completion.warnings().len(), warning_count, "{name}");
+        assert_eq!(completion.body, original);
+    }
+}
+
+#[test]
+fn malformed_chat_responses_fail_without_fallback_or_retry() {
+    for case in fs::read_dir(fixture("novelai/chat/invalid")).unwrap() {
+        let (_dir, store) = setup();
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_body_from_file(case.unwrap().path())
+            .expect(1)
+            .create();
+        let fallback = server.mock("POST", "/completions").expect(0).create();
+        let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+        let generation = PreparedGeneration::new(
+            exp.prepare("workshop").unwrap(),
+            "model-a".into(),
+            None,
+            None,
+        )
+        .unwrap();
+        let error = generate_candidate(
+            &client(&server),
+            &store,
+            generation,
+            &CandidateContext::default(),
+        )
+        .unwrap_err();
+        assert!(!format!("{error:?} {error}").contains(TOKEN));
+        assert!(store.candidates("synthetic-chapter").unwrap().is_empty());
+        mock.assert();
+        fallback.assert();
+    }
 }
 
 #[test]
@@ -75,7 +249,7 @@ fn preview_matches_the_exact_single_completion_request() {
     let metadata = generation.metadata();
     assert_eq!(metadata.provider, "novelai");
     assert_eq!(metadata.model, "model-a");
-    assert_eq!(metadata.parameters.len(), 6);
+    assert_eq!(metadata.parameters.len(), 9);
     assert!(!metadata.parameters.contains_key("prompt"));
     assert!(!metadata.parameters.contains_key("Authorization"));
 }
@@ -136,7 +310,7 @@ fn completion_is_one_post_and_preserves_utf8_whitespace() {
     let discovery = server.mock("GET", "/models").expect(0).create();
     let generation = generation("model-a");
     assert_eq!(
-        client(&server).generate(&generation).unwrap(),
+        client(&server).generate(&generation).unwrap().body,
         "  The potter waited. Café clocks were less patient.\n"
     );
     mock.assert();

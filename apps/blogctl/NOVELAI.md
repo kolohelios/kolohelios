@@ -46,6 +46,26 @@ candidate. Use `--dry-run` when you want only a credential-free local preview;
 the older preview-by-default behavior has intentionally changed.
 `experiment prepare` remains local-only.
 
+## Instruction transport and output limits
+
+Standalone generation defaults to `--transport chat`. It sends one request to
+`/oa/v1/chat/completions`, with separate system and user messages and
+`enable_thinking=false`. The system message supplies editorial instructions;
+the user message supplies the target, original seed, explicitly selected source
+material, and task. There is no trailing `Candidate:` continuation cue.
+The exact wire request is visible in the credential-free preview.
+
+Use `--transport completion` only for deliberate legacy raw-text continuation.
+That mode retains the existing prompt and `/oa/v1/completions` endpoint. A model
+that rejects the selected transport fails without switching endpoints or models.
+The engine does not infer transport from model names.
+
+Workflow passes opt in with `"transport": "chat"`. Omitted transport preserves
+legacy continuation semantics, with a warning, so an existing session is not
+silently reinterpreted. Changing consumer transport, instructions, or output
+limits changes the workflow fingerprint and requires a new session. Keep old
+sessions and failed candidates unchanged.
+
 Each invocation sends one POST with streaming turned off, requesting one candidate:
 `n=1`, `best_of=1`, `stream=false`, and `echo=false`. Output defaults to
 `max_tokens=600` and `temperature=0.8`. A deliberate invocation may override
@@ -63,6 +83,11 @@ before credential lookup or a request. No parent is inferred from timestamps or
 the latest candidate.
 
 `max_tokens` must be 1–8192 and temperature must be a finite value from 0–2.
+A token limit is not a word target: 900 output tokens cannot reliably accommodate
+a revised 1,000-word chapter. Consumers must choose adequate bounds for the
+requested deliverable, for example 4096 tokens for a full chapter refinement,
+then inspect the exact preview. The engine neither raises a cap silently nor
+continues an incomplete response through another request.
 Invalid values fail before credential lookup, network access, or candidate writes.
 The exact effective values appear in both `--dry-run` output and immutable
 candidate provenance. Candidate count, retries, streaming, fallback, and request
@@ -121,8 +146,21 @@ server you did not choose. Mock tests use private constructors and local servers
 Success prints one candidate ID. The text is published through the existing
 immutable candidate store, with provider/model, exact prompt and seed hashes,
 UTC record timestamp, parameters, attribution, fiction flag, and initial
-`review_status: unreviewed`. The prompt/experiment snapshot is captured before
+`review_status: unreviewed`. New provenance parameters include the endpoint,
+request-format version, exact structured request, provider `finish_reason`, and
+available prompt/completion/total token usage. The historical prompt hash still
+identifies the deterministic experiment prompt; the structured request records
+what was actually sent to the selected endpoint. The prompt/experiment snapshot is captured before
 network access, so subsequent definition edits cannot alter it.
+A `length` finish reason produces an explicit warning after preserving the exact
+response body as a candidate. Missing or other non-`stop` reasons also warn;
+an HTTP 200 alone is not proof of a complete deliverable. Any separate
+`reasoning_content` is stored in private provenance, never spliced into prose.
+Unexpected reasoning and leaked think/Approach/Candidate scaffolding warn without
+silent stripping, retries, selection, or advancement. Neither transport guarantees
+editorial quality; live behavior still needs an explicitly authorized canary.
+Malformed chat shapes or empty output fail without fallback.
+
 No headers or credentials enter provenance. No post body, canonical manuscript,
 stage, or VCS state is modified.
 
@@ -154,8 +192,10 @@ remain manual; no generated fiction becomes autobiography by default.
 
 The official [text API documentation](https://text.novelai.net/docs/index.html)
 and its linked [OpenAPI document](https://text.novelai.net/docs/doc.json) specify
-`GET /oa/v1/models` and `POST /oa/v1/completions`. This uses plain UTF-8 prompts
-and text responses, not the legacy tokenizer-dependent `/ai/generate` endpoint.
+`GET /oa/v1/models`, `POST /oa/v1/completions`, and
+`POST /oa/v1/chat/completions`. The chat request schema includes `messages` with
+`system`/`user`/`assistant` roles and `enable_thinking`. These use plain UTF-8
+messages or prompts, not the legacy tokenizer-dependent `/ai/generate` endpoint.
 Images are outside this text workflow.
 
 From `apps/blogctl`:

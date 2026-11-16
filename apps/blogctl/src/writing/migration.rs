@@ -24,6 +24,7 @@ fn convert(old: &LegacyExperiment) -> Experiment {
         id: old.id.clone(),
         target: WritingUnit::Chapter { book: old.book.clone(), chapter: old.chapter.clone() },
         seed: old.seed.clone(),
+        source_material: String::new(),
         fiction: true,
         evidence_pack_ids: Vec::new(),
         instructions: "Write a fictional exploration, not autobiography. Never invent incidents from the author's professional life. Be warm, thoughtful, slightly wry, allegorical where useful, and intellectually honest. Avoid corporate language, generic AI prose, and a tidy moral. Reveal the tension through concrete choices rather than explaining it. Supply one provisional narrative opening, not a finished chapter.".into(),

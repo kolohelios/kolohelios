@@ -1,0 +1,3 @@
+{
+  "choices": [{"index": 0, "message": {"role": "assistant", "reasoning_content": "Synthetic planning, not manuscript prose.", "content": "The potter waited.\n"}, "finish_reason": "stop"}]
+}

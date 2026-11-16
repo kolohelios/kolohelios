@@ -1,0 +1,6 @@
+{
+  "choices": [
+    {"message": {"role": "assistant", "content": "First."}, "finish_reason": "stop"},
+    {"message": {"role": "assistant", "content": "Second."}, "finish_reason": "stop"}
+  ]
+}

@@ -62,21 +62,47 @@ fn request_preview_needs_no_valid_credentials_and_writes_nothing() {
         assert_eq!(preview["best_of"].as_u64(), Some(1));
         assert_eq!(preview["stream"].as_bool(), Some(false));
         assert_eq!(preview["max_tokens"].as_u64(), Some(600));
-        assert_eq!(
-            preview["prompt"].as_str().unwrap(),
-            store
-                .experiment("synthetic-chapter")
-                .unwrap()
-                .prepare(variant)
-                .unwrap()
-                .prompt()
-        );
-        if variant == "workshop" {
-            let expected: serde_json::Value =
-                blogctl::writing::read_json(&fixture("novelai/workshop-request.json")).unwrap();
-            assert_eq!(preview, expected);
-        }
+        let (system, user) = store
+            .experiment("synthetic-chapter")
+            .unwrap()
+            .prepare(variant)
+            .unwrap()
+            .editorial_messages();
+        assert_eq!(preview["messages"][0]["role"], "system");
+        assert_eq!(preview["messages"][0]["content"], system);
+        assert_eq!(preview["messages"][1]["role"], "user");
+        assert_eq!(preview["messages"][1]["content"], user);
+        assert_eq!(preview["enable_thinking"], false);
+        assert!(preview.get("prompt").is_none());
     }
+    assert!(!dir.path().join(".writing/candidates").exists());
+}
+
+#[test]
+fn legacy_transport_is_explicit_and_preview_preserves_the_old_request() {
+    let (dir, _store) = setup();
+    let output = command()
+        .args([
+            "generate",
+            "synthetic-chapter",
+            "--variant",
+            "workshop",
+            "--model",
+            "model-a",
+            "--transport",
+            "completion",
+            "--dry-run",
+            "--workdir",
+        ])
+        .arg(dir.path())
+        .current_dir(std::env::temp_dir())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let preview: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let expected: serde_json::Value =
+        blogctl::writing::read_json(&fixture("novelai/workshop-request.json")).unwrap();
+    assert_eq!(preview, expected);
     assert!(!dir.path().join(".writing/candidates").exists());
 }
 

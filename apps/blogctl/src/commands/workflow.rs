@@ -296,16 +296,20 @@ fn prepared_generation(
         .context(WritingSnafu)?
         .prepare(pass.name())
         .context(WritingSnafu)?;
-    PreparedGeneration::new(
+    PreparedGeneration::with_transport(
         snapshot,
         model.into(),
         pass.max_tokens(),
         pass.temperature(),
+        pass.transport(),
     )
     .context(NovelaiSnafu)
 }
 
 fn require_generate(pass: &WorkflowPass) -> Result<()> {
+    if pass.transport() == crate::novelai::Transport::Completion {
+        eprintln!("Warning: this workflow uses legacy raw continuation, not instruction chat. Set transport to chat in consumer policy and start a new session to use editorial requests.");
+    }
     if pass.mode() == PassMode::ImportOnly {
         return Err(writing::Error::Invalid {
             reason: "this pass is import-only; no model request was sent".into(),
@@ -439,10 +443,10 @@ fn check_candidate(
                 reason: "no candidate is selected".into(),
             },
         })?;
-    let body = &store
+    let document = store
         .candidate(&selected.experiment_id, &selected.candidate_id)
-        .context(WritingSnafu)?
-        .body;
+        .context(WritingSnafu)?;
+    let body = &document.body;
     let pass = session.pass(definition).context(WritingSnafu)?;
     let words = body
         .split(|character: char| {
@@ -451,6 +455,24 @@ fn check_candidate(
         .filter(|word| !word.is_empty())
         .count();
     let mut warnings = Vec::new();
+    if document.provenance.provider == "novelai" {
+        if let Some(reason) = document.provenance.parameters.get("finish_reason") {
+            if reason.as_str() != Some("stop") {
+                warnings.push(format!(
+                    "provider finish reason is {reason}; complete output is not established"
+                ));
+            }
+        }
+        if document
+            .provenance
+            .parameters
+            .get("reasoning_content")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| !text.is_empty())
+        {
+            warnings.push("provider returned reasoning despite disabled thinking; stored separately from prose".into());
+        }
+    }
     if pass.min_words().is_some_and(|minimum| words < minimum) {
         warnings.push(format!("{words} words is below the pass minimum"));
     }

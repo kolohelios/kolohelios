@@ -41,6 +41,81 @@ fn record_shape(store: &Store, experiment: &str) -> String {
 }
 
 #[test]
+fn chat_workflows_separate_material_bind_policy_and_preserve_legacy_sessions() {
+    let (_workdir, store) = setup();
+    let root = workflow_root();
+    let legacy_config = Path::new("valid/workflow.json");
+    let chat_config = Path::new("valid/chat-workflow.json");
+    let legacy = writing_workflow::definition(&root, legacy_config).unwrap();
+    let chat = writing_workflow::definition(&root, chat_config).unwrap();
+    assert_eq!(
+        legacy.pass("draft").unwrap().transport(),
+        blogctl::novelai::Transport::Completion
+    );
+    assert_eq!(
+        chat.pass("draft").unwrap().transport(),
+        blogctl::novelai::Transport::Chat
+    );
+    let legacy_session = Session::open(&store, "legacy", &legacy).unwrap();
+    assert!(Session::open(&store, "legacy", &chat).is_err());
+    assert_eq!(legacy_session.pass_name(), "shape");
+    let shape = writing_workflow::prepare(&store, &root, chat_config, "shape", None).unwrap();
+    let prior = ArtifactReference {
+        candidate_id: record_shape(&store, &shape),
+        experiment_id: shape,
+    };
+    let evidence = store
+        .import_evidence_pack(&fixture("evidence/valid/review-research.json"))
+        .unwrap();
+    let id = writing_workflow::prepare_with_evidence(
+        &store,
+        &root,
+        chat_config,
+        "draft",
+        Some(&prior),
+        std::slice::from_ref(&evidence),
+    )
+    .unwrap();
+    let experiment = store.experiment(&id).unwrap();
+    assert!(!experiment.instructions.contains("Prior pass candidate"));
+    assert!(!experiment.instructions.contains("Selected evidence pack"));
+    assert!(experiment.source_material.contains("Voice profile"));
+    assert!(experiment.source_material.contains(&prior.candidate_id));
+    assert!(experiment.source_material.contains(&evidence));
+    let pass = chat.pass("draft").unwrap();
+    let generation = blogctl::novelai::PreparedGeneration::with_transport(
+        experiment.prepare("draft").unwrap(),
+        "model-a".into(),
+        pass.max_tokens(),
+        pass.temperature(),
+        pass.transport(),
+    )
+    .unwrap();
+    let request: serde_json::Value = serde_json::from_str(&generation.preview().unwrap()).unwrap();
+    let system = request["messages"][0]["content"].as_str().unwrap();
+    let user = request["messages"][1]["content"].as_str().unwrap();
+    assert!(!system.contains(&prior.candidate_id));
+    assert!(!system.contains(&evidence));
+    assert!(user.contains(&prior.candidate_id));
+    assert!(user.contains(&evidence));
+    assert_eq!(request["max_tokens"], 4096);
+    assert_eq!(request["enable_thinking"], false);
+    assert_eq!(
+        writing_workflow::prepare_with_evidence(
+            &store,
+            &root,
+            chat_config,
+            "draft",
+            Some(&prior),
+            &[evidence]
+        )
+        .unwrap(),
+        id
+    );
+    assert!(store.candidates(&id).unwrap().is_empty());
+}
+
+#[test]
 fn preparation_is_deterministic_and_uses_only_explicit_context() {
     let (_workdir, store) = setup();
     let root = workflow_root();

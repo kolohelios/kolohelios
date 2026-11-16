@@ -1,0 +1,3 @@
+{
+  "choices": [{"index": 0, "message": {"role": "assistant", "content": "Approach (facts):\nCandidate:\n</think>\nThe agents can"}, "finish_reason": "length"}]
+}

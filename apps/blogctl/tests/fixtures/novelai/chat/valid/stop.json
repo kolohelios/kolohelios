@@ -1,0 +1,4 @@
+{
+  "choices": [{"index": 0, "message": {"role": "assistant", "content": "  The potter waited. Café clocks were less patient.\n"}, "finish_reason": "stop"}],
+  "usage": {"prompt_tokens": 120, "completion_tokens": 15, "total_tokens": 135}
+}
