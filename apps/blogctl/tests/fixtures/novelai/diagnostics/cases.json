@@ -1,0 +1,9 @@
+[
+  {"file":"invalid-json.txt","diagnostic":"invalid JSON at line"},
+  {"file":"null-reasoning.json","diagnostic":"reasoning but no deliverable"},
+  {"file":"empty.json","diagnostic":"empty deliverable"},
+  {"file":"missing-choices.json","diagnostic":"choices (array required)"},
+  {"file":"array-content.json","diagnostic":"choices[0].message.content (string required)"},
+  {"file":"invalid-usage.json","diagnostic":"usage.completion_tokens"},
+  {"file":"invalid-finish.json","diagnostic":"finish reason was invalid"}
+]
