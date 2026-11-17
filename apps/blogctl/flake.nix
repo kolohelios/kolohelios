@@ -65,6 +65,10 @@
             version = "0.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
+            BLOGCTL_GLM_TOKENIZER = pkgs.fetchurl {
+              url = "https://novelai.net/tokenizer/compressed/glm45_tokenizer.def?v=2&static=true";
+              hash = "sha256-2GLyFSctsFtnCGcesCfzGrg/3anz1B+MYQLF9QAuJ2g=";
+            };
             nativeCheckInputs = [ pkgs.jujutsu ];
             preCheck = ''
               export HOME="$(mktemp -d)"
@@ -99,6 +103,10 @@
             ]
             ++ (workflowPackages pkgs)
             ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;
+            BLOGCTL_GLM_TOKENIZER = pkgs.fetchurl {
+              url = "https://novelai.net/tokenizer/compressed/glm45_tokenizer.def?v=2&static=true";
+              hash = "sha256-2GLyFSctsFtnCGcesCfzGrg/3anz1B+MYQLF9QAuJ2g=";
+            };
             shellHook = ''
               if command -v blogctl &>/dev/null; then
                 _completions_dir="''${XDG_CACHE_HOME:-$HOME/.cache}/kolohelios-completions/blogctl"

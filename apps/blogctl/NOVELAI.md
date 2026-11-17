@@ -105,6 +105,54 @@ currently includes unlimited text generation with eligible subscriptions; `Anlas
 are used for images. The output cap is a length limit, not a dollar budget.
 The CLI does not report billing receipts; account/model entitlements still apply.
 
+## `Xialong` token-only responses and offline decoding
+
+NovelAI's live chat endpoint can return a `chat.completion.chunk` object with
+empty `choices[0].text` and a `token_ids` array instead of `message.content`,
+even when `stream=false`. Its [public web client](https://novelai.net/stories)
+maps `xialong-v1` to the GLM vocabulary and decodes these IDs locally. The OpenAPI
+response schema doesn't specify that token-only contract.
+
+For this exact model and response shape, `blogctl` uses the official
+[GLM vocabulary](https://novelai.net/tokenizer/compressed/glm45_tokenizer.def?v=2&static=true).
+The compressed resource is pinned by SHA-256
+`d862f215272db05b6708671eb027f31ab83fdda9f3d41f8c6102c5f5002e2768`.
+`cli.buildResources` in `project.cue` gives package builds and development shells
+the same fixed-output Nix resource. Only public vocabulary data enters the Nix store;
+writing material never does. The compiled binary retains the resource path.
+No decoder or vocabulary is fetched during preview, generation, or inspection.
+The provider resource is fetched verbatim; no private response or full provider
+application bundle is vendored in this repository.
+
+Before a `Xialong` chat request, the engine loads and verifies the pinned resource.
+A missing or altered resource fails before the request. Decode-only support
+reverses the vocabulary's byte-to-Unicode mapping, checks complete UTF-8, and
+bounds compressed bytes, inflated data, token count, and decoded output.
+Unknown IDs, invalid numeric IDs, a mismatched model or response object, and
+conflicting text/token output fail closed with the raw capture retained. There
+is no vocabulary guessing, remote decoding, or endpoint/model fallback.
+
+A final token `151336` (`<|user|>`) is a protocol terminator for this contract.
+Only that final token, and only with finish reason `stop`, is removed. Every
+other byte remains unchanged, including leading/trailing whitespace, embedded
+markers, and reasoning tags. Provenance records the resource hash, original
+token count, SHA-256 of the raw decoded text, and exact removed token IDs. CLI
+output reports the protocol handling. Embedded markers remain visible with an
+advisory warning; decoding doesn't establish editorial or factual correctness.
+
+Already captured responses can be inspected without another generation:
+
+```sh
+blogctl novelai decode-response RESPONSE_ID --workdir /private/writing-lab
+```
+
+This local-only command verifies a complete, private, hash-consistent response
+record and prints JSON containing `body`, finish reason, usage, decoding
+provenance, and the response-record ID. It resolves no credentials, writes no
+files, imports no candidate, and changes no session, review, or selection. Keep
+its output private. Incomplete captures and unsafe paths are refused; the
+read-only MCP surface doesn't expose this command.
+
 ## 1Password at the invocation boundary
 
 The engine reads only `NOVELAI_API_TOKEN`. It never calls `op`, consults a
