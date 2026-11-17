@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "chat/completions",
+  "model": "xialong-v1",
+  "request": {"model": "xialong-v1", "max_tokens": 4096},
+  "status": 200,
+  "body_limit": 4194304,
+  "retained_bytes": 0,
+  "truncated": false,
+  "read_failed": false,
+  "credential_echo_detected": false,
+  "body_sha256": "",
+  "body_base64": "",
+  "transport_failure": false
+}

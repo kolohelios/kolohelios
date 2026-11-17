@@ -1,0 +1,1 @@
+{"object":"chat.completion.chunk","model":"glm-4-6","choices":[{"index":0,"text":"","token_ids":[34],"finish_reason":"stop"}]}

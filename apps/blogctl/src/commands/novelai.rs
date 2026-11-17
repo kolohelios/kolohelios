@@ -23,6 +23,12 @@ pub enum NovelaiAction {
         #[arg(long)]
         json: bool,
     },
+    /// Decode a captured response locally; no credentials, request, or candidate write.
+    DecodeResponse {
+        record: String,
+        #[arg(long, value_name = "PRIVATE_PATH")]
+        workdir: PathBuf,
+    },
     /// Generate one candidate; --dry-run previews locally without credentials.
     /// Supply NOVELAI_API_TOKEN through 1Password, never as an argument.
     Generate {
@@ -74,6 +80,17 @@ pub fn run(args: NovelaiArgs) -> Result<()> {
                     println!("{model}");
                 }
             }
+        }
+        NovelaiAction::DecodeResponse { record, workdir } => {
+            let store = Store::open(&workdir).context(WritingSnafu)?;
+            let completion =
+                novelai::decode_response_record(&store, &record).context(NovelaiSnafu)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&completion)
+                    .map_err(|_| novelai::Error::InvalidRequest)
+                    .context(NovelaiSnafu)?
+            );
         }
         NovelaiAction::Generate {
             experiment,
@@ -139,6 +156,9 @@ pub(crate) fn generate_candidate(
     let completion = client.generate(&generation, store).context(NovelaiSnafu)?;
     if let Some(record) = &completion.response_record {
         eprintln!("NovelAI response saved privately: .writing/provider-responses/{record}.json");
+    }
+    if let Some(decoding) = &completion.decoding {
+        eprintln!("Decoded {} response tokens with the pinned tokenizer; removed terminal protocol token IDs: {:?}.", decoding.token_count, decoding.removed_terminal_token_ids);
     }
     let id = store
         .record_candidate_with_context(

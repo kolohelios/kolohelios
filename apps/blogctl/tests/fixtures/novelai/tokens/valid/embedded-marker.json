@@ -1,0 +1,5 @@
+{
+  "object": "chat.completion.chunk",
+  "model": "xialong-v1",
+  "choices": [{"index": 0, "text": "", "token_ids": [151336,75,72,83,68,81,64,75,151336], "finish_reason": "stop"}]
+}

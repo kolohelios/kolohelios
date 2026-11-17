@@ -1,0 +1,5 @@
+[
+  {"file":"unicode.json", "body":"Café 🌞\n", "removed":[151336], "warnings":0},
+  {"file":"embedded-marker.json", "body":"<|user|>literal", "removed":[151336], "warnings":1},
+  {"file":"length-stop.json", "body":"Café 🌞\n<|user|>", "removed":[], "warnings":2}
+]

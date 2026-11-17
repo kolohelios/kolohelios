@@ -6,6 +6,12 @@ package project
 	cli: {
 		binaryName:       "blogctl"
 		shellCompletions: true
+		// Public provider vocabulary, pinned for strictly local Xialong decoding.
+		// Private writing material never enters this resource or the Nix store.
+		buildResources: BLOGCTL_GLM_TOKENIZER: {
+			url: "https://novelai.net/tokenizer/compressed/glm45_tokenizer.def?v=2&static=true"
+			hash: "sha256-2GLyFSctsFtnCGcesCfzGrg/3anz1B+MYQLF9QAuJ2g="
+		}
 		// Integration tests in `tests/cli.rs` spawn `jj` directly
 		// (and exercise blogctl commands whose precondition checks
 		// shell out to `jj status`). Without `jujutsu` on PATH the

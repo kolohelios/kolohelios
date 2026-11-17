@@ -228,6 +228,153 @@ fn response_record(directory: &Path, id: &str) -> serde_json::Value {
     writing::read_json(&path).unwrap()
 }
 
+fn xialong_generation() -> PreparedGeneration {
+    let exp: Experiment = writing::read_json(&fixture("writing/valid/chapter.json")).unwrap();
+    PreparedGeneration::new(
+        exp.prepare("workshop").unwrap(),
+        "xialong-v1".into(),
+        Some(4096),
+        Some(0.2),
+    )
+    .unwrap()
+}
+
+#[test]
+fn token_responses_decode_with_provenance_and_no_editorial_cleanup() {
+    let cases: Vec<serde_json::Value> =
+        writing::read_json(&fixture("novelai/tokens/valid/cases.json")).unwrap();
+    for case in cases {
+        let (directory, store) = setup();
+        let path = fixture(&format!(
+            "novelai/tokens/valid/{}",
+            case["file"].as_str().unwrap()
+        ));
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_body_from_file(&path)
+            .expect(1)
+            .create();
+        let request = xialong_generation();
+        let completion = client(&server).generate(&request, &store).unwrap();
+        assert_eq!(completion.body, case["body"].as_str().unwrap());
+        assert_eq!(
+            completion.warnings().len() as u64,
+            case["warnings"].as_u64().unwrap()
+        );
+        let metadata = completion.metadata(&request);
+        assert_eq!(
+            metadata.parameters["decoding"]["removed_terminal_token_ids"],
+            case["removed"]
+        );
+        assert_eq!(
+            metadata.parameters["decoding"]["tokenizer_sha256"],
+            tokenizer::COMPRESSED_SHA256
+        );
+        let record = completion.response_record.as_ref().unwrap();
+        let path = directory
+            .path()
+            .join(".writing/provider-responses")
+            .join(format!("{record}.json"));
+        let before = fs::read(&path).unwrap();
+        let replay = decode_response_record(&store, record).unwrap();
+        assert_eq!(replay.body, completion.body);
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(store.candidates("synthetic-chapter").unwrap().is_empty());
+        let id = store
+            .record_candidate(request.snapshot(), &metadata, &completion.body)
+            .unwrap();
+        assert_eq!(
+            store
+                .candidate("synthetic-chapter", &id)
+                .unwrap()
+                .provenance
+                .parameters["decoding"],
+            metadata.parameters["decoding"]
+        );
+        mock.assert();
+    }
+}
+
+#[test]
+fn invalid_token_response_fixtures_are_preserved_without_retry_or_candidate() {
+    for case in fs::read_dir(fixture("novelai/tokens/invalid")).unwrap() {
+        let (directory, store) = setup();
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_body_from_file(case.unwrap().path())
+            .expect(1)
+            .create();
+        let error = client(&server)
+            .generate(&xialong_generation(), &store)
+            .unwrap_err();
+        let Error::CapturedResponse { capture_id, .. } = error else {
+            panic!("expected preserved response")
+        };
+        assert!(directory
+            .path()
+            .join(".writing/provider-responses")
+            .join(format!("{capture_id}.json"))
+            .exists());
+        assert!(store.candidates("synthetic-chapter").unwrap().is_empty());
+        mock.assert();
+    }
+}
+
+#[test]
+fn offline_record_decode_refuses_traversal_symlinks_tampering_and_incomplete_captures() {
+    let (directory, store) = setup();
+    let body = fs::read(fixture("novelai/tokens/valid/unicode.json")).unwrap();
+    let body = CapturedBody::read(std::io::Cursor::new(body), TOKEN);
+    let id = Capture::prepare(&store)
+        .unwrap()
+        .save(&store, &xialong_generation(), Some(200), Some(&body))
+        .unwrap();
+    let path = directory
+        .path()
+        .join(".writing/provider-responses")
+        .join(format!("{id}.json"));
+    let original = fs::read(&path).unwrap();
+    assert!(decode_response_record(&store, "../escape").is_err());
+    assert!(decode_response_record(&store, "response-missing").is_err());
+    let mut record: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    record["truncated"] = true.into();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    assert!(decode_response_record(&store, &id).is_err());
+    record["truncated"] = false.into();
+    record["body_sha256"] = "invalid".into();
+    fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    assert!(decode_response_record(&store, &id).is_err());
+    fs::write(&path, &original).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(decode_response_record(&store, &id).is_err());
+    fs::remove_file(&path).unwrap();
+    let elsewhere = tempfile::NamedTempFile::new().unwrap();
+    fs::write(elsewhere.path(), original).unwrap();
+    symlink(elsewhere.path(), &path).unwrap();
+    assert!(decode_response_record(&store, &id).is_err());
+}
+
+#[test]
+fn token_decoder_bounds_and_model_mapping_fail_closed() {
+    let tokenizer = tokenizer::GlmTokenizer::load().unwrap();
+    let bytes = fs::read(fixture("novelai/tokens/valid/unicode.json")).unwrap();
+    assert!(parse_response(
+        &bytes,
+        Transport::Chat,
+        "other-model",
+        4096,
+        Some(&tokenizer)
+    )
+    .is_err());
+    assert!(parse_response(&bytes, Transport::Chat, "xialong-v1", 1, Some(&tokenizer)).is_err());
+    assert!(parse_response(&bytes, Transport::Chat, "xialong-v1", 4096, None).is_err());
+    assert!(tokenizer.decode(&[], Some("stop")).is_err());
+    assert!(tokenizer.decode(&vec![34; 8194], Some("stop")).is_err());
+}
+
 #[test]
 fn diagnostic_fixtures_report_safe_stages_without_losing_response_evidence() {
     let cases: Vec<serde_json::Value> =

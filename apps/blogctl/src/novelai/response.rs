@@ -40,6 +40,8 @@ pub enum ResponseProblem {
     ReasoningOnly,
     #[snafu(display("provider finish reason was invalid"))]
     FinishReason,
+    #[snafu(display("token response decoding failed: {reason}"))]
+    TokenDecoding { reason: &'static str },
 }
 
 #[derive(Serialize)]
@@ -183,9 +185,119 @@ impl Capture {
     }
 }
 
+#[cfg(test)]
 pub(super) fn parse_completion(
     bytes: &[u8],
     transport: Transport,
+) -> std::result::Result<GeneratedCompletion, ResponseProblem> {
+    parse_response(bytes, transport, "model-a", 8192, None)
+}
+
+/// Inspect captured output locally. No credentials, requests, imports, or writes.
+pub fn decode_response_record(store: &Store, id: &str) -> Result<GeneratedCompletion> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if !id.starts_with("response-")
+        || id.len() > 120
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
+        return Err(Error::ResponseRecord);
+    }
+    let directory = store
+        .directory(&["provider-responses"], false)
+        .map_err(|_| Error::ResponseRecord)?
+        .ok_or(Error::ResponseRecord)?;
+    let path = directory.join(format!("{id}.json"));
+    let metadata = std::fs::symlink_metadata(&path).map_err(|_| Error::ResponseRecord)?;
+    const RECORD_LIMIT: u64 = 32 * 1024 * 1024;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.permissions().mode() & 0o077 != 0
+        || metadata.len() > RECORD_LIMIT
+    {
+        return Err(Error::ResponseRecord);
+    }
+    let mut bytes = Vec::new();
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&path)
+        .map_err(|_| Error::ResponseRecord)?
+        .take(RECORD_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::ResponseRecord)?;
+    if bytes.len() as u64 > RECORD_LIMIT {
+        return Err(Error::ResponseRecord);
+    }
+    let record: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| Error::ResponseRecord)?;
+    if record["version"].as_u64() != Some(1)
+        || record["status"].as_u64() != Some(200)
+        || [
+            "truncated",
+            "read_failed",
+            "credential_echo_detected",
+            "transport_failure",
+        ]
+        .iter()
+        .any(|field| record[field].as_bool() != Some(false))
+    {
+        return Err(Error::ResponseRecord);
+    }
+    let encoded = record["body_base64"]
+        .as_str()
+        .ok_or(Error::ResponseRecord)?;
+    if encoded.len() as u64 > RESPONSE_LIMIT.div_ceil(3) * 4 {
+        return Err(Error::ResponseRecord);
+    }
+    let body = STANDARD
+        .decode(encoded)
+        .map_err(|_| Error::ResponseRecord)?;
+    if body.len() as u64 > RESPONSE_LIMIT
+        || record["retained_bytes"].as_u64() != Some(body.len() as u64)
+        || record["body_sha256"].as_str() != Some(writing::hash_bytes(&body).as_str())
+    {
+        return Err(Error::ResponseRecord);
+    }
+    let model = record["request"]["model"]
+        .as_str()
+        .ok_or(Error::ResponseRecord)?;
+    if record["model"].as_str() != Some(model) {
+        return Err(Error::ResponseRecord);
+    }
+    let max_tokens = record["request"]["max_tokens"]
+        .as_u64()
+        .filter(|n| (1..=8192).contains(n))
+        .ok_or(Error::ResponseRecord)? as u32;
+    let transport = match record["endpoint"].as_str() {
+        Some("chat/completions") => Transport::Chat,
+        Some("completions") => Transport::Completion,
+        _ => return Err(Error::ResponseRecord),
+    };
+    let tokenizer = if model == super::tokenizer::MODEL && transport == Transport::Chat {
+        Some(
+            super::tokenizer::GlmTokenizer::load()
+                .map_err(|problem| Error::DecoderPreparation { problem })?,
+        )
+    } else {
+        None
+    };
+    let mut completion = parse_response(&body, transport, model, max_tokens, tokenizer.as_ref())
+        .map_err(|problem| Error::CapturedResponse {
+            capture_id: id.into(),
+            problem,
+        })?;
+    completion.response_record = Some(id.into());
+    Ok(completion)
+}
+
+pub(super) fn parse_response(
+    bytes: &[u8],
+    transport: Transport,
+    model: &str,
+    max_tokens: u32,
+    tokenizer: Option<&super::tokenizer::GlmTokenizer>,
 ) -> std::result::Result<GeneratedCompletion, ResponseProblem> {
     use serde_json::Value;
     let response: Value = serde_json::from_slice(bytes).map_err(|error| ResponseProblem::Json {
@@ -214,7 +326,53 @@ pub(super) fn parse_completion(
     } else {
         None
     };
+    let finish_reason = optional_string(choice, "finish_reason", "choices[0].finish_reason")?;
+    if finish_reason
+        .as_ref()
+        .is_some_and(|value| value.len() > 128 || value.chars().any(char::is_control))
+    {
+        return Err(ResponseProblem::FinishReason);
+    }
+    let mut decoding = None;
     let body = match transport {
+        Transport::Chat if choice.get("message").is_none() && choice.get("token_ids").is_some() => {
+            if model != super::tokenizer::MODEL
+                || response["model"].as_str() != Some(model)
+                || response["object"].as_str() != Some("chat.completion.chunk")
+                || choice["index"].as_u64() != Some(0)
+                || choice["text"].as_str() != Some("")
+            {
+                return Err(ResponseProblem::TokenDecoding {
+                    reason: "unrecognized or conflicting token response contract",
+                });
+            }
+            let values = choice["token_ids"]
+                .as_array()
+                .ok_or(ResponseProblem::TokenDecoding {
+                    reason: "token IDs must be an array",
+                })?;
+            if values.len() > max_tokens as usize + 1 {
+                return Err(ResponseProblem::TokenDecoding {
+                    reason: "token count exceeds the requested bound",
+                });
+            }
+            let ids: Vec<u32> = values
+                .iter()
+                .map(|value| {
+                    value.as_u64().and_then(|id| u32::try_from(id).ok()).ok_or(
+                        ResponseProblem::TokenDecoding {
+                            reason: "token IDs must be unsigned 32-bit integers",
+                        },
+                    )
+                })
+                .collect::<std::result::Result<_, _>>()?;
+            let tokenizer = tokenizer.ok_or(ResponseProblem::TokenDecoding {
+                reason: "pinned tokenizer unavailable",
+            })?;
+            let (body, provenance) = tokenizer.decode(&ids, finish_reason.as_deref())?;
+            decoding = Some(provenance);
+            body
+        }
         Transport::Chat => {
             let message = choice
                 .get("message")
@@ -268,13 +426,6 @@ pub(super) fn parse_completion(
             },
         );
     }
-    let finish_reason = optional_string(choice, "finish_reason", "choices[0].finish_reason")?;
-    if finish_reason
-        .as_ref()
-        .is_some_and(|value| value.len() > 128 || value.chars().any(char::is_control))
-    {
-        return Err(ResponseProblem::FinishReason);
-    }
     let usage = match response.get("usage") {
         None | Some(Value::Null) => None,
         Some(value) if value.is_object() => Some(Usage {
@@ -298,6 +449,7 @@ pub(super) fn parse_completion(
         reasoning_content: reasoning,
         usage,
         response_record: None,
+        decoding,
     })
 }
 

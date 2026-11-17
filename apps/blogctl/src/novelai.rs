@@ -13,8 +13,13 @@ use snafu::Snafu;
 use crate::writing::{GenerationMetadata, PreparedExperiment, Store};
 
 mod response;
+#[cfg(test)]
+use response::parse_completion;
 pub use response::ResponseProblem;
-use response::{parse_completion, Capture, CapturedBody};
+use response::{parse_response, Capture, CapturedBody};
+mod tokenizer;
+pub use response::decode_response_record;
+pub use tokenizer::DecodingProvenance;
 
 const BASE: &str = "https://text.novelai.net/oa/v1";
 const RESPONSE_LIMIT: u64 = 4 * 1024 * 1024;
@@ -59,6 +64,10 @@ pub enum Error {
     Response,
     #[snafu(display("could not prepare private NovelAI response storage; no request was sent"))]
     CapturePreparation,
+    #[snafu(display("cannot read a complete, hash-verified private NovelAI response record"))]
+    ResponseRecord,
+    #[snafu(display("cannot prepare pinned NovelAI decoder: {problem}. No request was sent"))]
+    DecoderPreparation { problem: ResponseProblem },
     #[snafu(display("NovelAI request was already attempted, but saving response record {capture_id} could not be confirmed. Inspect the private response directory before any new request. No retry was made; generation outcome may be unknown"))]
     CaptureSave { capture_id: String },
     #[snafu(display("NovelAI response validation failed: {problem}. Private response record: .writing/provider-responses/{capture_id}.json. No retry was made; generation outcome may be unknown"))]
@@ -273,6 +282,16 @@ impl Client {
         generation: &PreparedGeneration,
         store: &Store,
     ) -> Result<GeneratedCompletion> {
+        let tokenizer = if generation.transport == Transport::Chat
+            && generation.request.model == tokenizer::MODEL
+        {
+            Some(
+                tokenizer::GlmTokenizer::load()
+                    .map_err(|problem| Error::DecoderPreparation { problem })?,
+            )
+        } else {
+            None
+        };
         let capture = Capture::prepare(store)?;
         let request = self
             .agent
@@ -311,15 +330,21 @@ impl Client {
                 problem: ResponseProblem::Http { status },
             });
         }
-        parse_completion(&captured.bytes, generation.transport)
-            .map(|mut completion| {
-                completion.response_record = Some(capture_id.clone());
-                completion
-            })
-            .map_err(|problem| Error::CapturedResponse {
-                capture_id,
-                problem,
-            })
+        parse_response(
+            &captured.bytes,
+            generation.transport,
+            &generation.request.model,
+            generation.request.max_tokens,
+            tokenizer.as_ref(),
+        )
+        .map(|mut completion| {
+            completion.response_record = Some(capture_id.clone());
+            completion
+        })
+        .map_err(|problem| Error::CapturedResponse {
+            capture_id,
+            problem,
+        })
     }
 }
 
@@ -369,18 +394,25 @@ pub struct Usage {
     pub total_tokens: Option<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct GeneratedCompletion {
     pub body: String,
     pub finish_reason: Option<String>,
     pub usage: Option<Usage>,
     pub reasoning_content: Option<String>,
     pub response_record: Option<String>,
+    pub decoding: Option<DecodingProvenance>,
 }
 
 impl GeneratedCompletion {
     pub fn metadata(&self, generation: &PreparedGeneration) -> GenerationMetadata {
         let mut metadata = generation.metadata();
+        if let Some(decoding) = &self.decoding {
+            metadata.parameters.insert(
+                "decoding".into(),
+                serde_json::to_value(decoding).expect("decoding provenance serializes"),
+            );
+        }
         if let Some(record) = &self.response_record {
             metadata
                 .parameters
@@ -419,6 +451,9 @@ impl GeneratedCompletion {
             .is_some_and(|text| !text.is_empty())
         {
             warnings.push("provider returned reasoning despite disabled thinking; preserved separately from prose");
+        }
+        if self.body.contains("<|") {
+            warnings.push("decoded body contains an embedded protocol marker; no editorial cleanup was applied");
         }
         if self.body.contains("<think>")
             || self.body.contains("</think>")
