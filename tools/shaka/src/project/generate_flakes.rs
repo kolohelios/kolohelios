@@ -49,6 +49,14 @@ struct CliMeta {
     extra_dev_shell_packages: Vec<String>,
     #[serde(default)]
     cue_module: Option<CueModule>,
+    #[serde(default)]
+    build_resources: BTreeMap<String, BuildResource>,
+}
+
+#[derive(Deserialize)]
+struct BuildResource {
+    url: String,
+    hash: String,
 }
 
 /// `cli.cueModule`: directories copied from the flake src into the
@@ -547,6 +555,7 @@ fn render_packages(cli: &CliMeta) -> String {
     out.push_str("            src = ./.;\n");
     out.push_str("            cargoLock.lockFile = ./Cargo.lock;\n");
 
+    out.push_str(&render_build_resources(cli));
     if !cli.check_inputs.is_empty() {
         out.push_str(&render_pkg_list("nativeCheckInputs", &cli.check_inputs, 12));
     }
@@ -645,6 +654,16 @@ fn render_apps(cli: &CliMeta) -> String {
     )
 }
 
+fn render_build_resources(cli: &CliMeta) -> String {
+    let mut out = String::new();
+    for (env, resource) in &cli.build_resources {
+        out.push_str(&format!(
+            "            {env} = pkgs.fetchurl {{\n              url = \"{}\";\n              hash = \"{}\";\n            }};\n", resource.url, resource.hash
+        ));
+    }
+    out
+}
+
 fn render_devshell(cli: &CliMeta) -> String {
     let mut out = String::new();
     out.push_str("      devShells = forEachSupportedSystem (\n");
@@ -662,6 +681,7 @@ fn render_devshell(cli: &CliMeta) -> String {
         "            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.cargo-llvm-cov;\n",
     );
 
+    out.push_str(&render_build_resources(cli));
     if cli.shell_completions {
         let bin = &cli.binary_name;
         out.push_str(&format!(
@@ -1156,6 +1176,7 @@ mod tests {
             shell_completions: false,
             extra_dev_shell_packages: vec![],
             cue_module: None,
+            build_resources: BTreeMap::new(),
         }
     }
 
@@ -1212,6 +1233,25 @@ mod tests {
         let out = render_flake("demo", &cli);
         assert!(out.contains("installShellFiles"));
         assert!(out.contains("installShellCompletion --cmd demo"));
+    }
+
+    #[test]
+    fn pinned_build_resources_are_available_in_package_and_devshell() {
+        let mut cli = minimal_cli();
+        cli.build_resources.insert(
+            "EXAMPLE_DATA".into(),
+            BuildResource {
+                url: "https://example.org/public-data?v=2&static=true".into(),
+                hash: "sha256-2GLyFSctsFtnCGcesCfzGrg/3anz1B+MYQLF9QAuJ2g=".into(),
+            },
+        );
+        let out = render_flake("example", &cli);
+        assert_eq!(out.matches("EXAMPLE_DATA = pkgs.fetchurl").count(), 2);
+        assert_eq!(
+            out.matches("sha256-2GLyFSctsFtnCGcesCfzGrg/3anz1B+MYQLF9QAuJ2g=")
+                .count(),
+            2
+        );
     }
 
     #[test]

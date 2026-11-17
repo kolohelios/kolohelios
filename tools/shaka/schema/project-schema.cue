@@ -414,6 +414,14 @@ import "kolohelios.com/infra/cloudflare-dns/domains:domain"
 		// the rust toolchain and `workflowPackages`.
 		extraDevShellPackages?: [...string & =~"^[a-zA-Z_][a-zA-Z0-9_-]*$"]
 
+		// Public fixed-output data required by the CLI at build/runtime.
+		// Exposed as an environment path in both package builds and devshells.
+		// Never use this for credentials or consumer-owned writing material.
+		buildResources?: [Env=string & =~"^[A-Z][A-Z0-9_]*$"]: {
+			url: string & =~"^https://[a-zA-Z0-9:/?&=._%+~-]+$"
+			hash: string & =~"^sha256-[A-Za-z0-9+/]{43}=$"
+		}
+
 		// Bundle a CUE module closure into the package so schema-
 		// dependent subcommands work from a nix-built binary run
 		// outside the monorepo (the `cue.mod` + schema + a permissive
