@@ -280,11 +280,11 @@ pub enum Error {
     BackfillPartialFailure { warnings: usize },
 
     #[snafu(display(
-        "invalid --stale-after {value:?}: expected a humantime duration like `7d` or `24h` ({source})"
+        "invalid --stale-after {value:?}: expected a duration like `7d` or `24h` ({source})"
     ))]
     InvalidStaleAfter {
         value: String,
-        source: humantime::DurationError,
+        source: crate::metrics_duration::Error,
     },
 
     #[snafu(display("could not open LinkedIn export {}: {source}", path.display()))]

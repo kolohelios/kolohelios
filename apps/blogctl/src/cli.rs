@@ -460,7 +460,7 @@ pub enum MetricsAction {
         #[arg(long, value_enum)]
         target: Target,
         /// Posts with `sampled_at` older than this are eligible.
-        /// `humantime`-shaped: `7d`, `1w`, `24h`. Default: 7 days.
+        /// Human-readable duration: `7d`, `1w`, `24h`. Default: 7 days.
         #[arg(long, value_name = "DURATION", default_value = "7d")]
         stale_after: String,
         /// Cap on how many posts to walk per invocation. Default 10

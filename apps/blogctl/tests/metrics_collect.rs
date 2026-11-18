@@ -105,6 +105,33 @@ fn collect_args(workdir: &Path) -> commands::metrics::CollectArgs {
 }
 
 #[test]
+fn invalid_intervals_fail_before_repository_or_interactive_work() {
+    let tmp = TempDir::new().unwrap();
+    for value in [
+        "invalid",
+        "-1d",
+        "inf",
+        "3000000y",
+        "999999999999999999999999d",
+    ] {
+        let mut args = collect_args(tmp.path());
+        args.stale_after = value.into();
+        let mut input = Cursor::new(b"unexpected input");
+        let mut output = Vec::new();
+        let error =
+            commands::metrics::collect(&FakeJj::new(), args, &mut input, &mut output).unwrap_err();
+        assert!(matches!(
+            error,
+            blogctl::error::Error::InvalidStaleAfter { .. }
+        ));
+        assert!(error.to_string().contains("invalid --stale-after"));
+        assert!(output.is_empty());
+        assert_eq!(input.position(), 0);
+        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 0);
+    }
+}
+
+#[test]
 fn collect_walks_stale_post_and_records_entered_metrics() {
     let tmp = workdir_with_published_linkedin("bare-post", Some(old_metrics_block()));
     // Prompt sequence for one post: impressions, reactions, comments, reposts.

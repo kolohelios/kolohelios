@@ -125,7 +125,7 @@ pub struct CollectArgs {
     pub workdir: PathBuf,
     pub target: Target,
     /// Posts whose `sampled_at` is older than this become eligible.
-    /// Parsed via `humantime` (`7d`, `1w`, `24h`, …).
+    /// Human-readable interval (`7d`, `1w`, `24h`, …).
     pub stale_after: String,
     /// Hard cap on how many posts a single run walks. The rotation
     /// falls out of "oldest first" — capping at 10/day rotates through
@@ -143,13 +143,18 @@ pub fn collect<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
 ) -> Result<()> {
-    let stale_after = humantime::parse_duration(&args.stale_after).map_err(|source| {
+    let stale_after = crate::metrics_duration::parse(&args.stale_after).map_err(|source| {
         Error::InvalidStaleAfter {
             value: args.stale_after.clone(),
             source,
         }
     })?;
-    let cutoff = OffsetDateTime::now_utc() - stale_after;
+    let cutoff = OffsetDateTime::now_utc()
+        .checked_sub(stale_after)
+        .ok_or_else(|| Error::InvalidStaleAfter {
+            value: args.stale_after.clone(),
+            source: crate::metrics_duration::Error::Range,
+        })?;
 
     let repo = Repository::open(Workdir::new(&args.workdir))?;
     let config = repo.read_config()?;
