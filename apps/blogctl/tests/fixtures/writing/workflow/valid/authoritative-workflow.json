@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Edit only the selected material. Preserve uncertainty and make minimal changes.",
+  "fiction": true,
+  "context_sets": {"profile": [{"label": "Voice profile", "path": "context/profile.txt"}]},
+  "passes": [
+    {"name": "shape", "requires_input": false, "approach": "Return a compact outline.", "transport": "chat"},
+    {
+      "name": "voice", "requires_input": true, "input_policy": "selected-draft",
+      "approach": "Return the complete draft with minimal voice edits. No invented events or explanations.",
+      "context": ["profile"], "transport": "chat", "artifact_kind": "voice",
+      "protected_text": ["The potter waited."],
+      "forbidden_strings": ["unapproved", "—"],
+      "min_words": 10, "max_words": 40,
+      "forbid_workflow_metadata": true, "require_complete_ending": true
+    }
+  ]
+}

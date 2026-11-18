@@ -22,6 +22,16 @@ struct HistoryEntry {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PassAttempt {
+    pass: String,
+    action: String,
+    candidate: Option<ArtifactReference>,
+    assessment: Option<crate::writing_assessment::Assessment>,
+    failure: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Session {
     version: u32,
     name: String,
@@ -33,6 +43,8 @@ pub struct Session {
     experiment: Option<String>,
     selected: Option<ArtifactReference>,
     history: Vec<HistoryEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attempts: Vec<PassAttempt>,
     #[serde(skip)]
     path: PathBuf,
 }
@@ -78,6 +90,7 @@ impl Session {
                 experiment: None,
                 selected: None,
                 history: Vec::new(),
+                attempts: Vec::new(),
                 path,
             },
             Err(source) => return Err(writing::Error::Io { path, source }),
@@ -94,6 +107,12 @@ impl Session {
             .flatten()
         {
             store.candidate(&reference.experiment_id, &reference.candidate_id)?;
+        }
+        for attempt in &session.attempts {
+            definition.pass(&attempt.pass)?;
+            if let Some(reference) = &attempt.candidate {
+                store.candidate(&reference.experiment_id, &reference.candidate_id)?;
+            }
         }
         for id in &session.evidence {
             store.evidence_pack(id)?;
@@ -183,6 +202,45 @@ impl Session {
         self.save()
     }
 
+    pub fn record_output(
+        &mut self,
+        store: &Store,
+        definition: &WorkflowDefinition,
+        candidate_id: &str,
+        action: &str,
+    ) -> writing::Result<crate::writing_assessment::Assessment> {
+        let experiment = self
+            .experiment
+            .as_ref()
+            .ok_or_else(|| invalid("current pass has no prepared experiment"))?;
+        let document = store.candidate(experiment, candidate_id)?;
+        let assessment = crate::writing_assessment::assess(self.pass(definition)?, &document);
+        self.attempts.push(PassAttempt {
+            pass: self.pass.clone(),
+            action: action.into(),
+            candidate: Some(ArtifactReference {
+                experiment_id: experiment.clone(),
+                candidate_id: candidate_id.into(),
+            }),
+            assessment: Some(assessment.clone()),
+            failure: None,
+        });
+        self.save().map_err(|error| invalid(format!("candidate {experiment}/{candidate_id} was saved but session/handoff persistence failed: {error}; no provider retry is authorized")))?;
+        Ok(assessment)
+    }
+
+    /// Store only sanitized engine diagnostics, never provider bodies or credentials.
+    pub fn record_failure(&mut self, failure: String) -> writing::Result<()> {
+        self.attempts.push(PassAttempt {
+            pass: self.pass.clone(),
+            action: "generate".into(),
+            candidate: None,
+            assessment: None,
+            failure: Some(failure),
+        });
+        self.save()
+    }
+
     pub fn record_review(&mut self, action: &str) -> writing::Result<()> {
         let candidate = self
             .selected
@@ -247,56 +305,106 @@ impl Session {
         self.save()
     }
 
+    fn handoff(&self) -> String {
+        let reference = |value: Option<&ArtifactReference>| {
+            value
+                .map(|value| format!("{}/{}", value.experiment_id, value.candidate_id))
+                .unwrap_or_else(|| "none".into())
+        };
+        let mut text = format!("# Writing session: {}\n\nWorkflow SHA-256: {}\n\nCurrent pass: {}\n\nExplicit input: {}\n\nSelected output: {}\n\nEvidence packs: {}\n\nPrepared experiment: {}\n\n", self.name, self.workflow_hash, self.pass, reference(self.input.as_ref()), reference(self.selected.as_ref()), self.evidence.join(", "), self.experiment.as_deref().unwrap_or("none"));
+        text.push_str("## Recorded attempts\n\n");
+        for (index, attempt) in self.attempts.iter().enumerate() {
+            text.push_str(&format!(
+                "{}. {} / {} / output: {}\n",
+                index + 1,
+                attempt.pass,
+                attempt.action,
+                reference(attempt.candidate.as_ref())
+            ));
+            if let Some(assessment) = &attempt.assessment {
+                text.push_str(&format!("   Mechanical status: {:?}; words: {}. Editorial approval is not established.\n", assessment.status, assessment.words));
+                for finding in &assessment.findings {
+                    text.push_str(&format!("   - {}: {}\n", finding.code, finding.detail));
+                }
+            }
+            if let Some(failure) = &attempt.failure {
+                text.push_str(&format!("   Failure: {failure}\n"));
+            }
+        }
+        text.push_str("\n## Boundary\n\nThis handoff is derived from the session JSON, which remains authoritative. No recorded output is selected automatically. Review the explicit output and findings before selection. No retry, advancement, polished approval, or export is authorized by this handoff.\n");
+        text
+    }
+
     fn save(&self) -> writing::Result<()> {
-        let directory = self
-            .path
-            .parent()
-            .ok_or_else(|| invalid("session path has no parent"))?;
+        let handoff = self.path.with_extension("handoff.md");
+        check_target(&handoff)?;
         let bytes = serde_json::to_vec_pretty(self).map_err(|source| writing::Error::Json {
             path: self.path.clone(),
             source,
         })?;
-        let mut pending =
-            NamedTempFile::new_in(directory).map_err(|source| writing::Error::Io {
-                path: directory.into(),
-                source,
-            })?;
-        pending
-            .write_all(&bytes)
-            .map_err(|source| writing::Error::Io {
-                path: self.path.clone(),
-                source,
-            })?;
-        pending
-            .as_file()
-            .set_permissions(Permissions::from_mode(0o600))
-            .map_err(|source| writing::Error::Io {
-                path: self.path.clone(),
-                source,
-            })?;
-        pending
-            .as_file()
-            .sync_all()
-            .map_err(|source| writing::Error::Io {
-                path: self.path.clone(),
-                source,
-            })?;
-        if let Ok(metadata) = fs::symlink_metadata(&self.path) {
-            if !metadata.is_file() || metadata.file_type().is_symlink() {
-                return Err(writing::Error::UnsafePath {
-                    path: self.path.clone(),
-                });
-            }
+        write_private(&self.path, &bytes)?;
+        write_private(&handoff, self.handoff().as_bytes()).map_err(|_| invalid("session JSON was saved but the private handoff could not be refreshed; no provider retry is authorized"))
+    }
+}
+
+fn check_target(path: &Path) -> writing::Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
+            Err(writing::Error::UnsafePath { path: path.into() })
         }
-        fs::rename(pending.path(), &self.path).map_err(|source| writing::Error::Io {
-            path: self.path.clone(),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(writing::Error::Io {
+            path: path.into(),
+            source,
+        }),
+    }
+}
+
+fn write_private(path: &Path, bytes: &[u8]) -> writing::Result<()> {
+    check_target(path)?;
+    let directory = path
+        .parent()
+        .ok_or_else(|| invalid("session path has no parent"))?;
+    let mut pending = NamedTempFile::new_in(directory).map_err(|source| writing::Error::Io {
+        path: directory.into(),
+        source,
+    })?;
+    pending
+        .write_all(bytes)
+        .map_err(|source| writing::Error::Io {
+            path: path.into(),
             source,
         })?;
-        fs::set_permissions(&self.path, Permissions::from_mode(0o600)).map_err(|source| {
-            writing::Error::Io {
-                path: self.path.clone(),
-                source,
-            }
+    pending
+        .as_file()
+        .set_permissions(Permissions::from_mode(0o600))
+        .map_err(|source| writing::Error::Io {
+            path: path.into(),
+            source,
+        })?;
+    pending
+        .as_file()
+        .sync_all()
+        .map_err(|source| writing::Error::Io {
+            path: path.into(),
+            source,
+        })?;
+    check_target(path)?;
+    fs::rename(pending.path(), path).map_err(|source| writing::Error::Io {
+        path: path.into(),
+        source,
+    })?;
+    fs::set_permissions(path, Permissions::from_mode(0o600)).map_err(|source| {
+        writing::Error::Io {
+            path: path.into(),
+            source,
+        }
+    })?;
+    fs::File::open(directory)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|source| writing::Error::Io {
+            path: directory.into(),
+            source,
         })
-    }
 }

@@ -43,6 +43,28 @@ pub enum WorkflowAction {
         #[arg(long = "evidence", value_name = "EVIDENCE_PACK_ID")]
         evidence: Vec<String>,
     },
+    /// Check an explicit candidate without selecting, generating, or writing state.
+    Assess {
+        pass: String,
+        candidate: ArtifactReference,
+        #[arg(long, value_name = "PATH")]
+        config_root: PathBuf,
+        #[arg(long, value_name = "RELATIVE_PATH")]
+        config: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Prepare the current pass, make one request, assess and preserve its outcome.
+    /// Never select an output, retry, or advance a pass.
+    RunPass {
+        session: String,
+        #[arg(long, value_name = "PATH")]
+        config_root: PathBuf,
+        #[arg(long, value_name = "RELATIVE_PATH")]
+        config: PathBuf,
+        #[arg(long)]
+        model: String,
+    },
     /// Conduct one resumable session; every mutation remains an explicit action.
     Conduct {
         session: String,
@@ -77,6 +99,59 @@ pub fn run(args: WorkflowArgs) -> Result<()> {
             )
             .context(WritingSnafu)?
         ),
+        WorkflowAction::Assess {
+            pass,
+            candidate,
+            config_root,
+            config,
+            json,
+        } => {
+            writing_workflow::validate_store_boundary(&store, &config_root)
+                .context(WritingSnafu)?;
+            let definition =
+                writing_workflow::definition(&config_root, &config).context(WritingSnafu)?;
+            let document = store
+                .candidate(&candidate.experiment_id, &candidate.candidate_id)
+                .context(WritingSnafu)?;
+            let assessment = crate::writing_assessment::assess(
+                definition.pass(&pass).context(WritingSnafu)?,
+                &document,
+            );
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&assessment)
+                        .map_err(|source| writing::Error::Json {
+                            path: config,
+                            source
+                        })
+                        .context(WritingSnafu)?
+                );
+            } else {
+                show_assessment(&assessment, &mut io::stdout().lock())?;
+            }
+        }
+        WorkflowAction::RunPass {
+            session,
+            config_root,
+            config,
+            model,
+        } => {
+            writing_workflow::validate_store_boundary(&store, &config_root)
+                .context(WritingSnafu)?;
+            let definition =
+                writing_workflow::definition(&config_root, &config).context(WritingSnafu)?;
+            let mut session = Session::open(&store, &session, &definition).context(WritingSnafu)?;
+            generate(
+                &store,
+                &mut session,
+                &definition,
+                &config_root,
+                &config,
+                &model,
+                &mut io::stdout().lock(),
+            )?;
+        }
         WorkflowAction::Conduct {
             session,
             config_root,
@@ -275,14 +350,30 @@ fn generate(
     store
         .validate_candidate_context(&context)
         .context(WritingSnafu)?;
-    let client = Client::from_env().context(NovelaiSnafu)?;
-    let candidate = super::novelai::generate_candidate(&client, store, generation, &context)?;
+    let attempt = (|| {
+        let client = Client::from_env().context(NovelaiSnafu)?;
+        super::novelai::generate_candidate(&client, store, generation, &context)
+    })();
+    let candidate = match attempt {
+        Ok(candidate) => candidate,
+        Err(error) => {
+            if let Err(record_error) = session.record_failure(error.to_string()) {
+                line(
+                    output,
+                    &format!("Could not refresh attempt handoff: {record_error}"),
+                )?;
+            }
+            return Err(error);
+        }
+    };
+    let assessment = session
+        .record_output(store, definition, &candidate, "generate")
+        .context(WritingSnafu)?;
     line(
         output,
-        &format!(
-            "Generated one unselected candidate: {candidate}. Select it explicitly to continue."
-        ),
-    )
+        &format!("Generated one immutable, unselected candidate: {candidate}."),
+    )?;
+    show_assessment(&assessment, output)
 }
 
 fn prepared_generation(
@@ -365,10 +456,14 @@ fn import_artifact(
     let candidate = store
         .record_candidate_with_context(&prepared, &metadata, &body, &context)
         .context(WritingSnafu)?;
+    let assessment = session
+        .record_output(store, definition, &candidate, "import")
+        .context(WritingSnafu)?;
     line(
         output,
-        &format!("Imported unselected candidate: {candidate}. Select it explicitly to continue."),
-    )
+        &format!("Imported unselected candidate: {candidate}."),
+    )?;
+    show_assessment(&assessment, output)
 }
 
 fn select_candidate(
@@ -399,6 +494,16 @@ fn select_candidate(
     }
     for candidate in &candidates {
         line(output, candidate)?;
+        let document = store
+            .candidate(experiment, candidate)
+            .context(WritingSnafu)?;
+        show_assessment(
+            &crate::writing_assessment::assess(
+                session.pass(definition).context(WritingSnafu)?,
+                &document,
+            ),
+            output,
+        )?;
     }
     let candidate = ask(input, output, "Candidate ID (blank cancels): ")?;
     if candidate.is_empty() {
@@ -446,71 +551,25 @@ fn check_candidate(
     let document = store
         .candidate(&selected.experiment_id, &selected.candidate_id)
         .context(WritingSnafu)?;
-    let body = &document.body;
-    let pass = session.pass(definition).context(WritingSnafu)?;
-    let words = body
-        .split(|character: char| {
-            !character.is_alphanumeric() && character != '\'' && character != '’'
-        })
-        .filter(|word| !word.is_empty())
-        .count();
-    let mut warnings = Vec::new();
-    if document.provenance.provider == "novelai" {
-        if let Some(reason) = document.provenance.parameters.get("finish_reason") {
-            if reason.as_str() != Some("stop") {
-                warnings.push(format!(
-                    "provider finish reason is {reason}; complete output is not established"
-                ));
-            }
-        }
-        if document
-            .provenance
-            .parameters
-            .get("reasoning_content")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|text| !text.is_empty())
-        {
-            warnings.push("provider returned reasoning despite disabled thinking; stored separately from prose".into());
-        }
+    let assessment = crate::writing_assessment::assess(
+        session.pass(definition).context(WritingSnafu)?,
+        &document,
+    );
+    show_assessment(&assessment, output)
+}
+
+fn show_assessment(
+    assessment: &crate::writing_assessment::Assessment,
+    output: &mut impl Write,
+) -> Result<()> {
+    match assessment.status {
+        crate::writing_assessment::AssessmentStatus::NeedsReview => line(output, &format!("Mechanical checks clear ({} words); editorial review still required.", assessment.words))?,
+        crate::writing_assessment::AssessmentStatus::ConstraintViolation => line(output, &format!("Mechanical checks found constraint violations ({} words). This is not an accepted pass.", assessment.words))?,
     }
-    if pass.min_words().is_some_and(|minimum| words < minimum) {
-        warnings.push(format!("{words} words is below the pass minimum"));
+    for finding in &assessment.findings {
+        line(output, &format!("- {}: {}", finding.code, finding.detail))?;
     }
-    if pass.max_words().is_some_and(|maximum| words > maximum) {
-        warnings.push(format!("{words} words exceeds the pass maximum"));
-    }
-    let lowercase = body.to_ascii_lowercase();
-    if lowercase.contains("<think") || lowercase.contains("</think") {
-        warnings.push("candidate contains a think tag".into());
-    }
-    if body.trim_end().ends_with('}') {
-        warnings.push("candidate ends with a likely leaked instruct brace".into());
-    }
-    if pass.forbid_workflow_metadata()
-        && (lowercase.contains("next action:") || lowercase.contains("status:"))
-    {
-        warnings.push("candidate contains likely invented workflow metadata".into());
-    }
-    if pass.require_complete_ending()
-        && !matches!(
-            body.trim_end().chars().last(),
-            Some('.' | '!' | '?' | ')' | ']' | '"' | '\'')
-        )
-    {
-        warnings.push("candidate appears to end mid-sentence".into());
-    }
-    if warnings.is_empty() {
-        line(output, &format!("Advisory checks passed ({words} words)."))
-    } else {
-        line(
-            output,
-            "Advisory checks reported issues; the candidate remains immutable and selected:",
-        )?;
-        for warning in warnings {
-            line(output, &format!("- {warning}"))?;
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 fn review(
