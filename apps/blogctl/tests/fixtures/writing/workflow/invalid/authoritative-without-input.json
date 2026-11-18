@@ -1,0 +1,4 @@
+{
+  "version": 1, "source_experiment": "synthetic-chapter", "instructions": "Edit the explicit input.", "fiction": true,
+  "passes": [{"name":"voice", "requires_input":false, "input_policy":"selected-draft", "approach":"Revise minimally."}]
+}

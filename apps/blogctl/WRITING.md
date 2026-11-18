@@ -255,6 +255,94 @@ markup, likely instruction braces, workflow metadata, and incomplete endings.
 They don't mutate immutable candidates. Reaching the final pass doesn't approve
 `polished` text or promote a manuscript; those remain separate human actions.
 
+## Authoritative editorial inputs and outcomes
+
+Later editing passes can set `input_policy` to `selected-draft`. This requires
+an explicit input candidate and uses its exact body as the seed. Historical
+source-experiment prose, source instructions, and inherited source material are
+not sent. The original source experiment remains unchanged. Only context sets
+and evidence explicitly chosen for this pass are added; for a minimal voice
+edit, consumers should select a concise profile rather than published samples.
+The default `source` policy preserves existing workflows.
+
+Consumers own protected choices and output restrictions:
+
+```json
+{
+  "name": "voice",
+  "mode": "generate",
+  "requires_input": true,
+  "input_policy": "selected-draft",
+  "transport": "chat",
+  "approach": "Return the complete selected draft with minimal voice edits.",
+  "context": ["profile"],
+  "protected_text": ["The potter waited."],
+  "forbidden_strings": ["unapproved", "—"],
+  "max_tokens": 4096,
+  "min_words": 10,
+  "max_words": 40,
+  "require_complete_ending": true
+}
+```
+
+Protected text must occur exactly in the selected input. Missing protected input,
+empty constraints, or contradictions between protected and forbidden strings
+fail before a request. Forbidden strings use case-insensitive `substring` matching,
+not a universal profanity detector. These fields affect request preparation and
+workflow fingerprints: policy changes require a new session, not reinterpretation
+of old decisions. Consumers must also remove contradictory task instructions.
+
+Inspect any explicit candidate before selecting it:
+
+```sh
+blogctl workflow --workdir /private/writing-lab assess voice \
+  EXPERIMENT/CANDIDATE --config-root /private/consumer-repo \
+  --config books/example/workflow.json --json
+```
+
+Assessment is local, credential-free, and read-only. It reports `needs-review`
+when mechanical checks are clear or `constraint-violation` when findings exist.
+Neither status means editorial acceptance, factual verification, or polished
+approval. Checks include protected text, forbidden strings, configured word and
+ending bounds, leaked reasoning/scaffolding, and provider completion status.
+Advisory findings never rewrite a candidate or decide its selection.
+
+One deliberate current-pass generation can be requested without scripting menu
+input:
+
+```sh
+op run -- blogctl workflow --workdir /private/writing-lab run-pass SESSION \
+  --config-root /private/consumer-repo --config books/example/workflow.json \
+  --model exact-model-id
+```
+
+The invocation authorizes preparation, one provider request, immutable storage,
+assessment, and outcome reporting. It does not authorize another request,
+selection, or advancement. The conductor's generation/import actions also assess
+new output immediately, while it remains unselected; selection lists display
+findings before asking for an explicit candidate ID. A mechanical failure is not
+presented as a successful editorial pass or an invitation to retry automatically.
+
+Every session update refreshes a private mode-0600 `SESSION.handoff.md` next to
+its JSON. The JSON is authoritative; the Markdown is a derived operational
+handoff. It identifies current input, evidence, explicit selection, prepared
+experiment, and recorded outputs or sanitized generation failures with findings.
+No candidate body or credential is copied into it. An outside credential wrapper
+that never launches the engine cannot create an engine attempt record.
+
+Known unsafe handoff paths fail before preparation/request. A post-request disk
+failure can still prevent refresh; a saved candidate or response remains evidence,
+not permission to repeat a request. Handoff failure after saving session JSON is
+reported explicitly and can be repaired by reopening the session without a new
+provider request. Read-only assessment and MCP never open or update a session.
+
+Operationally, carry a bounded request through preparation, checking, preservation,
+and reporting without asking for separate authorization at each local step.
+Editorial selection, navigation/advancement, additional provider requests, and
+polished approval remain deliberate author actions. Keep implementation,
+validation, publication, and downstream adoption in one tracked task rather
+than treating each completed PR as a reason to lose the writing handoff.
+
 ## Record an externally obtained candidate
 
 The local import command is useful for manually obtained text. It **does not**
