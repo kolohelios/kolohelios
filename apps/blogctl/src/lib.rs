@@ -12,6 +12,7 @@ pub mod error;
 pub mod fetch;
 pub mod kind;
 pub mod linkedin;
+pub mod metrics_duration;
 pub mod novelai;
 pub mod openrouter;
 pub mod post;
