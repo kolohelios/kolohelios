@@ -255,6 +255,127 @@ markup, likely instruction braces, workflow metadata, and incomplete endings.
 They don't mutate immutable candidates. Reaching the final pass doesn't approve
 `polished` text or promote a manuscript; those remain separate human actions.
 
+## Resume author review without chat
+
+Register a session once with its explicit consumer configuration and model:
+
+```sh
+blogctl workflow --workdir /private/writing-lab conduct chapter \
+  --config-root /private/consumer-repo --config books/example/workflow.json \
+  --model exact-model-id --width 66
+```
+
+The private session saves the exact workflow JSON, context-root reference, and
+chosen model. Registration archives the previous session bytes privately before
+adding this binding. It does not authorize a request. Subsequent launches need
+no chat transcript, candidate ID, or repeated configuration arguments:
+
+```sh
+blogctl workflow --workdir /private/writing-lab sessions
+blogctl workflow --workdir /private/writing-lab status chapter
+blogctl workflow --workdir /private/writing-lab conduct chapter --width 66
+```
+
+Status and listing are read-only. Older unsupported session files are reported,
+not rewritten. A legacy Rust session needs the explicit registration arguments
+once. Its existing active-pass output journal supplies review focus without
+searching candidate directories or inferring the newest file.
+
+The conductor distinguishes **review focus** from **acceptance**:
+
+| Action | Result |
+| --- | --- |
+| `1` | Read the focused draft, pending working text, or initial input. |
+| `d` | Compare working text against its parent, or the focused output against its explicit parent/input. |
+| `edit` | Prepare a private hash-bound copy and open the configured editor. Successful editing saves an unselected checkpoint. |
+| `save` | Import an interrupted or externally edited tracked copy as a checkpoint. |
+| `abandon` | Explicitly stop tracking a working copy; preserve both files. |
+| `f` | Focus an explicit current output or a direct editorial child, without selecting it. |
+| `guards` | Record intentionally superseded protections in a new private policy session. |
+| `a` | Explicitly select the reviewed checkpoint for this pass, without advancement. |
+| `n` | Explicitly select it and advance, without generation. |
+| `u` | Explicitly use the review draft as input for this same pass, without acceptance, advancement, or a request. |
+| `2` / `3` | Preview / authorize exactly one request from the displayed input. |
+| `9` | Stop; the session remains resumable. |
+
+Reading shows prose, not provenance frontmatter or request snapshots. The plain
+reader wraps to 72 columns by default (20–120 configurable); it uses `less` on an
+interactive terminal when available, otherwise prints wrapped text. Pager history
+and shell escapes are disabled. Rendering never changes candidate bytes.
+
+Set `VISUAL` or `EDITOR` to a trusted editor command. The working path is passed
+as a positional argument, not interpolated into that command. Editor and reader
+children do not inherit NovelAI/OpenRouter credentials. If no editor is configured,
+the tool prints the private path; edit it and choose `save`. The contributor label
+is requested once and persisted as caller-asserted provenance, not verified identity.
+An unchanged editor visit creates no candidate and needs no identity prompt.
+
+Managed working copies live under `<workdir>/review-working/`, with mode `0600`
+and a private sidecar. Pending intent is saved before file creation, so an editor
+abort or interrupted preparation is visible after restart. Unsafe, stale, empty,
+or incomplete copies fail closed; they are not discarded automatically. While a
+copy is pending, accepting, generating, changing evidence, or navigating to another
+draft cannot silently lose it. Finish or explicitly abandon it first.
+
+New generated/imported outputs and saved author checkpoints become review targets
+and update the ledger/handoff, never acceptance. Any prior explicit selection stays
+bound to its original bytes until the author selects something else or changes
+pass/input; reviewing or editing another candidate does not revoke that selection.
+An existing standalone checkpoint
+can be attached explicitly, including after a fresh terminal launch:
+
+```sh
+blogctl workflow --workdir /private/writing-lab focus chapter EXPERIMENT/CANDIDATE
+```
+
+Only current-experiment outputs or direct editorial children of the current target
+are eligible. Standalone low-level revision commands still do not guess which
+session owns their result. For the ordinary session-owned edit loop, use `edit`
+and `save` rather than manually managing sidecars or candidate IDs.
+
+### Intentional changes to protected wording
+
+A model failing a guard is not permission to relax it. After an explicit author
+checkpoint changes protected text, `guards` shows each missing literal. Enter
+its exact replacement in the revised draft, or explicitly remove that protection.
+Blank cancels the whole operation. Replacements must exist in the reviewed bytes
+and must not conflict with forbidden output. Confirm the complete decision with
+`FORK POLICY`.
+
+The tool creates a new named session with a newly fingerprinted exact policy;
+it does not edit consumer files or require a repository PR. Matching protections
+are updated across the new policy. The original session stays unchanged, its
+exact bytes are archived immutably, and previous assessments retain their policy
+hash. The new session contains the review target but no selected output. The
+conductor continues there and prints its resume command; `sessions` lists both
+branches. Existing destinations are never overwritten.
+
+A policy fork changes the contract, not the original generation input. To request
+another version from the revised text, explicitly choose `u` first; otherwise
+advance an accepted checkpoint normally. Preparation fails before a request if
+the displayed input does not satisfy its protected-input contract.
+
+Findings remain advisory, not editorial approval. Selecting despite findings
+requires `ACCEPT WITH FINDINGS`. Accept-and-next checks the next pass's protections
+before changing selection. Formal review sidecars and controlling-terminal polished
+approval remain separate; neither `a` nor `n` approves publication or exports text.
+All read/edit/status/compare/protection operations are credential-free and local.
+For a paid request, prefer a separate credential-wrapped invocation:
+
+```sh
+op run -- blogctl workflow --workdir /private/writing-lab run-pass chapter
+```
+
+This uses the saved model, exact policy, and explicit input. It requests one output,
+records it for review, and never retries, accepts, advances, or exports. Session-owned
+policy and review artifacts stay outside Git, the Nix store, and Dropbox. A missing
+old consumer directory does not prevent reading saved drafts; preparation needs an
+available explicitly configured context root. Relocate a bound session with
+`conduct SESSION --config-root /new/consumer-root`; the private snapshot stays
+unchanged, including for policy forks. Full re-registration with both configuration
+arguments requires a matching exact consumer policy. Neither path silently adopts
+a changed consumer configuration.
+
 ## Authoritative editorial inputs and outcomes
 
 Later editing passes can set `input_policy` to `selected-draft`. This requires

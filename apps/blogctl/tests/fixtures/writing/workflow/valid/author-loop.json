@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "source_experiment": "synthetic-chapter",
+  "instructions": "Edit only the explicit synthetic draft. Preserve uncertainty and the author's choices.",
+  "fiction": true,
+  "context_sets": {"profile": [{"label": "Voice profile", "path": "context/profile.txt"}]},
+  "passes": [
+    {"name": "shape", "requires_input": false, "approach": "Return an outline.", "context": [], "transport": "chat"},
+    {"name": "voice", "requires_input": true, "input_policy": "selected-draft", "approach": "Return the complete draft with minimal voice edits.", "context": ["profile"], "artifact_kind": "voice", "transport": "chat", "max_tokens": 4096, "temperature": 0.2, "protected_text": ["The potter waited."], "forbidden_strings": ["unapproved", "—"], "min_words": 10, "max_words": 100, "require_complete_ending": true},
+    {"name": "line-edit", "requires_input": true, "input_policy": "selected-draft", "approach": "Return the complete draft with minimal line edits.", "context": ["profile"], "artifact_kind": "line-edit", "transport": "chat", "protected_text": ["The potter waited."], "forbidden_strings": ["unapproved", "—"], "require_complete_ending": true},
+    {"name": "final-draft", "requires_input": true, "input_policy": "selected-draft", "approach": "Return the selected draft without new material.", "context": [], "transport": "chat", "protected_text": ["The potter waited."]}
+  ]
+}

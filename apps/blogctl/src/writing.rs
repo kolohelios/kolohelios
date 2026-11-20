@@ -365,7 +365,8 @@ impl Store {
         Ok(Self { root })
     }
 
-    pub(crate) fn root(&self) -> &Path {
+    /// Canonical root of this private, caller-selected writing store.
+    pub fn root(&self) -> &Path {
         &self.root
     }
 

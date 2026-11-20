@@ -15,6 +15,8 @@ use crate::writing::{
     self, ArtifactReference, CandidateContext, GenerationMetadata, ReviewDecision, Store,
 };
 use crate::writing_session::Session;
+
+mod author;
 use crate::writing_workflow::{self, PassMode, WorkflowDefinition, WorkflowPass};
 
 #[derive(Debug, Args)]
@@ -59,22 +61,38 @@ pub enum WorkflowAction {
     RunPass {
         session: String,
         #[arg(long, value_name = "PATH")]
-        config_root: PathBuf,
+        config_root: Option<PathBuf>,
         #[arg(long, value_name = "RELATIVE_PATH")]
-        config: PathBuf,
+        config: Option<PathBuf>,
         #[arg(long)]
-        model: String,
+        model: Option<String>,
+    },
+    /// List durable sessions without changing state or accessing a provider.
+    Sessions,
+    /// Show current review state, including an interrupted working copy.
+    Status {
+        session: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Attach an explicit current output or direct editorial child for review only.
+    Focus {
+        session: String,
+        candidate: ArtifactReference,
     },
     /// Conduct one resumable session; every mutation remains an explicit action.
     Conduct {
         session: String,
         #[arg(long, value_name = "PATH")]
-        config_root: PathBuf,
+        config_root: Option<PathBuf>,
         #[arg(long, value_name = "RELATIVE_PATH")]
-        config: PathBuf,
-        /// Explicit model used only by preview and generation actions.
+        config: Option<PathBuf>,
+        /// Set explicitly at registration; later launches use the saved model.
         #[arg(long)]
-        model: String,
+        model: Option<String>,
+        /// Reading width; does not change candidate bytes.
+        #[arg(long, default_value_t = 72, value_parser = clap::value_parser!(u16).range(20..=120))]
+        width: u16,
     },
 }
 
@@ -137,41 +155,90 @@ pub fn run(args: WorkflowArgs) -> Result<()> {
             config,
             model,
         } => {
-            writing_workflow::validate_store_boundary(&store, &config_root)
-                .context(WritingSnafu)?;
-            let definition =
-                writing_workflow::definition(&config_root, &config).context(WritingSnafu)?;
-            let mut session = Session::open(&store, &session, &definition).context(WritingSnafu)?;
+            let mut opened = author::open(&store, &session, config_root, config, model)?;
             generate(
                 &store,
-                &mut session,
-                &definition,
-                &config_root,
-                &config,
-                &model,
+                &mut opened.session,
+                &opened.definition,
+                &opened.binding.config_root,
+                &opened.binding.config,
+                &opened.binding.model,
                 &mut io::stdout().lock(),
             )?;
+        }
+        WorkflowAction::Sessions => {
+            for name in Session::names(&store).context(WritingSnafu)? {
+                let session = match Session::read(&store, &name) {
+                    Ok(session) => session,
+                    Err(error) => {
+                        println!("{name}: unavailable ({error}); file preserved");
+                        continue;
+                    }
+                };
+                println!(
+                    "{}: {} / review {} / selected {} / working {}",
+                    name,
+                    session.pass_name(),
+                    session
+                        .review_target()
+                        .map(reference)
+                        .unwrap_or_else(|| "none".into()),
+                    session
+                        .selected()
+                        .map(reference)
+                        .unwrap_or_else(|| "none".into()),
+                    session
+                        .working_revision()
+                        .map(|working| working.file.display().to_string())
+                        .unwrap_or_else(|| "none".into())
+                );
+            }
+        }
+        WorkflowAction::Status { session, json } => {
+            let session = Session::read(&store, &session).context(WritingSnafu)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&session)
+                        .map_err(|source| writing::Error::Json {
+                            path: "session status".into(),
+                            source
+                        })
+                        .context(WritingSnafu)?
+                );
+            } else {
+                if let Ok(definition) = session.bound_definition() {
+                    show_status(&session, &definition, &mut io::stdout().lock())?;
+                }
+                author::status(&store, &session, &mut io::stdout().lock())?;
+            }
+        }
+        WorkflowAction::Focus { session, candidate } => {
+            let mut session = Session::read(&store, &session).context(WritingSnafu)?;
+            let definition = session.bound_definition().context(WritingSnafu)?;
+            let assessment = session
+                .focus(&store, &definition, candidate)
+                .context(WritingSnafu)?;
+            show_assessment(&assessment, &mut io::stdout().lock())?;
         }
         WorkflowAction::Conduct {
             session,
             config_root,
             config,
             model,
+            width,
         } => {
-            writing_workflow::validate_store_boundary(&store, &config_root)
-                .context(WritingSnafu)?;
-            let definition =
-                writing_workflow::definition(&config_root, &config).context(WritingSnafu)?;
-            let mut session = Session::open(&store, &session, &definition).context(WritingSnafu)?;
+            let mut opened = author::open(&store, &session, config_root, config, model)?;
             let stdin = io::stdin();
             let stdout = io::stdout();
             conduct(
                 &store,
-                &definition,
-                &mut session,
-                &config_root,
-                &config,
-                &model,
+                &mut opened.definition,
+                &mut opened.session,
+                &opened.binding.config_root,
+                &opened.binding.config,
+                &opened.binding.model,
+                width,
                 stdin.lock(),
                 stdout.lock(),
             )?;
@@ -183,26 +250,39 @@ pub fn run(args: WorkflowArgs) -> Result<()> {
 #[allow(clippy::too_many_arguments)]
 fn conduct(
     store: &Store,
-    definition: &WorkflowDefinition,
+    definition: &mut WorkflowDefinition,
     session: &mut Session,
     config_root: &Path,
     config: &Path,
     model: &str,
+    width: u16,
     mut input: impl BufRead,
     mut output: impl Write,
 ) -> Result<()> {
     loop {
-        show_status(session, definition, &mut output)?;
-        line(
-            &mut output,
-            "1 read  2 preview  3 generate  4 import  5 select  6 review  7 advance  8 pass  e evidence  r revision  d diff  p polished  x export  9 stop",
-        )?;
+        author::status(store, session, &mut output)?;
+        let menu = if session.working_revision().is_some() {
+            "1 read working text  d compare  edit resume editor  save checkpoint  abandon copy  9 stop"
+        } else if session.review_target().is_some() {
+            "1 read  d compare  edit revise  a accept  n accept & next  guards protections  u use review as input\n2 preview  3 generate once from input  f choose output  8 pass  e evidence  9 stop\nAdvanced: 4 import  5 select ID  6 formal review  7 advance selected  r legacy revision  diff arbitrary comparison  p polished  x export"
+        } else {
+            "1 read input  2 preview  3 generate once  4 import  f choose output  8 pass  e evidence  9 stop"
+        };
+        line(&mut output, menu)?;
         let choice = ask(&mut input, &mut output, "> ")?;
         if choice.is_empty() || choice == "9" {
             return Ok(());
         }
         let result = match choice.as_str() {
-            "1" => read_selected(store, session, definition, &mut output),
+            "1" => author::read_draft(store, session, width, &mut output),
+            "edit" => author::edit(store, session, definition, &mut input, &mut output),
+            "save" => author::save_revision(store, session, definition, &mut input, &mut output),
+            "abandon" => author::abandon(session, &mut input, &mut output),
+            "f" => author::focus(store, session, definition, &mut input, &mut output),
+            "u" => author::use_as_input(store, session, definition, &mut output),
+            "a" => author::accept(store, session, definition, false, &mut input, &mut output),
+            "n" => author::accept(store, session, definition, true, &mut input, &mut output),
+            "guards" => author::guards(store, session, definition, &mut input, &mut output),
             "2" => preview(
                 store,
                 session,
@@ -243,8 +323,9 @@ fn conduct(
             "7" => session.advance(definition).context(WritingSnafu),
             "8" => choose_pass(store, session, definition, &mut input, &mut output),
             "e" => choose_evidence(store, session, &mut input, &mut output),
-            "r" => revision_checkpoint(store, session, &mut input, &mut output),
-            "d" => revision_diff(store, &mut input, &mut output),
+            "r" => revision_checkpoint(store, session, definition, &mut input, &mut output),
+            "d" => author::compare(store, session, width, &mut output),
+            "diff" => revision_diff(store, &mut input, &mut output),
             "p" => polished_decision(store, session, &mut input, &mut output),
             "x" => export_polished(store, session, &mut input, &mut output),
             _ => {
@@ -513,28 +594,6 @@ fn select_candidate(
     check_candidate(store, session, definition, output)
 }
 
-fn read_selected(
-    store: &Store,
-    session: &Session,
-    definition: &WorkflowDefinition,
-    output: &mut impl Write,
-) -> Result<()> {
-    let selected = session
-        .selected()
-        .ok_or_else(|| crate::error::Error::Writing {
-            source: writing::Error::Invalid {
-                reason: "no candidate is selected".into(),
-            },
-        })?;
-    line(
-        output,
-        &store
-            .read_candidate(&selected.experiment_id, &selected.candidate_id)
-            .context(WritingSnafu)?,
-    )?;
-    check_candidate(store, session, definition, output)
-}
-
 fn check_candidate(
     store: &Store,
     session: &Session,
@@ -708,7 +767,8 @@ fn choose_evidence(
 
 fn revision_checkpoint(
     store: &Store,
-    session: &Session,
+    session: &mut Session,
+    definition: &WorkflowDefinition,
     input: &mut impl BufRead,
     output: &mut impl Write,
 ) -> Result<()> {
@@ -797,6 +857,21 @@ fn revision_checkpoint(
             };
             let id = store
                 .import_revision(&file, revision)
+                .context(WritingSnafu)?;
+            let experiment = store
+                .inspect_revision(&file)
+                .context(WritingSnafu)?
+                .parent
+                .experiment_id;
+            session
+                .focus(
+                    store,
+                    definition,
+                    ArtifactReference {
+                        experiment_id: experiment,
+                        candidate_id: id.clone(),
+                    },
+                )
                 .context(WritingSnafu)?;
             line(output, &format!("Revision checkpoint: {id}"))
         }
