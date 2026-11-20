@@ -273,12 +273,8 @@ impl Store {
         })
     }
 
-    pub fn import_revision(
-        &self,
-        working_file: &Path,
-        revision: EditorialRevision,
-    ) -> writing::Result<String> {
-        revision.validate()?;
+    /// Verify a pending working copy and its exact parent without importing it.
+    pub fn inspect_revision(&self, working_file: &Path) -> writing::Result<RevisionPreparation> {
         let working_file = safe_working_path(self, working_file, true)?;
         let sidecar = safe_working_path(self, &sidecar_path(&working_file)?, true)?;
         let record: RevisionSidecar =
@@ -300,6 +296,29 @@ impl Store {
         if writing::hash(&parent.body) != record.body_hash {
             return Err(invalid("revision parent body changed after preparation"));
         }
+        Ok(RevisionPreparation {
+            working_file,
+            sidecar,
+            parent: record.parent,
+            candidate_hash: record.candidate_hash,
+            body_hash: record.body_hash,
+        })
+    }
+
+    pub fn revision_body(&self, working_file: &Path) -> writing::Result<String> {
+        let prepared = self.inspect_revision(working_file)?;
+        read_private_text(&prepared.working_file)
+    }
+
+    pub fn import_revision(
+        &self,
+        working_file: &Path,
+        revision: EditorialRevision,
+    ) -> writing::Result<String> {
+        revision.validate()?;
+        let record = self.inspect_revision(working_file)?;
+        let working_file = record.working_file;
+        let parent = self.candidate(&record.parent.experiment_id, &record.parent.candidate_id)?;
         let body = read_private_text(&working_file)?;
         if body.trim().is_empty() {
             return Err(invalid("revision body must not be empty"));

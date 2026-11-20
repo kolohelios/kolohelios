@@ -1046,6 +1046,106 @@ fn generation_records_one_unreviewed_candidate_from_the_frozen_snapshot() {
 }
 
 #[test]
+fn one_mock_request_can_resume_through_author_revision_and_explicit_next() {
+    use crate::writing_revision::{EditorialRevision, OriginKind, RevisionKind};
+    use crate::writing_session::Session;
+    use crate::writing_workflow::{self, GuardChange};
+    let (_dir, store) = setup();
+    let root = fixture("writing/workflow");
+    let config = Path::new("valid/author-loop.json");
+    let definition = writing_workflow::definition(&root, config).unwrap();
+    let shape = writing_workflow::prepare(&store, &root, config, "shape", None).unwrap();
+    let meta = writing::read_json(&fixture("writing/generation.json")).unwrap();
+    let original = fs::read_to_string(fixture("writing/author/original.md")).unwrap();
+    let input = writing::ArtifactReference {
+        candidate_id: store
+            .record_candidate(
+                &store.experiment(&shape).unwrap().prepare("shape").unwrap(),
+                &meta,
+                &original,
+            )
+            .unwrap(),
+        experiment_id: shape,
+    };
+    let mut session = Session::open(&store, "mock-author", &definition).unwrap();
+    session.bind(&store, &root, config, "model-a").unwrap();
+    session
+        .choose_pass(&definition, "voice", Some(input.clone()), &store)
+        .unwrap();
+    let experiment = session.prepare(&store, &root, config).unwrap();
+    let request = PreparedGeneration::with_transport(
+        store
+            .experiment(&experiment)
+            .unwrap()
+            .prepare("voice")
+            .unwrap(),
+        "model-a".into(),
+        Some(4096),
+        Some(0.2),
+        Transport::Chat,
+    )
+    .unwrap();
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/chat/completions")
+        .with_body(fs::read(fixture("novelai/chat/valid/author-review.json")).unwrap())
+        .expect(1)
+        .create();
+    let candidate = generate_candidate(
+        &client(&server),
+        &store,
+        request,
+        &CandidateContext {
+            artifact_kind: Some("voice".into()),
+            parent: Some(input),
+            editorial_revision: None,
+        },
+    )
+    .unwrap();
+    session
+        .record_output(&store, &definition, &candidate, "generate")
+        .unwrap();
+    let mut resumed = Session::read(&store, "mock-author").unwrap();
+    assert!(resumed.selected().is_none());
+    let working = resumed.begin_revision(&store).unwrap();
+    fs::write(
+        &working.working_file,
+        fs::read(fixture("writing/author/revised.md")).unwrap(),
+    )
+    .unwrap();
+    let revision = resumed
+        .finish_revision(
+            &store,
+            &definition,
+            EditorialRevision {
+                origin_kind: OriginKind::HumanRevision,
+                revision_kind: RevisionKind::Substantive,
+                contributors: vec!["Synthetic author".into()],
+                notes: "Synthetic intentional author change.".into(),
+            },
+        )
+        .unwrap();
+    let mut fork = resumed
+        .fork_guards(
+            &store,
+            "mock-reworded",
+            vec![GuardChange {
+                previous: "The potter waited.".into(),
+                replacement: Some("The potter waited by the kiln.".into()),
+            }],
+        )
+        .unwrap();
+    let updated = fork.bound_definition().unwrap();
+    fork.accept_target(&store).unwrap();
+    fork.advance(&updated).unwrap();
+    let final_state = Session::read(&store, "mock-reworded").unwrap();
+    assert_eq!(final_state.pass_name(), "line-edit");
+    assert_eq!(final_state.input(), Some(&revision));
+    assert!(final_state.selected().is_none());
+    mock.assert();
+}
+
+#[test]
 fn unsafe_storage_aborts_before_post_and_successful_request_save_failure_is_clear() {
     let (dir, store) = setup();
     let outside = tempfile::tempdir().unwrap();

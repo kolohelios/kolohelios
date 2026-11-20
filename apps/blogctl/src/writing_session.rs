@@ -11,7 +11,10 @@ use tempfile::NamedTempFile;
 use crate::writing::{self, ArtifactReference, Store};
 use crate::writing_workflow::{self, WorkflowDefinition, WorkflowPass};
 
-#[derive(Debug, Serialize, Deserialize)]
+mod author;
+pub use author::{PolicyOrigin, SessionBinding, WorkingRevision};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HistoryEntry {
     pass: String,
@@ -20,7 +23,7 @@ struct HistoryEntry {
     candidate: ArtifactReference,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PassAttempt {
     pass: String,
@@ -28,9 +31,11 @@ struct PassAttempt {
     candidate: Option<ArtifactReference>,
     assessment: Option<crate::writing_assessment::Assessment>,
     failure: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workflow_hash: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Session {
     version: u32,
@@ -45,6 +50,14 @@ pub struct Session {
     history: Vec<HistoryEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     attempts: Vec<PassAttempt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    binding: Option<SessionBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_target: Option<ArtifactReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    working_revision: Option<WorkingRevision>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    policy_origin: Option<PolicyOrigin>,
     #[serde(skip)]
     path: PathBuf,
 }
@@ -91,6 +104,10 @@ impl Session {
                 selected: None,
                 history: Vec::new(),
                 attempts: Vec::new(),
+                binding: None,
+                review_target: None,
+                working_revision: None,
+                policy_origin: None,
                 path,
             },
             Err(source) => return Err(writing::Error::Io { path, source }),
@@ -117,6 +134,7 @@ impl Session {
         for id in &session.evidence {
             store.evidence_pack(id)?;
         }
+        session.validate_author_state(store)?;
         session.save()?;
         Ok(session)
     }
@@ -125,6 +143,11 @@ impl Session {
         &self,
         definition: &'a WorkflowDefinition,
     ) -> writing::Result<&'a WorkflowPass> {
+        if definition.fingerprint() != self.workflow_hash {
+            return Err(invalid(
+                "definition does not match the session's frozen policy",
+            ));
+        }
         definition.pass(&self.pass)
     }
 
@@ -154,10 +177,31 @@ impl Session {
         config_root: &Path,
         config: &Path,
     ) -> writing::Result<String> {
-        let experiment = writing_workflow::prepare_with_evidence(
+        self.require_no_working_revision()?;
+        let definition = match &self.binding {
+            Some(binding) => {
+                let actual = config_root
+                    .canonicalize()
+                    .map_err(|source| writing::Error::Io {
+                        path: config_root.into(),
+                        source,
+                    })?;
+                if actual != binding.config_root {
+                    return Err(invalid(
+                        "relocate the bound context root explicitly before preparing",
+                    ));
+                }
+                writing_workflow::from_snapshot(&binding.workflow_json)?
+            }
+            None => writing_workflow::definition(config_root, config)?,
+        };
+        if definition.fingerprint() != self.workflow_hash {
+            return Err(invalid("session policy fingerprint changed"));
+        }
+        let experiment = writing_workflow::prepare_definition(
             store,
             config_root,
-            config,
+            &definition,
             &self.pass,
             self.input.as_ref(),
             &self.evidence,
@@ -168,6 +212,7 @@ impl Session {
     }
 
     pub fn set_evidence(&mut self, store: &Store, ids: Vec<String>) -> writing::Result<()> {
+        self.require_no_working_revision()?;
         let mut unique = std::collections::BTreeSet::new();
         for id in &ids {
             if !unique.insert(id) {
@@ -180,10 +225,12 @@ impl Session {
         self.evidence = ids;
         self.experiment = None;
         self.selected = None;
+        self.review_target = None;
         self.save()
     }
 
     pub fn select(&mut self, store: &Store, candidate_id: &str) -> writing::Result<()> {
+        self.require_no_working_revision()?;
         let experiment = self
             .experiment
             .as_ref()
@@ -198,6 +245,7 @@ impl Session {
             action: "selected".into(),
             candidate: candidate.clone(),
         });
+        self.review_target = Some(candidate.clone());
         self.selected = Some(candidate);
         self.save()
     }
@@ -209,12 +257,17 @@ impl Session {
         candidate_id: &str,
         action: &str,
     ) -> writing::Result<crate::writing_assessment::Assessment> {
+        self.require_no_working_revision()?;
         let experiment = self
             .experiment
             .as_ref()
             .ok_or_else(|| invalid("current pass has no prepared experiment"))?;
         let document = store.candidate(experiment, candidate_id)?;
         let assessment = crate::writing_assessment::assess(self.pass(definition)?, &document);
+        self.review_target = Some(ArtifactReference {
+            experiment_id: experiment.clone(),
+            candidate_id: candidate_id.into(),
+        });
         self.attempts.push(PassAttempt {
             pass: self.pass.clone(),
             action: action.into(),
@@ -224,6 +277,7 @@ impl Session {
             }),
             assessment: Some(assessment.clone()),
             failure: None,
+            workflow_hash: Some(self.workflow_hash.clone()),
         });
         self.save().map_err(|error| invalid(format!("candidate {experiment}/{candidate_id} was saved but session/handoff persistence failed: {error}; no provider retry is authorized")))?;
         Ok(assessment)
@@ -237,6 +291,7 @@ impl Session {
             candidate: None,
             assessment: None,
             failure: Some(failure),
+            workflow_hash: Some(self.workflow_hash.clone()),
         });
         self.save()
     }
@@ -255,6 +310,8 @@ impl Session {
     }
 
     pub fn advance(&mut self, definition: &WorkflowDefinition) -> writing::Result<()> {
+        self.pass(definition)?;
+        self.require_no_working_revision()?;
         let selected = self
             .selected
             .clone()
@@ -274,6 +331,7 @@ impl Session {
             candidate: selected.clone(),
         });
         self.pass = next.name().into();
+        self.review_target = None;
         self.input = Some(selected);
         self.evidence.clear();
         self.experiment = None;
@@ -288,6 +346,8 @@ impl Session {
         input: Option<ArtifactReference>,
         store: &Store,
     ) -> writing::Result<()> {
+        self.pass(definition)?;
+        self.require_no_working_revision()?;
         let target = definition.pass(pass)?;
         if let Some(reference) = &input {
             store.candidate(&reference.experiment_id, &reference.candidate_id)?;
@@ -298,6 +358,7 @@ impl Session {
             ));
         }
         self.pass = pass.into();
+        self.review_target = None;
         self.input = input;
         self.evidence.clear();
         self.experiment = None;
@@ -312,6 +373,20 @@ impl Session {
                 .unwrap_or_else(|| "none".into())
         };
         let mut text = format!("# Writing session: {}\n\nWorkflow SHA-256: {}\n\nCurrent pass: {}\n\nExplicit input: {}\n\nSelected output: {}\n\nEvidence packs: {}\n\nPrepared experiment: {}\n\n", self.name, self.workflow_hash, self.pass, reference(self.input.as_ref()), reference(self.selected.as_ref()), self.evidence.join(", "), self.experiment.as_deref().unwrap_or("none"));
+        text.push_str(&format!(
+            "Review target (not acceptance): {}\n\nPending working copy: {}\n\n",
+            reference(self.review_target()),
+            self.working_revision
+                .as_ref()
+                .map(|working| working.file.display().to_string())
+                .unwrap_or_else(|| "none".into())
+        ));
+        if let Some(binding) = &self.binding {
+            text.push_str(&format!("Resume: blogctl workflow --workdir <private-store> conduct {}\n\nConfigured context root: {}\n\n", self.name, binding.config_root.display()));
+        }
+        if let Some(origin) = &self.policy_origin {
+            text.push_str(&format!("Policy fork of session {} (immutable session archive SHA-256: {}). Protection decisions: {}.\n\n", origin.session, origin.archive_hash, origin.changes.len()));
+        }
         text.push_str("## Recorded attempts\n\n");
         for (index, attempt) in self.attempts.iter().enumerate() {
             text.push_str(&format!(
@@ -322,7 +397,7 @@ impl Session {
                 reference(attempt.candidate.as_ref())
             ));
             if let Some(assessment) = &attempt.assessment {
-                text.push_str(&format!("   Mechanical status: {:?}; words: {}. Editorial approval is not established.\n", assessment.status, assessment.words));
+                text.push_str(&format!("   Mechanical status: {:?}; words: {}. Policy SHA-256: {}. Editorial approval is not established.\n", assessment.status, assessment.words, attempt.workflow_hash.as_deref().unwrap_or(&self.workflow_hash)));
                 for finding in &assessment.findings {
                     text.push_str(&format!("   - {}: {}\n", finding.code, finding.detail));
                 }
